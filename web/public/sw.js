@@ -10,7 +10,10 @@
  * labelled stale.
  */
 
-const SHELL = 'remux-shell-v1'
+// Substituted by scripts/build.sh. Left as the literal placeholder in dev and
+// in a bare `npm run build`, where a stable constant is the right behaviour -
+// there is no release to pin it to.
+const SHELL = 'remux-shell-__VERSION__'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
