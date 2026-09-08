@@ -13,6 +13,7 @@ import { KeyPad } from './pane/KeyPad'
 import { Composer } from './pane/Composer'
 import { NewSheet } from './sheets/NewSheet'
 import { RenameSheet } from './sheets/RenameSheet'
+import { PaneActionsSheet } from './sheets/PaneActionsSheet'
 import { SettingsScreen } from './screens/Settings'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
@@ -36,8 +37,12 @@ export default function App() {
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [sheet, setSheet] = useState<'none' | 'new' | 'rename'>('none')
+  const [sheet, setSheet] = useState<'none' | 'new' | 'rename' | 'actions'>('none')
   const [renameTarget, setRenameTarget] = useState<Pane | null>(null)
+  // The pane a drawer long-press targeted. Deliberately not `current`: the
+  // long-pressed row is usually not the pane being viewed, and every action in
+  // the sheet has to follow this one.
+  const [actionTarget, setActionTarget] = useState<Pane | null>(null)
   const [staleWhy, setStaleWhy] = useState(false)
   const [optIn, setOptIn] = useState(false)
   const [notifState, setNotifState] = useState(notificationState())
@@ -321,8 +326,8 @@ export default function App() {
           setDrawerOpen(false)
         }}
         onMenu={(p) => {
-          setRenameTarget(p)
-          setSheet('rename')
+          setActionTarget(p)
+          setSheet('actions')
         }}
         starred={settings.starred}
         onStar={toggleStar}
@@ -460,6 +465,51 @@ export default function App() {
           </>
         )}
       </div>
+
+      <PaneActionsSheet
+        pane={actionTarget}
+        open={sheet === 'actions'}
+        starred={actionTarget ? settings.starred.includes(actionTarget.id) : false}
+        onClose={() => setSheet('none')}
+        onOpen={() => {
+          if (!actionTarget) return
+          go({ name: 'pane', pane: actionTarget.id })
+          setSheet('none')
+          setDrawerOpen(false)
+        }}
+        onStar={() => {
+          if (actionTarget) toggleStar(actionTarget)
+          setSheet('none')
+        }}
+        onRename={() => {
+          setRenameTarget(actionTarget)
+          setSheet('rename')
+        }}
+        onInterrupt={async () => {
+          if (!actionTarget) return
+          setSheet('none')
+          if (await guard('interrupt', () => api.interrupt(actionTarget.id)))
+            toast('sent ^C to ' + actionTarget.id)
+        }}
+        onFocus={async () => {
+          if (!actionTarget) return
+          setSheet('none')
+          if (await guard('focus', () => api.focus(actionTarget.id)))
+            toast(`laptop switched to ${actionTarget.sessionName}:${actionTarget.windowIndex}`)
+        }}
+        onKill={async () => {
+          if (!actionTarget) return
+          const target = actionTarget
+          setSheet('none')
+          if (await guard('kill', () => api.killPane(target.id))) {
+            toast('killed pane ' + target.id)
+            // "Pane gone" is the screen for the pane you were looking at. Kill
+            // a different one from the drawer and there is nothing to report -
+            // the tree push removes its row on its own.
+            if (target.id === currentId) setGone(target.id)
+          }
+        }}
+      />
 
       <NewSheet
         open={sheet === 'new'}
