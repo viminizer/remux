@@ -309,6 +309,13 @@ back button closes the drawer, then any open sheet, then leaves the app.
 - On screens ≥ 900 px (the laptop browser) the drawer is pinned open beside the content instead of
   overlaying it.
 
+**No bottom navigation, and no swipe gestures.** Bottom nav exists for 3-5 co-equal destinations;
+remux has one primary surface (the pane) plus navigation (the drawer) and one rare destination
+(Settings). A tab bar would also have to sit *below* the composer, so the Android keyboard would
+either cover it or shove it up, and the chrome cost is real: top bar 62 px + key pad 50 px +
+composer 68 px is already 180 px, 23 % of a 790 px screen; a tab bar takes it to 30 % before any
+agent output. `☰` is the only way to open the drawer - one visible affordance, nothing hidden.
+
 ### The main area - chat shell, terminal content
 
 ```
