@@ -449,12 +449,33 @@ connect" after it had already pinned. It now persists to `config.json`.
 - **The whole stack works end to end from a phone**: 28 real panes, grouped by
   session, over the tailnet.
 
+## Push delivery, verified end to end
+
+Triggered deliberately in a `remux-test` scratch pane. The sequence matters,
+because a `zsh` pane is classified `shell` unconditionally and can never reach
+`waiting`:
+
+1. Scratch pane created; the watcher recorded it as `shell`.
+2. `python3` started, so `pane_current_command` became `Python` - not a shell,
+   so the classifier reads the screen.
+3. The screen showed a three-option approval prompt, matching the tightened
+   numbered-menu rule (single digit, at least two options).
+4. `shell -> waiting` is a real transition, so it fired exactly once.
+
+The notification arrived on the phone, and tapping it opened that pane
+directly - so `notificationclick` and the `#/p/%131` deep link both work.
+
+That closes the last of the four items the overnight build could not test.
+
 ## Still untested
 
-- **Push delivery.** Everything around it is tested; the wire is not.
-- **`--local` and the tailnet path share almost everything**, but the 403
-  branch - a *different* tailnet identity being refused - has still never
-  executed, because there is only one identity on this tailnet.
+- **The 403 branch.** A *different* tailnet identity being refused has never
+  executed, because there is only one identity on this tailnet. The allow path
+  is proven; the deny path is not.
+- **`busy -> idle` notifications**, which are off by default.
+- **Long-run behaviour**: nothing has run for days, so nothing is known about
+  the watcher's memory over time or how the subscription behaves when FCM
+  rotates the endpoint.
 
 ## Corrections to the report above
 
