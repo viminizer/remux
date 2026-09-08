@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /** Display and behaviour settings, persisted per device. */
 export interface Settings {
@@ -10,6 +10,18 @@ export interface Settings {
   submitOnEnter: boolean
   /** Whether the opt-in bar has been answered. Asked once, never again. */
   askedNotifications: boolean
+  /**
+   * Pane ids starred to the top of the drawer.
+   *
+   * Device-local on purpose. internal/api/settings.go keeps the notification
+   * toggles on the server because the watcher runs there and reads them, so a
+   * switch that only wrote to localStorage would appear to work and change
+   * nothing. Nothing on the server acts on a star - it is drawer ordering and
+   * nothing else - so by that same rule it stays here. Widening
+   * /api/settings the way the notify toggles work is the escalation if these
+   * ever need to follow you between the phone and the laptop.
+   */
+  starred: string[]
 }
 
 const DEFAULTS: Settings = {
@@ -20,6 +32,7 @@ const DEFAULTS: Settings = {
   notifyDone: false,
   submitOnEnter: true,
   askedNotifications: false,
+  starred: [],
 }
 
 const KEY = 'remux.settings'
@@ -47,7 +60,10 @@ export function useSettings() {
     saveSettings(settings)
     document.documentElement.style.setProperty('--fs', settings.fontSize + 'px')
   }, [settings])
-  const patch = (p: Partial<Settings>) => setSettings((s) => ({ ...s, ...p }))
+  // Stable identity: patch is a dependency of effects that prune settings
+  // against live data, and a new function every render would re-run them on
+  // every render.
+  const patch = useCallback((p: Partial<Settings>) => setSettings((s) => ({ ...s, ...p })), [])
   return { settings, patch }
 }
 

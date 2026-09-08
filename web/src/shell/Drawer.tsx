@@ -21,8 +21,10 @@ export function Drawer({
   panes,
   current,
   conn,
+  starred,
   onOpen,
   onMenu,
+  onStar,
   onNew,
   onSettings,
 }: {
@@ -30,8 +32,10 @@ export function Drawer({
   panes: Pane[]
   current: string | null
   conn: Conn
+  starred: string[]
   onOpen: (p: Pane) => void
   onMenu: (p: Pane) => void
+  onStar: (p: Pane) => void
   onNew: () => void
   onSettings: () => void
 }) {
@@ -56,7 +60,15 @@ export function Drawer({
         </button>
       </div>
 
-      <PaneList panes={panes} current={current} filter={q} onOpen={onOpen} onMenu={onMenu} />
+      <PaneList
+        panes={panes}
+        current={current}
+        filter={q}
+        starred={starred}
+        onOpen={onOpen}
+        onMenu={onMenu}
+        onStar={onStar}
+      />
 
       <div className="drawer-foot" onClick={onSettings}>
         <span className={`dot ${CONN_DOT[conn]}`} />

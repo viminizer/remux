@@ -210,6 +210,29 @@ export default function App() {
     [],
   )
 
+  const toggleStar = (p: Pane) =>
+    patch({
+      starred: settings.starred.includes(p.id)
+        ? settings.starred.filter((id) => id !== p.id)
+        : [...settings.starred, p.id],
+    })
+
+  // Drop stars for panes that no longer exist.
+  //
+  // tmux never reuses a pane id while its server lives, but the counter resets
+  // when that server restarts - so a star saved before a restart can latch
+  // onto an unrelated new pane, and you open a starred row to find a stranger.
+  //
+  // Only ever against a live tree. The offline path keeps working from cached
+  // snapshots, and pruning against an empty tree would silently wipe every
+  // star the first time the Mac was unreachable.
+  useEffect(() => {
+    if (conn !== 'live' || !panes.length || !settings.starred.length) return
+    const live = new Set(panes.map((p) => p.id))
+    const kept = settings.starred.filter((id) => live.has(id))
+    if (kept.length !== settings.starred.length) patch({ starred: kept })
+  }, [conn, panes, settings.starred, patch])
+
   // Notification toggles must reach the server or they do nothing.
   const patchNotify = (p: Partial<typeof settings>) => {
     patch(p)
@@ -301,6 +324,8 @@ export default function App() {
           setRenameTarget(p)
           setSheet('rename')
         }}
+        starred={settings.starred}
+        onStar={toggleStar}
         onNew={() => {
           setDrawerOpen(false)
           setSheet('new')
@@ -378,7 +403,12 @@ export default function App() {
                 pane={current}
                 wrap={settings.wrap}
                 fontSize={settings.fontSize}
+                starred={settings.starred.includes(current.id)}
                 onClose={() => setMenuOpen(false)}
+                onStar={() => {
+                  toggleStar(current)
+                  setMenuOpen(false)
+                }}
                 onWrap={() => {
                   patch({ wrap: !settings.wrap })
                   toast(settings.wrap ? 'mirror — exact tmux screen' : 'wrap on — reflowed for reading')
@@ -479,17 +509,21 @@ function PaneMenu({
   onInterrupt,
   onFocus,
   onRename,
+  onStar,
   onKill,
+  starred,
 }: {
   pane: Pane
   wrap: boolean
   fontSize: number
+  starred: boolean
   onClose: () => void
   onWrap: () => void
   onFont: (d: number) => void
   onInterrupt: () => void
   onFocus: () => void
   onRename: () => void
+  onStar: () => void
   onKill: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -526,6 +560,9 @@ function PaneMenu({
         </span>
       </div>
       <div className="msep" />
+      <button className="mi" onClick={onStar}>
+        {starred ? 'Unstar pane' : 'Star pane'}
+      </button>
       <button className="mi" onClick={onRename}>
         Rename pane
       </button>

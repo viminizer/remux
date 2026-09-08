@@ -235,13 +235,26 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   text-transform:uppercase;color:var(--ov0);display:flex;align-items:center;gap:7px;
 }
 .group.alert{color:var(--peach)}
+/* The row and its star are siblings, so the highlight has to live on the
+   wrapper - otherwise hovering the row leaves the star sitting on the old
+   background. min-width:0 lets the row shrink so the title ellipsises instead
+   of pushing the star off the drawer's edge. */
+.row-wrap{display:flex;align-items:stretch;min-width:0}
+.row-wrap:active{background:var(--s0)}
+@media (hover:hover){.row-wrap:hover{background:var(--s0)}}
+.row-wrap.active{background:var(--s0)}
 .row{
-  display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
-  padding:9px 16px;border-left:2px solid transparent;transition:background .12s;
+  display:block;flex:1;min-width:0;text-align:left;border:0;background:transparent;
+  cursor:pointer;padding:9px 16px;border-left:2px solid transparent;transition:background .12s;
 }
-.row:active{background:var(--s0)}
-@media (hover:hover){.row:hover{background:var(--s0)}}
-.row.active{background:var(--s0);border-left-color:var(--blue)}
+.row.active{border-left-color:var(--blue)}
+.star{
+  flex:0 0 auto;border:0;background:transparent;cursor:pointer;color:var(--ov0);
+  width:40px;font-size:15px;line-height:1;transition:color .12s;
+}
+.star.on{color:var(--yellow)}
+.star:active{color:var(--text)}
+@media (hover:hover){.star:hover{color:var(--text)}}
 .row-t{
   display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text);
   white-space:nowrap;overflow:hidden;
