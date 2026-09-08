@@ -29,6 +29,14 @@ var Version = "dev"
 type Auth struct {
 	LC         *local.Client
 	AllowLogin string
+
+	// OnPin persists the identity the first time it is claimed. Without it
+	// the pin lives only in memory, so every restart re-opens the claim to
+	// whoever connects first - which is not what "self-configures on first
+	// run" is supposed to mean.
+	OnPin func(login string)
+
+	mu sync.Mutex
 }
 
 type ctxKey string
@@ -54,14 +62,28 @@ func (a *Auth) Check(ctx context.Context, remoteAddr string) (string, bool) {
 		return "", false
 	}
 	login := who.LoginName
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if a.AllowLogin == "" {
 		// First allowed caller pins the identity, so the common
 		// single-user case needs no configuration.
 		a.AllowLogin = login
 		log.Printf("auth: pinned allowed login to %s", login)
+		if a.OnPin != nil {
+			a.OnPin(login)
+		}
 		return login, true
 	}
 	return login, strings.EqualFold(login, a.AllowLogin)
+}
+
+// Allowed reports the pinned identity.
+func (a *Auth) Allowed() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.AllowLogin
 }
 
 // withAuth gates every route, including the WebSocket upgrade.
@@ -85,7 +107,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error":   "forbidden",
 				"login":   login,
-				"allowed": s.Auth.AllowLogin,
+				"allowed": s.Auth.Allowed(),
 				"detail":  "Nothing was sent to tmux. The request was rejected before it reached the server.",
 			})
 			return

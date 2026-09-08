@@ -301,3 +301,83 @@ func TestCreateRenameKillRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// ── format parsing ────────────────────────────────────────────────────────
+
+// buildLine assembles a record the way treeFormat would.
+func buildLine(title string) string {
+	f := []string{
+		"$2", "saas", "1",
+		"@8", "8", "issue168", "1",
+		"%13", "0", "2.1.263",
+		"/Users/mac/dev", "1", "213", "54",
+		"0", "0", "0", "35713",
+		title,
+	}
+	return strings.Join(f, fieldSep)
+}
+
+func TestParseTreeLine(t *testing.T) {
+	s, w, p, ok := parseTreeLine(buildLine("✳ Separate worktree"))
+	if !ok {
+		t.Fatal("did not parse")
+	}
+	if s.ID != "$2" || s.Name != "saas" || !s.Attached {
+		t.Errorf("session: %+v", s)
+	}
+	if w.ID != "@8" || w.Index != 8 || w.Name != "issue168" {
+		t.Errorf("window: %+v", w)
+	}
+	if p.ID != "%13" || p.Command != "2.1.263" || p.Title != "✳ Separate worktree" {
+		t.Errorf("pane: %+v", p)
+	}
+	if p.Width != 213 || p.Height != 54 || p.History != 35713 {
+		t.Errorf("pane geometry: %+v", p)
+	}
+}
+
+// pane_title is last and parsed with SplitN, so an agent writing the separator
+// into its title shifts nothing.
+func TestSeparatorInsidePaneTitleIsKept(t *testing.T) {
+	title := "weird" + fieldSep + "title"
+	_, _, p, ok := parseTreeLine(buildLine(title))
+	if !ok {
+		t.Fatal("did not parse")
+	}
+	if p.Title != title {
+		t.Errorf("title = %q, want %q", p.Title, title)
+	}
+	if p.Command != "2.1.263" {
+		t.Errorf("command shifted to %q", p.Command)
+	}
+}
+
+// The separator must not be a tab. tmux replaces tabs in format output with
+// "_" when the command has no controlling terminal, which is exactly how remux
+// runs as a LaunchAgent - so a tab works in every interactive test and
+// collapses every record into one field in production.
+func TestSeparatorIsNotWhitespaceOrControl(t *testing.T) {
+	for _, r := range fieldSep {
+		if r < 0x21 || r > 0x7e {
+			t.Fatalf("separator %q contains %q, which tmux will escape", fieldSep, r)
+		}
+	}
+	// A bare "|" appears in Claude Code's own status line.
+	if fieldSep == "|" {
+		t.Error(`separator "|" occurs in real pane titles`)
+	}
+}
+
+func TestMalformedLineIsRejected(t *testing.T) {
+	for _, line := range []string{
+		"",
+		"not a record",
+		// What a tab separator produced under launchd: one field.
+		"$2_saas_1_@8_8_issue168_1_%13_0_2.1.263",
+		strings.Join([]string{"$2", "saas", "1"}, fieldSep),
+	} {
+		if _, _, _, ok := parseTreeLine(line); ok {
+			t.Errorf("parsed a malformed line: %q", line)
+		}
+	}
+}

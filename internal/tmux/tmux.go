@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -74,12 +75,35 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	return c.exec(ctx, args...)
 }
 
+// utf8Env is the child environment for every tmux command, with a UTF-8
+// locale guaranteed.
+//
+// tmux decides whether its client can handle UTF-8 by looking at LC_ALL,
+// LC_CTYPE and LANG. launchd starts agents with none of them set, so tmux
+// concludes the client is ASCII-only and replaces every non-ASCII character in
+// format output with "_" - which turns Claude Code's "✳ Separate worktree"
+// into "_ Separate worktree". It only shows up when remux runs as a
+// LaunchAgent, never in a terminal, because a shell supplies the locale.
+//
+// Setting it here rather than in the launchd plist means it holds however
+// remux was started.
+var utf8Env = func() []string {
+	env := os.Environ()
+	for _, key := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if v := os.Getenv(key); strings.Contains(strings.ToUpper(v), "UTF-8") {
+			return env
+		}
+	}
+	return append(env, "LC_CTYPE=UTF-8")
+}()
+
 // exec runs without the forbidden check. Only focus.go may call it directly.
 func (c *Client) exec(ctx context.Context, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
+	cmd.Env = utf8Env
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

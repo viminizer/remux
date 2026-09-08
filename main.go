@@ -168,7 +168,18 @@ func serveTailnet(ctx context.Context, srv *api.Server, cfg *config.Config) erro
 	}
 	defer node.Close()
 
-	srv.Auth = &api.Auth{LC: node.LC, AllowLogin: cfg.AllowLogin}
+	srv.Auth = &api.Auth{
+		LC:         node.LC,
+		AllowLogin: cfg.AllowLogin,
+		OnPin: func(login string) {
+			cfg.AllowLogin = login
+			if err := config.Save(cfg); err != nil {
+				log.Printf("could not persist the allowed identity: %v", err)
+				return
+			}
+			fmt.Printf("\n  allowed identity pinned to %s (saved)\n", login)
+		},
+	}
 
 	ln, err := node.ListenTLS(":443")
 	if err != nil {

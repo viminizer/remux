@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,16 +76,45 @@ func (t *Tree) Pane(id string) *Pane {
 	return nil
 }
 
+// fieldSep separates the fields of one -F record.
+//
+// It is deliberately printable, and that is not a style choice. tmux passes
+// format output through its vis-escaper, and what survives depends on whether
+// the tmux command has a controlling terminal:
+//
+//	separator      from a terminal   under launchd
+//	\t (tab)       kept              becomes "_"
+//	\x1f, \x1e     "\037" literal    "\037" literal
+//	| or |~|       kept              kept
+//
+// A tab therefore works perfectly in every interactive test and silently
+// collapses every record into a single field when remux runs as a LaunchAgent,
+// which is how it actually ships. A plain "|" is no good either: Claude Code's
+// own status line reads "Opus 5 (1M context) | remux | ...", so it occurs in
+// real pane titles.
+const fieldSep = "|~|"
+
 // treeFormat pulls session, window and pane fields in a single list-panes -a
 // call, so the whole hierarchy costs one exec (~10 ms) instead of one per
 // level. Field order must match parseTreeLine.
-const treeFormat = "#{session_id}\t#{session_name}\t#{session_attached}\t" +
-	"#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}\t" +
-	"#{pane_id}\t#{pane_index}\t#{pane_title}\t#{pane_current_command}\t" +
-	"#{pane_current_path}\t#{pane_active}\t#{pane_width}\t#{pane_height}\t" +
-	"#{pane_in_mode}\t#{alternate_on}\t#{pane_dead}\t#{history_size}"
+//
+// pane_title is last on purpose. It is the wildest field - agents write
+// arbitrary text into it - so parsing splits at most treeFields-1 times and
+// lets anything in the title, separator included, survive verbatim.
+var treeFormat = strings.Join([]string{
+	"#{session_id}", "#{session_name}", "#{session_attached}",
+	"#{window_id}", "#{window_index}", "#{window_name}", "#{window_active}",
+	"#{pane_id}", "#{pane_index}", "#{pane_current_command}",
+	"#{pane_current_path}", "#{pane_active}", "#{pane_width}", "#{pane_height}",
+	"#{pane_in_mode}", "#{alternate_on}", "#{pane_dead}", "#{history_size}",
+	"#{pane_title}",
+}, fieldSep)
 
 const treeFields = 19
+
+var sessionFormat = strings.Join([]string{
+	"#{session_id}", "#{session_attached}", "#{session_name}",
+}, fieldSep)
 
 // Tree returns the full workspace hierarchy.
 //
@@ -103,14 +133,17 @@ func (c *Client) Tree(ctx context.Context) (*Tree, error) {
 	sessions := map[string]*Session{}
 	windows := map[string]*Window{}
 
+	seen, parsed := 0, 0
 	for _, line := range strings.Split(out, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
+		seen++
 		s, w, p, ok := parseTreeLine(line)
 		if !ok {
 			continue
 		}
+		parsed++
 
 		sess := sessions[s.ID]
 		if sess == nil {
@@ -131,6 +164,16 @@ func (c *Client) Tree(ctx context.Context) (*Tree, error) {
 		win.Panes = append(win.Panes, p)
 	}
 
+	// tmux printed records but none of them parsed. That is a broken format
+	// contract, not an empty workspace, and saying "no tmux server running"
+	// here would be a confident wrong answer - which is exactly how the tab
+	// separator hid for a whole build.
+	if seen > 0 && parsed == 0 {
+		return nil, fmt.Errorf(
+			"tmux returned %d panes but none could be parsed; the field separator %q "+
+				"did not survive tmux's output escaping", seen, fieldSep)
+	}
+
 	// A session with no windows cannot appear in list-panes output, so
 	// backfill empty sessions from list-sessions.
 	if err := c.backfillEmpty(ctx, t, sessions); err != nil {
@@ -140,7 +183,9 @@ func (c *Client) Tree(ctx context.Context) (*Tree, error) {
 }
 
 func parseTreeLine(line string) (*Session, *Window, *Pane, bool) {
-	f := strings.Split(line, "\t")
+	// SplitN, so a separator inside pane_title - the trailing field - stays
+	// part of the title instead of shifting every column.
+	f := strings.SplitN(line, fieldSep, treeFields)
 	if len(f) < treeFields {
 		return nil, nil, nil, false
 	}
@@ -149,22 +194,22 @@ func parseTreeLine(line string) (*Session, *Window, *Pane, bool) {
 	p := &Pane{
 		ID:      f[7],
 		Index:   atoi(f[8]),
-		Title:   f[9],
-		Command: f[10],
-		Path:    f[11],
-		Active:  f[12] == "1",
-		Width:   atoi(f[13]),
-		Height:  atoi(f[14]),
-		InMode:  f[15] == "1",
-		Alt:     f[16] == "1",
-		Dead:    f[17] == "1",
-		History: atoi(f[18]),
+		Command: f[9],
+		Path:    f[10],
+		Active:  f[11] == "1",
+		Width:   atoi(f[12]),
+		Height:  atoi(f[13]),
+		InMode:  f[14] == "1",
+		Alt:     f[15] == "1",
+		Dead:    f[16] == "1",
+		History: atoi(f[17]),
+		Title:   f[18],
 	}
 	return s, w, p, true
 }
 
 func (c *Client) backfillEmpty(ctx context.Context, t *Tree, seen map[string]*Session) error {
-	out, err := c.run(ctx, "list-sessions", "-F", "#{session_id}\t#{session_name}\t#{session_attached}")
+	out, err := c.run(ctx, "list-sessions", "-F", sessionFormat)
 	if err != nil {
 		if err == ErrNoServer {
 			return nil
@@ -172,11 +217,13 @@ func (c *Client) backfillEmpty(ctx context.Context, t *Tree, seen map[string]*Se
 		return err
 	}
 	for _, line := range strings.Split(out, "\n") {
-		f := strings.Split(strings.TrimSpace(line), "\t")
+		// Session name is last here for the same reason pane_title is in
+		// treeFormat: it is the only free-form field.
+		f := strings.SplitN(strings.TrimSpace(line), fieldSep, 3)
 		if len(f) < 3 || f[0] == "" || seen[f[0]] != nil {
 			continue
 		}
-		s := &Session{ID: f[0], Name: f[1], Attached: f[2] == "1", Windows: []*Window{}}
+		s := &Session{ID: f[0], Attached: f[1] == "1", Name: f[2], Windows: []*Window{}}
 		seen[s.ID] = s
 		t.Sessions = append(t.Sessions, s)
 	}
