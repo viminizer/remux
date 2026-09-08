@@ -203,11 +203,18 @@ func (p *poller) pollPane(ctx context.Context) {
 	sum := sha256.Sum256([]byte(text))
 
 	p.mu.Lock()
+	// The capture ran outside the lock, so the phone may have unsubscribed
+	// or moved to another pane while it was in flight. Sending anyway would
+	// deliver a frame after the screen went off, which is exactly what
+	// unsub exists to prevent.
+	stale := p.pane != pane
 	unchanged := p.hasPane && sum == p.paneHash && !force
-	p.paneHash, p.hasPane = sum, true
+	if !stale {
+		p.paneHash, p.hasPane = sum, true
+	}
 	p.mu.Unlock()
 
-	if unchanged {
+	if stale || unchanged {
 		return
 	}
 
