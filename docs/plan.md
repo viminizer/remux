@@ -76,12 +76,22 @@ so the UI can be iterated on at the laptop without touching the tailnet.
 remote-control plane for a machine running coding agents with filesystem access - it stays on the
 tailnet.
 
-### Cost of embedding
+### Cost of embedding - measured, not estimated
 
-`tsnet` links wireguard-go, gVisor netstack, DNS and the control-plane client. Expect the binary to
-grow from ~10 MB to roughly **40-60 MB**, and RSS by ~30 MB. For a personal tool on a Mac this is a
-fair trade for "one file, no dependencies, real TLS, identity-based auth". Measured at build time
-and recorded in the README.
+Built a minimal `tsnet` + `ListenTLS` + `WhoIs` program on this Mac (darwin/amd64):
+
+| Build | Size |
+|---|---|
+| plain `go build` | **31 MB** |
+| `-ldflags="-s -w"` | **21 MB** |
+
+With the React UI and remux's own code, expect **~23 MB stripped**. `scripts/build.sh` therefore
+always passes `-ldflags="-s -w"`. That is a cheap price for one file, no dependencies, real TLS and
+identity-based auth.
+
+**Toolchain note:** `tailscale.com@v1.102.3` requires Go >= 1.26.6. This Mac has Go 1.24.0, so the
+`toolchain` directive in `go.mod` makes Go fetch 1.26.x automatically on first build. That is
+expected, not an error. The module cache on this machine is already warm.
 
 ### The hard constraint: never disturb the laptop
 
@@ -101,9 +111,20 @@ menu, which does `select-window` + `select-pane` on purpose.
 
 ## Server: Go
 
-Dependencies: `tailscale.com` (for `tsnet`) and `github.com/coder/websocket`. Routing is stdlib
-`http.ServeMux` (Go 1.22 method patterns). Everything else is stdlib. The QR-code dependency is
-gone - with tsnet there is no token to pair, so the phone just opens a stable URL.
+Dependencies: `tailscale.com` (for `tsnet`), `github.com/coder/websocket`,
+`github.com/SherClockHolmes/webpush-go`, and `github.com/skip2/go-qrcode` (for the first-run QR).
+Routing is stdlib `http.ServeMux` (Go 1.22 method patterns). Everything else is stdlib.
+
+### CLI surface
+
+```
+remux                 run in the foreground (tsnet)
+remux --local         run on 127.0.0.1:7399, no tailnet, no auth - for UI work
+remux install         write and load the launchd plist; starts at boot
+remux uninstall       unload and remove it
+remux restart         reload after replacing the binary
+remux status          preflight + reachability + tailnet identity, then exit
+```
 
 ### `internal/tmux` - the tmux layer
 
@@ -468,28 +489,46 @@ remux/
 
 ---
 
-## Setup Kevin runs afterwards
+## Install and first run
 
-Nothing is installed on the Mac except the binary itself.
+**Distribution: GitHub Releases now, a Homebrew tap later.** A release publishes one stripped
+darwin binary. Updating is: replace the file, `remux restart`. The tap can come once versions
+actually need managing; the CLI is designed so `brew` can drive the same `install` path later.
 
-1. `./scripts/build.sh` → `bin/remux` (single file: UI + Tailscale + server).
-2. In the Tailscale admin console, enable **MagicDNS** and **HTTPS Certificates**. Two toggles, once
-   per tailnet. `ListenTLS` needs them to issue the cert.
-3. `./bin/remux` → prints a login URL on first run. Open it, approve the new device. State is
-   written to `~/.config/remux/tsnet/`; every later start is silent.
-4. Install the Tailscale app on the Android phone and sign in (this part is unavoidable - the phone
-   has to be on the tailnet).
-5. Open `https://remux.<tailnet>.ts.net` on the phone → Chrome menu → Add to Home screen.
-   Real TLS means this actually installs.
-6. `launchctl load` the plist to keep it running across reboots.
-7. Keeping the Mac awake is on Kevin (`caffeinate -dims` or Amphetamine) - the README says so.
+Nothing else gets installed on the Mac. The whole install is:
 
-For UI work at the laptop: `./bin/remux --local` → `http://127.0.0.1:7399`, no tailnet, no
-auth check.
+```bash
+curl -L -o remux <release url>
+chmod +x remux
+./remux install        # writes + loads the launchd plist, starts at boot
+```
 
-**Verified on this machine:** Tailscale is not currently installed - no CLI, no
-`/Applications/Tailscale.app`. With `tsnet` that no longer matters for the Mac. Kevin does still
-need a Tailscale account and the app on the phone.
+Then the binary does the rest of the talking. **What it cannot do itself is account-level**, so it
+walks Kevin through exactly those parts:
+
+1. **Preflight on every start.** Checks `tmux` is on `PATH`, the config dir is writable, and port
+   7399 is free. Prints a short pass/fail list. This catches the boring failures before they get
+   mistaken for bugs.
+2. **Login URL** on first run only. Open it, approve the device. State lands in
+   `~/.config/remux/tsnet/` and every later start is silent.
+3. **Admin-toggle detection.** `ListenTLS` fails with an opaque TLS error when MagicDNS or HTTPS
+   Certificates are off in the tailnet. That is the most likely first-run failure, so it is caught
+   and turned into a one-line instruction naming the admin console URL and the toggle to flip -
+   never a raw error.
+4. **QR code** of `https://remux.<tailnet>.ts.net` printed in the terminal. Kevin should not have to
+   type a tailnet name he does not know by heart into a phone keyboard.
+
+On the phone: install the Tailscale app and sign in (unavoidable - the phone has to join the
+tailnet), scan the QR, then Chrome menu → Add to Home screen. Real TLS is what makes that install
+offer appear.
+
+Keeping the Mac awake stays Kevin's job (`caffeinate -dims` or Amphetamine); the README says so.
+
+For UI work at the laptop: `./remux --local` → `http://127.0.0.1:7399`, no tailnet, no auth check.
+
+**Verified on this machine:** Tailscale is not installed - no CLI, no `/Applications/Tailscale.app`.
+With `tsnet` that no longer matters for the Mac. Kevin still needs a Tailscale account and the app
+on the phone.
 
 ---
 

@@ -33,6 +33,31 @@ Phone (Chrome PWA)          Your Mac
   panes or switch your active window. Everything is done with targeted commands
   (`capture-pane -t %14`, `send-keys -t %14`).
 
+## Install
+
+One file. Nothing else goes on the Mac.
+
+```bash
+curl -L -o remux <release url>
+chmod +x remux
+./remux install        # launchd agent, starts at boot
+```
+
+Measured: **21 MB** stripped for a tsnet + TLS + WhoIs binary, ~23 MB with the UI compiled in.
+
+The binary handles what it can and walks you through what it cannot. It preflights `tmux`, the
+config dir and the port on every start; prints a login URL once so you can approve the device; turns
+the opaque TLS error you get when MagicDNS or HTTPS Certificates are off into a one-line
+instruction; and prints a QR of your `https://remux.<tailnet>.ts.net` URL so you never type a
+tailnet name into a phone keyboard.
+
+What it genuinely cannot do for you, because it is account-level, not software:
+
+- a Tailscale account (free)
+- approving the device once, in a browser
+- two admin-console toggles: MagicDNS and HTTPS Certificates
+- the Tailscale app on the phone
+
 ## The interface
 
 A chat app where each tmux pane is a conversation: drawer of panes grouped by session, one focused

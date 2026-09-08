@@ -79,7 +79,7 @@ Already installed, verified:
 
 | Tool | Version | Path |
 |---|---|---|
-| Go | 1.24.0 | |
+| Go | 1.24.0 | see toolchain note below |
 | Node | v22.20.0 | |
 | npm | 11.12.0 | |
 | tmux | 3.5a | `/usr/local/bin/tmux` |
@@ -87,10 +87,20 @@ Already installed, verified:
 
 Not installed, and **you cannot install it tonight**: Tailscale. That is fine, see phase 7.
 
+**Go toolchain:** `tailscale.com@v1.102.3` needs Go >= 1.26.6. This Mac has 1.24.0, so `go.mod` must
+carry a `toolchain` line and Go will download 1.26.x on first build. You will see
+`switching to go1.26.8` in the output. That is expected, not a failure. The module cache is already
+warm - `tailscale.com` and its dependencies are downloaded.
+
+**Measured, so do not re-estimate:** a minimal tsnet + `ListenTLS` + `WhoIs` binary is 31 MB plain
+and **21 MB with `-ldflags="-s -w"`**. `scripts/build.sh` must always strip. Record the real final
+size in the build log.
+
 - Module path: `github.com/viminizer/remux`
 - Default port: `7399`
 - Dependencies, and nothing else without a reason written in the commit message:
-  `tailscale.com`, `github.com/coder/websocket`, `github.com/SherClockHolmes/webpush-go`
+  `tailscale.com`, `github.com/coder/websocket`, `github.com/SherClockHolmes/webpush-go`,
+  `github.com/skip2/go-qrcode`
 
 ---
 
@@ -145,6 +155,24 @@ size in the build log.
 Write the code, make it compile, keep `--local` working, and leave the login to him.
 **Exit:** `go build` clean, `--local` unaffected, and a clear note in the build log about what Kevin
 must do.
+
+### Phase 7.5 - install experience
+Kevin's priority is that installation is as easy as possible, so treat this as a real phase, not
+polish. Build the CLI surface in `docs/plan.md`: `install`, `uninstall`, `restart`, `status`.
+
+- `remux install` writes `~/Library/LaunchAgents/com.viminizer.remux.plist` and loads it. It must be
+  a **LaunchAgent** running as Kevin, not a system daemon - a daemon runs as root and would not see
+  his tmux server at all.
+- Preflight on every start: `tmux` on `PATH`, config dir writable, port 7399 free. Short pass/fail
+  list.
+- Catch the `ListenTLS` failure that happens when MagicDNS or HTTPS Certificates are off in the
+  tailnet, and print the admin console URL and which toggle to flip. Do not let a raw TLS error
+  reach him - this is the most likely first-run failure.
+- Print a terminal QR of `https://remux.<tailnet>.ts.net` on start.
+
+**Exit:** `remux install` then `remux status` works; `remux uninstall` leaves no plist behind.
+Test the plist round-trip - a broken `install` that needs manual `launchctl` cleanup is worse than
+no `install` at all.
 
 ### Phase 8 - push notifications
 VAPID keypair generation, subscription storage, the watcher, service worker `push` and
