@@ -1,0 +1,15 @@
+# build output
+/bin/
+/web/dist/
+/web/node_modules/
+
+# go
+*.test
+*.out
+
+# local state (tsnet node keys, VAPID keys, audit log)
+/.config/
+*.local.json
+
+# macOS
+.DS_Store

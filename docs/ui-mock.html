@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>remux — UI mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ── Catppuccin Mocha ─────────────────────────────────────── */
+:root{
+  --crust:#11111b; --mantle:#181825; --base:#1e1e2e;
+  --s0:#313244; --s1:#45475a; --s2:#585b70;
+  --ov0:#6c7086; --ov1:#7f849c;
+  --sub0:#a6adc8; --sub1:#bac2de; --text:#cdd6f4;
+  --blue:#89b4fa; --green:#a6e3a1; --yellow:#f9e2af; --peach:#fab387;
+  --red:#f38ba8; --mauve:#cba6f7; --teal:#94e2d5; --maroon:#eba0ac;
+  --ui:'Plus Jakarta Sans',system-ui,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --fs:13px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--ui);background:#0b0b12;color:var(--text);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:16px 0;
+  background-image:radial-gradient(ellipse at 50% -10%,rgba(137,180,250,.10) 0%,transparent 60%);
+}
+
+/* ── screen switcher ──────────────────────────────────────── */
+.switcher{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:620px;padding:0 10px}
+.sw{
+  padding:6px 12px;border-radius:8px;cursor:pointer;
+  background:var(--mantle);border:1px solid var(--s0);color:var(--ov1);
+  font-family:var(--ui);font-size:12px;font-weight:600;transition:.15s;
+}
+.sw:hover{color:var(--sub1);border-color:var(--s1)}
+.sw.on{background:var(--s0);color:var(--text);border-color:var(--blue)}
+.hint{font-size:11.5px;color:var(--ov0);letter-spacing:.2px}
+
+/* ── device frame ─────────────────────────────────────────── */
+.phone{
+  position:relative;width:390px;height:790px;overflow:hidden;
+  background:var(--base);border:1px solid var(--s0);border-radius:34px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 8px #08080e;
+  display:flex;flex-direction:column;
+}
+@media (max-width:900px){
+  body{display:block;padding:0;background:var(--base)}
+  .hint{display:none}
+  .switcher{padding:8px;background:var(--crust);position:sticky;top:0;z-index:50;max-width:none}
+  .phone{width:100%;height:calc(100dvh - 52px);border:0;border-radius:0;box-shadow:none}
+}
+
+/* ── top bar ──────────────────────────────────────────────── */
+.topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  padding:14px 12px 12px;background:var(--mantle);
+  border-bottom:1px solid var(--s0);position:relative;z-index:4;
+}
+.iconbtn{
+  width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;
+  border:0;border-radius:10px;background:transparent;color:var(--sub1);
+  font-size:17px;cursor:pointer;transition:background .15s;
+}
+.iconbtn:active,.iconbtn:hover{background:var(--s0)}
+.tb-title{flex:1;min-width:0}
+.tb-title h1{
+  margin:0;font-size:15px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;
+}
+.tb-title p{
+  margin:2px 0 0;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ── status dots ──────────────────────────────────────────── */
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;display:inline-block}
+.dot.waiting{background:var(--peach);box-shadow:0 0 0 3px rgba(250,179,135,.15)}
+.dot.working{background:var(--blue);position:relative}
+.dot.idle{background:var(--green)}
+.dot.shell{background:var(--s2)}
+.dot.stale{background:var(--ov0)}
+.dot.working::after{
+  content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:1.5px solid var(--blue);border-right-color:transparent;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.dot.working::after{animation:none;opacity:.4}}
+
+/* ── stale banner (offline) ───────────────────────────────── */
+.stale-bar{
+  display:none;flex-direction:column;gap:0;
+  background:rgba(250,179,135,.10);border-bottom:1px solid rgba(250,179,135,.25);
+}
+body.offline .stale-bar{display:flex}
+.stale-top{
+  display:flex;align-items:center;gap:9px;padding:10px 14px;
+  font-size:12.5px;color:var(--peach);font-weight:600;cursor:pointer;
+}
+.stale-top .grow{flex:1}
+.stale-why{display:none;padding:0 14px 12px 36px;font-size:12px;color:var(--sub0);line-height:1.75}
+.stale-why.on{display:block}
+.stale-why code{font-family:var(--mono);color:var(--sub1);font-size:11.5px}
+.stale-why .chk{display:block;color:var(--ov1)}
+.stale-why .chk b{color:var(--sub1);font-weight:600}
+.retry{
+  margin-top:8px;padding:7px 14px;border-radius:9px;cursor:pointer;
+  background:var(--peach);border:0;color:var(--crust);font-family:var(--ui);
+  font-size:12.5px;font-weight:700;
+}
+
+/* ── notification opt-in bar ──────────────────────────────── */
+.optin{
+  display:none;align-items:center;gap:10px;padding:11px 14px;
+  background:rgba(137,180,250,.10);border-bottom:1px solid rgba(137,180,250,.25);
+}
+body.optin-on .optin{display:flex}
+.optin p{margin:0;flex:1;font-size:12.5px;color:var(--sub1);line-height:1.4}
+.optin button{
+  border:0;border-radius:8px;cursor:pointer;padding:7px 11px;
+  font-family:var(--ui);font-size:12px;font-weight:700;
+}
+.optin .yes{background:var(--blue);color:var(--crust)}
+.optin .no{background:transparent;color:var(--ov1);font-weight:600}
+
+/* ── output ───────────────────────────────────────────────── */
+.output{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  padding:16px 14px 8px;background:var(--base);
+}
+.output pre{
+  margin:0;font-family:var(--mono);font-size:var(--fs);line-height:1.65;
+  white-space:pre-wrap;word-break:break-word;color:var(--text);
+}
+body.mirror .output{overflow-x:auto}
+body.mirror .output pre{white-space:pre;word-break:normal}
+body.offline .output pre{opacity:.62}
+.output::-webkit-scrollbar,.list::-webkit-scrollbar,.sheet-body::-webkit-scrollbar{width:6px}
+.output::-webkit-scrollbar-thumb,.list::-webkit-scrollbar-thumb,.sheet-body::-webkit-scrollbar-thumb{background:var(--s1);border-radius:3px}
+.c-blue{color:var(--blue)}.c-green{color:var(--green)}.c-yellow{color:var(--yellow)}
+.c-peach{color:var(--peach)}.c-red{color:var(--red)}.c-mauve{color:var(--mauve)}
+.c-teal{color:var(--teal)}.c-maroon{color:var(--maroon)}
+.c-dim{color:var(--ov1)}.c-sub{color:var(--sub0)}.b{font-weight:700}
+.sel{background:var(--s0);border-radius:3px}
+.box{color:var(--s2)}
+
+.jump{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:132px;z-index:3;
+  background:var(--s0);color:var(--sub1);border:1px solid var(--s1);
+  border-radius:20px;padding:7px 14px;font-size:12px;font-weight:500;
+  cursor:pointer;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.jump.show{display:block}
+
+/* ── key pad ──────────────────────────────────────────────── */
+.keypad{
+  flex:0 0 auto;display:flex;gap:6px;padding:8px 12px;
+  overflow-x:auto;background:var(--mantle);border-top:1px solid var(--s0);
+  scrollbar-width:none;
+}
+.keypad::-webkit-scrollbar{display:none}
+.key{
+  flex:0 0 auto;min-width:38px;height:34px;padding:0 11px;
+  background:var(--s0);border:1px solid var(--s1);border-radius:9px;
+  color:var(--sub1);font-family:var(--mono);font-size:12.5px;font-weight:500;
+  cursor:pointer;transition:transform .08s,background .15s;
+}
+.key:active{transform:scale(.93);background:var(--s1)}
+.key.danger{color:var(--red);border-color:rgba(243,139,168,.3)}
+body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
+
+/* ── composer ─────────────────────────────────────────────── */
+.composer{
+  flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;
+  padding:10px 12px 14px;background:var(--mantle);border-top:1px solid var(--s0);
+}
+.composer .wrap{
+  flex:1;display:flex;align-items:flex-end;gap:6px;
+  background:var(--base);border:1px solid var(--s1);border-radius:20px;padding:6px 6px 6px 14px;
+  transition:border-color .15s;
+}
+.composer .wrap:focus-within{border-color:var(--blue)}
+.composer textarea{
+  flex:1;border:0;outline:0;resize:none;background:transparent;color:var(--text);
+  font-family:var(--ui);font-size:14.5px;line-height:1.45;max-height:110px;padding:6px 0;
+}
+.composer textarea::placeholder{color:var(--ov0)}
+.send{
+  width:32px;height:32px;flex:0 0 32px;border:0;border-radius:50%;
+  background:var(--blue);color:var(--crust);font-size:14px;cursor:pointer;
+  display:grid;place-items:center;transition:opacity .15s;
+}
+.send:disabled{opacity:.3;cursor:default}
+
+/* ── drawer ───────────────────────────────────────────────── */
+.scrim{
+  position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:8;
+  opacity:0;pointer-events:none;transition:opacity .22s;
+}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{
+  position:absolute;top:0;left:0;bottom:0;width:308px;z-index:9;
+  background:var(--mantle);border-right:1px solid var(--s0);
+  display:flex;flex-direction:column;
+  transform:translateX(-100%);transition:transform .24s cubic-bezier(.3,.8,.4,1);
+}
+.drawer.on{transform:none}
+.drawer-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:14px 12px;border-bottom:1px solid var(--s0);
+}
+.search{
+  flex:1;display:flex;align-items:center;gap:8px;
+  background:var(--base);border:1px solid var(--s0);border-radius:10px;padding:8px 10px;
+}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:13.5px}
+.search input::placeholder{color:var(--ov0)}
+.newbtn{
+  flex:0 0 auto;height:34px;padding:0 12px;border-radius:10px;cursor:pointer;
+  background:var(--s0);border:1px solid var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:12.5px;font-weight:600;
+}
+.newbtn:active{background:var(--s1)}
+.list{flex:1;overflow-y:auto;padding:6px 0 20px}
+.group{
+  padding:14px 16px 6px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--ov0);display:flex;align-items:center;gap:7px;
+}
+.group.alert{color:var(--peach)}
+.row{
+  display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
+  padding:9px 16px;border-left:2px solid transparent;transition:background .12s;
+}
+.row:active,.row:hover{background:var(--s0)}
+.row.active{background:var(--s0);border-left-color:var(--blue)}
+.row-t{
+  display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;
+}
+.row-t span{overflow:hidden;text-overflow:ellipsis}
+.row-s{
+  margin-top:3px;font-family:var(--mono);font-size:11px;color:var(--ov1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.row.alert .row-s{color:var(--peach)}
+.drawer-foot{
+  flex:0 0 auto;border-top:1px solid var(--s0);padding:10px 12px;
+  display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ov1);cursor:pointer;
+}
+.drawer-foot:hover{background:var(--s0)}
+
+/* ── kebab menu ───────────────────────────────────────────── */
+.menu{
+  position:absolute;top:56px;right:10px;z-index:10;width:212px;
+  background:var(--s0);border:1px solid var(--s1);border-radius:12px;padding:5px;
+  box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;
+}
+.menu.on{display:block}
+.mi{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  border:0;background:transparent;color:var(--sub1);cursor:pointer;
+  padding:9px 10px;border-radius:8px;font-family:var(--ui);font-size:13.5px;text-align:left;
+}
+.mi:active,.mi:hover{background:var(--s1);color:var(--text)}
+.mi.danger{color:var(--red)}
+.mi small{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+.msep{height:1px;background:var(--s1);margin:5px 2px}
+.stepper{display:flex;gap:4px}
+.stepper button{
+  width:26px;height:26px;border-radius:7px;border:1px solid var(--s2);
+  background:var(--base);color:var(--sub1);cursor:pointer;font-size:13px;line-height:1;
+}
+.mi.hold{position:relative;overflow:hidden}
+.mi.hold .fill{
+  position:absolute;inset:0;background:rgba(243,139,168,.22);
+  transform-origin:left;transform:scaleX(0);pointer-events:none;
+}
+.mi.hold.holding .fill{transform:scaleX(1);transition:transform .8s linear}
+
+/* ── full-screen overlays ─────────────────────────────────── */
+.screen{
+  position:absolute;inset:0;z-index:20;background:var(--base);
+  display:none;flex-direction:column;
+}
+.screen.on{display:flex}
+.screen-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:14px 12px;background:var(--mantle);border-bottom:1px solid var(--s0);
+}
+.screen-head h2{margin:0;font-size:15px;font-weight:600}
+.screen-body{flex:1;overflow-y:auto;padding:20px 18px 30px}
+
+/* centred message screens */
+.msg{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:30px 32px;gap:6px;
+}
+.msg .glyph{
+  width:60px;height:60px;border-radius:18px;display:grid;place-items:center;
+  font-size:26px;margin-bottom:12px;background:var(--s0);border:1px solid var(--s1);
+}
+.msg h2{margin:0;font-size:18px;font-weight:700}
+.msg p{margin:6px 0 0;font-size:13.5px;color:var(--sub0);line-height:1.6;max-width:280px}
+.msg .cta{
+  margin-top:20px;padding:11px 20px;border-radius:11px;border:0;cursor:pointer;
+  background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:14px;font-weight:700;
+}
+.msg .sub-cta{
+  margin-top:10px;background:transparent;border:0;color:var(--ov1);cursor:pointer;
+  font-family:var(--ui);font-size:12.5px;text-decoration:underline;
+}
+.checklist{
+  margin-top:22px;width:100%;max-width:280px;text-align:left;
+  background:var(--mantle);border:1px solid var(--s0);border-radius:12px;padding:12px 14px;
+}
+.checklist div{
+  display:flex;gap:9px;align-items:flex-start;padding:5px 0;
+  font-size:12.5px;color:var(--sub0);line-height:1.5;
+}
+.checklist div span{color:var(--ov0);flex:0 0 auto}
+.checklist .last{
+  margin-top:8px;padding-top:9px;border-top:1px solid var(--s0);
+  font-family:var(--mono);font-size:11.5px;color:var(--ov1);
+}
+
+/* settings */
+.sec{margin-bottom:26px}
+.sec h3{
+  margin:0 0 10px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--ov0);
+}
+.card{background:var(--mantle);border:1px solid var(--s0);border-radius:13px;overflow:hidden}
+.crow{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;
+  border-bottom:1px solid var(--s0);font-size:13.5px;
+}
+.crow:last-child{border-bottom:0}
+.crow .lbl{flex:1;min-width:0}
+.crow .lbl small{display:block;margin-top:3px;font-size:11.5px;color:var(--ov1);font-family:var(--mono)}
+.crow .val{font-family:var(--mono);font-size:12.5px;color:var(--sub0);flex:0 0 auto}
+.sw-toggle{
+  width:44px;height:26px;flex:0 0 44px;border-radius:13px;border:0;cursor:pointer;
+  background:var(--s1);position:relative;transition:background .2s;
+}
+.sw-toggle::after{
+  content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
+  background:var(--sub1);transition:transform .2s,background .2s;
+}
+.sw-toggle.on{background:var(--blue)}
+.sw-toggle.on::after{transform:translateX(18px);background:var(--crust)}
+.linkbtn{
+  background:transparent;border:1px solid var(--s1);border-radius:8px;color:var(--sub1);
+  padding:6px 11px;font-family:var(--ui);font-size:12px;font-weight:600;cursor:pointer;
+}
+
+/* skeleton */
+.sk{background:var(--s0);border-radius:6px;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:.85}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
+
+/* ── bottom sheet ─────────────────────────────────────────── */
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;z-index:30;
+  background:var(--mantle);border-top:1px solid var(--s1);
+  border-radius:20px 20px 0 0;transform:translateY(101%);
+  transition:transform .26s cubic-bezier(.3,.8,.4,1);max-height:78%;
+  display:flex;flex-direction:column;
+}
+.sheet.on{transform:none}
+.grip{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:10px auto 4px;flex:0 0 auto}
+.sheet-body{padding:8px 18px 22px;overflow-y:auto}
+.sheet h3{margin:6px 0 16px;font-size:16px;font-weight:700}
+.seg{display:flex;gap:4px;background:var(--base);border-radius:11px;padding:4px;margin-bottom:16px}
+.seg button{
+  flex:1;padding:9px;border:0;border-radius:8px;cursor:pointer;background:transparent;
+  color:var(--ov1);font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.seg button.on{background:var(--s0);color:var(--text)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11.5px;color:var(--ov1);margin-bottom:6px;font-weight:600}
+.field input{
+  width:100%;background:var(--base);border:1px solid var(--s1);border-radius:11px;
+  padding:12px 13px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:0;
+}
+.field input:focus{border-color:var(--blue)}
+.sheet .go{
+  width:100%;margin-top:6px;padding:13px;border:0;border-radius:12px;cursor:pointer;
+  background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:14.5px;font-weight:700;
+}
+
+/* toast */
+.toast{
+  position:absolute;left:50%;bottom:150px;transform:translate(-50%,10px);z-index:40;
+  background:var(--s1);color:var(--text);border:1px solid var(--s2);
+  padding:9px 15px;border-radius:11px;font-size:12.5px;font-family:var(--mono);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;white-space:nowrap;
+  max-width:90%;overflow:hidden;text-overflow:ellipsis;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<div class="switcher" id="switcher">
+  <button class="sw on" data-s="pane">Pane view</button>
+  <button class="sw" data-s="optin">Notif opt-in</button>
+  <button class="sw" data-s="offline">Offline (cached)</button>
+  <button class="sw" data-s="gone">Pane gone</button>
+  <button class="sw" data-s="boot">Booting</button>
+  <button class="sw" data-s="notmux">No tmux</button>
+  <button class="sw" data-s="denied">Not authorized</button>
+  <button class="sw" data-s="settings">Settings</button>
+  <button class="sw" data-s="new">New sheet</button>
+</div>
+<div class="hint">tap ☰ for the drawer, ⋮ for the menu · everything below is clickable</div>
+
+<div class="phone" id="phone">
+
+  <!-- top bar -->
+  <header class="topbar">
+    <button class="iconbtn" id="burger" aria-label="Open panes">☰</button>
+    <div class="tb-title">
+      <h1><span class="dot waiting" id="tbDot"></span><span id="tbTitle">woment-react</span></h1>
+      <p id="tbSub">saas · win 9 · codex</p>
+    </div>
+    <button class="iconbtn" id="kebab" aria-label="Menu">⋮</button>
+  </header>
+
+  <!-- stale banner -->
+  <div class="stale-bar">
+    <div class="stale-top" id="staleTop">
+      <span class="dot stale"></span>
+      <span class="grow">Cached view · last reached 4 min ago</span>
+      <span style="color:var(--ov1);font-size:11px">Why?</span>
+    </div>
+    <div class="stale-why" id="staleWhy">
+      <span class="chk">· Is <b>Tailscale</b> on this phone?</span>
+      <span class="chk">· Is the Mac <b>awake and powered</b>?</span>
+      <span class="chk">· Phone network: <b>online</b></span>
+      <button class="retry" id="retryBtn">Try again</button>
+    </div>
+  </div>
+
+  <!-- notification opt-in -->
+  <div class="optin">
+    <p><b>Get notified</b> when an agent needs an answer.</p>
+    <button class="yes" id="optYes">Enable</button>
+    <button class="no" id="optNo">Not now</button>
+  </div>
+
+  <!-- menu -->
+  <div class="menu" id="menu">
+    <button class="mi" data-act="interrupt">Interrupt <small>^C</small></button>
+    <button class="mi" data-act="focus">Focus on laptop</button>
+    <div class="msep"></div>
+    <button class="mi" data-act="wrap">Wrap lines <small id="wrapState">on</small></button>
+    <div class="mi" style="cursor:default">Font size
+      <span class="stepper"><button data-act="fs-">−</button><button data-act="fs+">+</button></span>
+    </div>
+    <div class="msep"></div>
+    <button class="mi" data-act="rename">Rename window</button>
+    <button class="mi hold danger" data-act="kill"><span class="fill"></span>Kill pane <small>hold</small></button>
+  </div>
+
+  <!-- output -->
+  <main class="output" id="output"><pre id="pre"></pre></main>
+  <button class="jump" id="jump">↓ Jump to latest</button>
+
+  <!-- key pad -->
+  <div class="keypad">
+    <button class="key" data-k="Esc">esc</button>
+    <button class="key" data-k="Enter">⏎</button>
+    <button class="key" data-k="Tab">tab</button>
+    <button class="key" data-k="S-Tab">⇧tab</button>
+    <button class="key" data-k="Up">↑</button>
+    <button class="key" data-k="Down">↓</button>
+    <button class="key" data-k="Left">←</button>
+    <button class="key" data-k="Right">→</button>
+    <button class="key" data-k="1">1</button>
+    <button class="key" data-k="2">2</button>
+    <button class="key" data-k="3">3</button>
+    <button class="key" data-k="y">y</button>
+    <button class="key" data-k="n">n</button>
+    <button class="key danger" data-k="C-c">^C</button>
+  </div>
+
+  <!-- composer -->
+  <div class="composer">
+    <div class="wrap"><textarea id="ta" rows="1" placeholder="Message codex…"></textarea></div>
+    <button class="send" id="send" disabled>➤</button>
+  </div>
+
+  <!-- ── overlays ────────────────────────────────────────── -->
+
+  <!-- pane gone -->
+  <div class="screen" id="s-gone">
+    <div class="msg">
+      <div class="glyph" style="color:var(--ov1)">⌫</div>
+      <h2>This pane is gone</h2>
+      <p><code style="font-family:var(--mono)">%15</code> exited or was killed while you were reading it.</p>
+      <button class="cta" data-goto="pane">Back to panes</button>
+    </div>
+  </div>
+
+  <!-- booting -->
+  <div class="screen" id="s-boot">
+    <div class="screen-body" style="padding-top:26px">
+      <div class="sk" style="width:52%;height:15px;margin-bottom:9px"></div>
+      <div class="sk" style="width:34%;height:11px;margin-bottom:26px"></div>
+      <div class="sk" style="width:100%;height:11px;margin-bottom:9px"></div>
+      <div class="sk" style="width:88%;height:11px;margin-bottom:9px"></div>
+      <div class="sk" style="width:94%;height:11px;margin-bottom:9px"></div>
+      <div class="sk" style="width:61%;height:11px;margin-bottom:26px"></div>
+      <div class="sk" style="width:75%;height:11px;margin-bottom:9px"></div>
+      <div class="sk" style="width:82%;height:11px"></div>
+    </div>
+  </div>
+
+  <!-- no tmux -->
+  <div class="screen" id="s-notmux">
+    <div class="msg">
+      <div class="glyph" style="color:var(--ov1)">▢</div>
+      <h2>No tmux server running</h2>
+      <p>Your Mac is reachable, but nothing is running in tmux right now.</p>
+      <button class="cta" data-sheet="new">Create first session</button>
+    </div>
+  </div>
+
+  <!-- not authorized -->
+  <div class="screen" id="s-denied">
+    <div class="msg">
+      <div class="glyph" style="color:var(--red);background:rgba(243,139,168,.10);border-color:rgba(243,139,168,.28)">⊘</div>
+      <h2>Not authorized</h2>
+      <p>This app only accepts <b style="color:var(--sub1)">ruxcodes@gmail.com</b>.<br>
+         You're signed in to the tailnet as<br>
+         <code style="font-family:var(--mono);color:var(--peach)">guest@example.com</code>.</p>
+      <div class="checklist" style="margin-top:24px">
+        <div><span>›</span><span>Nothing was sent to tmux. The request was rejected before it reached the server.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- settings -->
+  <div class="screen" id="s-settings">
+    <div class="screen-head">
+      <button class="iconbtn" data-goto="pane">←</button><h2>Settings</h2>
+    </div>
+    <div class="screen-body">
+
+      <div class="sec">
+        <h3>Connection</h3>
+        <div class="card">
+          <div class="crow">
+            <span class="dot idle"></span>
+            <div class="lbl">Connected<small>remux.tail9c2b.ts.net</small></div>
+            <button class="linkbtn" id="checkNow">Check</button>
+          </div>
+          <div class="crow"><div class="lbl">Signed in as</div><div class="val">ruxcodes@gmail.com</div></div>
+          <div class="crow"><div class="lbl">Mac</div><div class="val">Kevins-MacBook-Pro</div></div>
+          <div class="crow"><div class="lbl">tmux</div><div class="val">3.5a · 26 panes</div></div>
+          <div class="crow"><div class="lbl">Last reached</div><div class="val" style="color:var(--green)">just now</div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3>Notifications</h3>
+        <div class="card">
+          <div class="crow"><div class="lbl">An agent needs an answer<small>waiting state</small></div>
+            <button class="sw-toggle on" data-t></button></div>
+          <div class="crow"><div class="lbl">A task finished<small>busy → idle</small></div>
+            <button class="sw-toggle" data-t></button></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3>Display</h3>
+        <div class="card">
+          <div class="crow"><div class="lbl">Wrap lines<small>off = exact tmux screen</small></div>
+            <button class="sw-toggle on" data-t></button></div>
+          <div class="crow"><div class="lbl">Font size</div>
+            <span class="stepper"><button data-act="fs-">−</button><button data-act="fs+">+</button></span>
+            <div class="val" id="fsVal">13px</div></div>
+          <div class="crow"><div class="lbl">Scrollback<small>lines captured per pane</small></div><div class="val">400</div></div>
+          <div class="crow"><div class="lbl">Refresh<small>poll interval</small></div><div class="val">400 ms</div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3>About</h3>
+        <div class="card">
+          <div class="crow"><div class="lbl">remux</div><div class="val">v0.1.0</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- drawer -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div class="search"><span style="color:var(--ov0);font-size:13px">⌕</span><input id="q" placeholder="Search panes"></div>
+      <button class="newbtn" data-sheet="new">✚ New</button>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="drawer-foot" data-goto="settings"><span class="dot idle"></span>Connected · Settings</div>
+  </aside>
+
+  <!-- new sheet -->
+  <div class="sheet" id="sheet-new">
+    <div class="grip"></div>
+    <div class="sheet-body">
+      <h3>Create</h3>
+      <div class="seg" id="newSeg">
+        <button class="on" data-seg="window">Window</button>
+        <button data-seg="session">Session</button>
+      </div>
+      <div class="field"><label>Name</label><input id="newName" value="remux" spellcheck="false"></div>
+      <div class="field" id="newSessWrap"><label>In session</label><input value="saas" spellcheck="false"></div>
+      <div class="field"><label>Start directory</label><input value="~/Desktop/github/workspaces/saas" spellcheck="false"></div>
+      <button class="go" id="createBtn">Create</button>
+      <p style="margin:12px 0 0;font-size:11.5px;color:var(--ov0);line-height:1.6">
+        Created with <code style="font-family:var(--mono)">-d</code> so your laptop's active window doesn't jump.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ── fake workspace, modelled on the real tmux tree ───────── */
+const A = (c,t)=>`<span class="${c}">${t}</span>`;
+
+const PANES = [
+{ id:'%15', session:'saas', win:9, title:'woment-react', cmd:'codex', status:'waiting',
+  body:
+`${A('c-dim','› Ran')} ${A('c-blue','gh issue view 235')} ${A('c-dim','--repo')} ${A('c-maroon','viminizer/shortlist')}
+${A('c-dim','  └ {"number":235,"state":"OPEN","title":"bug: password-forgot')}
+${A('c-dim','    reveals account existence when email delivery fails"}')}
+
+I can fix this by always returning a generic 200, whether or not the
+account exists. That changes the API contract slightly, so the client
+can no longer tell a bad address from an unregistered one.
+
+${A('c-yellow b','Apply patch to apps/api/src/auth/forgot-password.service.ts?')}
+
+${A('c-green b','❯ 1.')} ${A('sel','Yes, apply')}
+  ${A('c-sub','2. Yes, and don’t ask again this session')}
+  ${A('c-sub','3. No, tell Codex what to do differently')}
+` },
+
+{ id:'%13', session:'saas', win:8, title:'✳ Separate worktree', cmd:'claude', status:'working',
+  body:
+`${A('c-green','●')} ${A('b','Read')}${A('c-dim','(internal/tmux/model.go)')}
+${A('c-dim','  ⎿  Read 142 lines')}
+
+${A('c-green','●')} Now let me check how the pane list gets grouped by session
+  before I change the drawer ordering.
+
+${A('c-green','●')} ${A('b','Search')}${A('c-dim','(pattern: "func.*Tree", path: "internal")')}
+${A('c-dim','  ⎿  Found 3 matches')}
+
+${A('c-mauve','✻')} ${A('c-sub','Reticulating splines…')} ${A('c-dim','(47s · esc to interrupt)')}
+` },
+
+{ id:'%70', session:'saas', win:8, title:'remux', cmd:'codex', status:'idle',
+  body:
+`${A('c-green b','•')} Filed and verified all three, with reproduction steps and
+  acceptance criteria:
+
+  ${A('c-dim','-')} ${A('c-teal','#233')} — Exactly 5 MiB CV uploads rejected
+  ${A('c-dim','-')} ${A('c-teal','#234')} — Out-of-range salary returns 500
+  ${A('c-dim','-')} ${A('c-teal','#235')} — Email delivery failure exposes account existence
+
+${A('box','─ Worked for 1m 31s ─────────────────────────────')}
+
+${A('box','┌───────────────────────────────────────────────┐')}
+${A('box','│')}  ${A('c-dim','Ask Codex to do anything')}                     ${A('box','│')}
+${A('box','└───────────────────────────────────────────────┘')}
+  ${A('c-yellow','gpt-6-astra medium')} ${A('c-dim','·')} ${A('c-green','~/Desktop/github/workspaces/saas')}
+` },
+
+{ id:'%11', session:'saas', win:6, title:'notes', cmd:'zsh', status:'shell',
+  body:
+`${A('c-green','mac@Kevins-MacBook-Pro')} ${A('c-blue','saas')} ${A('c-mauve','%')} git status
+On branch ${A('c-green','main')}
+Your branch is up to date with ${A('c-teal',"'origin/main'")}.
+
+nothing to commit, working tree clean
+${A('c-green','mac@Kevins-MacBook-Pro')} ${A('c-blue','saas')} ${A('c-mauve','%')} ${A('sel',' ')}
+` },
+
+{ id:'%1', session:'1yegabiz', win:1, title:'seoul-wedding-api', cmd:'codex', status:'working',
+  body:
+`${A('c-dim','› Ran')} ${A('c-blue','npm test')} ${A('c-dim','--')} ${A('c-maroon','--coverage')}
+${A('c-dim','  └')} ${A('c-green','PASS')}  src/booking/booking.service.spec.ts
+${A('c-dim','    ')}${A('c-green','PASS')}  src/auth/auth.controller.spec.ts
+${A('c-dim','    ')}${A('c-red','FAIL')}  src/payment/refund.service.spec.ts
+
+  ${A('c-red','● refund partial amount › rounds to 2dp')}
+    ${A('c-dim','Expected: 41.67   Received: 41.666666666666664')}
+
+${A('c-blue','▸')} ${A('c-sub','Working')} ${A('c-dim','(12s · esc to interrupt)')}
+` },
+
+{ id:'%18', session:'source-open', win:12, title:'✳ Meeting notes and results', cmd:'claude', status:'idle',
+  body:
+`${A('c-green','●')} Wrote the summary to ${A('c-teal','docs/2026-09-08-standup.md')}.
+
+  Three decisions captured, two follow-ups assigned. Nothing was
+  blocked on you.
+
+${A('box','╭───────────────────────────────────────────────╮')}
+${A('box','│')} ${A('c-dim','>')}                                             ${A('box','│')}
+${A('box','╰───────────────────────────────────────────────╯')}
+  ${A('c-dim','? for shortcuts')}
+` },
+];
+
+const LABEL={waiting:'needs an answer',working:'working',idle:'idle',shell:'shell'};
+let current = PANES[0];
+const $ = id => document.getElementById(id);
+
+/* ── drawer list ──────────────────────────────────────────── */
+function renderList(filter=''){
+  const f=filter.trim().toLowerCase();
+  const shown=PANES.filter(p=>!f||(p.title+p.session+p.cmd+p.win).toLowerCase().includes(f));
+  let html='';
+  const waiting=shown.filter(p=>p.status==='waiting');
+  if(waiting.length){
+    html+=`<div class="group alert"><span class="dot waiting"></span>Needs you</div>`+
+          waiting.map(p=>row(p,true)).join('');
+  }
+  for(const s of ['saas','1yegabiz','source-open']){
+    const rows=shown.filter(p=>p.session===s&&p.status!=='waiting');
+    if(rows.length) html+=`<div class="group">${s}</div>`+rows.map(p=>row(p,false)).join('');
+  }
+  if(!shown.length) html=`<div class="group">no matches</div>`;
+  $('list').innerHTML=html;
+  document.querySelectorAll('.row').forEach(r=>{
+    r.onclick=()=>{ open(PANES.find(p=>p.id===r.dataset.id)); closeDrawer(); };
+  });
+}
+function row(p,alert){
+  return `<button class="row ${alert?'alert':''} ${p.id===current.id?'active':''}" data-id="${p.id}">
+    <div class="row-t"><span class="dot ${p.status}"></span><span>${p.title}</span></div>
+    <div class="row-s">win ${p.win} · ${p.cmd} · ${LABEL[p.status]}</div>
+  </button>`;
+}
+
+function open(p){
+  current=p;
+  $('pre').innerHTML=p.body;
+  $('tbTitle').textContent=p.title;
+  $('tbSub').textContent=`${p.session} · win ${p.win} · ${p.cmd}`;
+  $('tbDot').className='dot '+(document.body.classList.contains('offline')?'stale':p.status);
+  $('ta').placeholder=p.cmd==='zsh'?'Type a command…':`Message ${p.cmd}…`;
+  const o=$('output'); o.scrollTop=o.scrollHeight;
+  renderList($('q').value);
+}
+
+/* ── screen switcher ──────────────────────────────────────── */
+const SCREENS=['gone','boot','notmux','denied','settings'];
+function show(name){
+  document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.s===name));
+  SCREENS.forEach(s=>$('s-'+s).classList.remove('on'));
+  document.body.classList.remove('offline','optin-on');
+  closeSheet(); closeDrawer(); $('menu').classList.remove('on');
+
+  if(name==='offline'){ document.body.classList.add('offline'); open(current); }
+  else if(name==='optin'){ document.body.classList.add('optin-on'); open(current); }
+  else if(name==='new'){ openSheet('new'); }
+  else if(name==='pane'){ open(current); }
+  else if(SCREENS.includes(name)){ $('s-'+name).classList.add('on'); }
+}
+$('switcher').addEventListener('click',e=>{
+  const b=e.target.closest('.sw'); if(b) show(b.dataset.s);
+});
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-goto]'); if(g) show(g.dataset.goto);
+  const sh=e.target.closest('[data-sheet]'); if(sh){ closeDrawer(); openSheet(sh.dataset.sheet); }
+});
+
+/* ── drawer ───────────────────────────────────────────────── */
+const drawer=$('drawer'), scrim=$('scrim');
+const openDrawer=()=>{drawer.classList.add('on');scrim.classList.add('on')};
+const closeDrawer=()=>{drawer.classList.remove('on');scrim.classList.remove('on')};
+$('burger').onclick=openDrawer;
+scrim.onclick=()=>{closeDrawer();closeSheet()};
+$('q').oninput=e=>renderList(e.target.value);
+
+/* ── sheet ────────────────────────────────────────────────── */
+function openSheet(n){ $('sheet-'+n).classList.add('on'); scrim.classList.add('on'); }
+function closeSheet(){ document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('on')); }
+$('newSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  $('newSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  $('newSessWrap').style.display = b.dataset.seg==='session' ? 'none' : 'block';
+});
+$('createBtn').onclick=()=>{ closeSheet(); scrim.classList.remove('on'); toast('created '+$('newName').value); };
+
+/* ── stale banner ─────────────────────────────────────────── */
+$('staleTop').onclick=()=>$('staleWhy').classList.toggle('on');
+$('retryBtn').onclick=e=>{e.stopPropagation();toast('probing remux.tail9c2b.ts.net…')};
+
+/* ── opt-in bar ───────────────────────────────────────────── */
+$('optYes').onclick=()=>{document.body.classList.remove('optin-on');toast('notifications enabled')};
+$('optNo').onclick =()=>{document.body.classList.remove('optin-on');toast('you can enable it in Settings')};
+
+/* ── kebab menu ───────────────────────────────────────────── */
+const menu=$('menu');
+$('kebab').onclick=e=>{e.stopPropagation();menu.classList.toggle('on')};
+document.addEventListener('click',e=>{ if(!menu.contains(e.target)&&e.target!==$('kebab')) menu.classList.remove('on'); });
+
+let fs=13;
+function bumpFont(d){
+  fs=Math.min(20,Math.max(10,fs+d));
+  document.documentElement.style.setProperty('--fs',fs+'px');
+  const v=$('fsVal'); if(v) v.textContent=fs+'px';
+  toast('font size '+fs+'px');
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  const a=b.dataset.act;
+  if(a==='fs+'){bumpFont(1);return} if(a==='fs-'){bumpFont(-1);return}
+  if(a==='wrap'){
+    document.body.classList.toggle('mirror');
+    const on=!document.body.classList.contains('mirror');
+    $('wrapState').textContent=on?'on':'off';
+    toast(on?'wrap on — reflowed for reading':'mirror — exact tmux screen');
+    menu.classList.remove('on'); return;
+  }
+  if(a==='kill') return;
+  menu.classList.remove('on');
+  if(a==='interrupt') toast('sent ^C to '+current.id);
+  if(a==='focus')     toast('laptop switched to '+current.session+':'+current.win);
+  if(a==='rename')    toast('rename sheet would open');
+});
+
+/* hold-to-confirm kill */
+const killBtn=menu.querySelector('[data-act="kill"]');
+let holdT=null;
+killBtn.addEventListener('pointerdown',e=>{
+  e.preventDefault(); killBtn.classList.add('holding');
+  holdT=setTimeout(()=>{menu.classList.remove('on');killBtn.classList.remove('holding');
+    toast('killed pane '+current.id); show('gone');},800);
+});
+['pointerup','pointerleave','pointercancel'].forEach(ev=>
+  killBtn.addEventListener(ev,()=>{clearTimeout(holdT);killBtn.classList.remove('holding')}));
+
+/* ── toggles ──────────────────────────────────────────────── */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-t]'); if(t) t.classList.toggle('on');
+});
+$('checkNow').onclick=()=>toast('reachable · 11 ms');
+
+/* ── keys + composer ──────────────────────────────────────── */
+document.querySelectorAll('.key').forEach(k=>k.onclick=()=>toast('sent '+k.dataset.k+' → '+current.id));
+const ta=$('ta'), send=$('send');
+ta.addEventListener('input',()=>{
+  ta.style.height='auto'; ta.style.height=Math.min(110,ta.scrollHeight)+'px';
+  send.disabled=!ta.value.trim();
+});
+send.onclick=()=>{
+  const t=ta.value.trim(); if(!t) return;
+  const esc=t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  $('pre').innerHTML+=`\n<span class="c-mauve b">› </span><span class="c-sub">${esc}</span>\n`;
+  ta.value=''; ta.style.height='auto'; send.disabled=true;
+  const o=$('output'); o.scrollTop=o.scrollHeight;
+  toast('sent to '+current.cmd+' in '+current.id);
+};
+
+/* ── jump-to-latest ───────────────────────────────────────── */
+const out=$('output'), jump=$('jump');
+out.addEventListener('scroll',()=>{
+  jump.classList.toggle('show', out.scrollHeight-out.scrollTop-out.clientHeight>40);
+});
+jump.onclick=()=>out.scrollTo({top:out.scrollHeight,behavior:'smooth'});
+
+/* ── toast ────────────────────────────────────────────────── */
+let toastT=null;
+function toast(msg){
+  const el=$('toast'); el.textContent=msg; el.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('on'),1600);
+}
+
+renderList(); open(PANES[0]);
+</script>
+</body>
+</html>
