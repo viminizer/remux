@@ -102,3 +102,33 @@ func TestIsAgent(t *testing.T) {
 		}
 	}
 }
+
+// Regression: a real Claude Code pane on this machine was classified waiting
+// because a paragraph contained "6390. No collision." A number followed by a
+// sentence starting with "No" is not a choice menu.
+func TestProseNumberIsNotAMenu(t *testing.T) {
+	screen := "Redis on 56391, with their own volumes. Mine used shortlist_live231* on\n" +
+		"6390. No collision.\n\n❯ \n"
+	if got := Classify("2.1.263", "", screen); got == Waiting {
+		t.Errorf("got waiting for prose containing a numbered sentence")
+	}
+}
+
+// A real menu has more than one option, and single-digit numbers.
+func TestRealNumberedMenuIsWaiting(t *testing.T) {
+	screen := "Apply patch to auth.service.ts?\n\n" +
+		"  1. Yes, apply\n" +
+		"  2. Yes, and don't ask again this session\n" +
+		"  3. No, tell Codex what to do differently\n"
+	if got := Classify("codex", "", screen); got != Waiting {
+		t.Errorf("got %q, want waiting", got)
+	}
+}
+
+// One numbered line is not enough on its own.
+func TestSingleNumberedLineIsNotAMenu(t *testing.T) {
+	screen := "I found three problems.\n  1. No tests cover the refund path\n\n› Ask Codex to do anything\n"
+	if got := Classify("codex", "", screen); got == Waiting {
+		t.Errorf("got waiting for a single numbered prose line")
+	}
+}

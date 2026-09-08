@@ -70,10 +70,31 @@ var waitingRe = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*[▸▶>]\s*\d+\.\s+\S`), // same, other glyphs
 	regexp.MustCompile(`\[y/N\]|\[Y/n\]|\(y/n\)|\(Y/N\)`),
 	regexp.MustCompile(`(?i)\byes, and don'?t ask again\b`),
-	regexp.MustCompile(`(?i)^\s*\d+\.\s+(yes|no|allow|approve|deny)\b`),
 	regexp.MustCompile(`(?i)\b(allow|approve) this (tool|command|edit|action)\b`),
 	regexp.MustCompile(`(?i)\bwaiting for your (input|answer|approval)\b`),
 	regexp.MustCompile(`(?i)\bpress\s+(enter|y)\s+to continue\b`),
+}
+
+// menuOptionRe matches one line of a numbered choice menu, e.g. "2. Yes, and
+// don't ask again this session".
+//
+// On its own this is far too loose to be a signal: a real capture on this
+// machine classified a pane as waiting because a paragraph contained
+// "6390. No collision." Two guards fix that - the number must be a single
+// digit, and a menu only counts when at least two options are on screen,
+// because a real choice always offers more than one.
+var menuOptionRe = regexp.MustCompile(`(?i)^\s*[1-9]\.\s+(yes|no|allow|approve|deny)\b`)
+
+const minMenuOptions = 2
+
+func numberedMenu(lines []string) bool {
+	n := 0
+	for _, l := range lines {
+		if menuOptionRe.MatchString(l) {
+			n++
+		}
+	}
+	return n >= minMenuOptions
 }
 
 // busyRe: the agent is running and does not need anything.
@@ -114,7 +135,7 @@ func Classify(cmd, title, screen string) Status {
 	lines := tail(StripANSI(screen), tailLines)
 	joined := strings.Join(lines, "\n")
 
-	if matchAny(waitingRe, lines, joined) {
+	if matchAny(waitingRe, lines, joined) || numberedMenu(lines) {
 		return Waiting
 	}
 	if matchAny(busyRe, lines, joined) {
