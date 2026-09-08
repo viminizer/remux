@@ -133,7 +133,7 @@ body.optin-on .optin{display:flex}
 .output-wrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
 .output{
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
-  padding:16px 14px 8px;background:var(--base);
+  padding:16px 8px 8px;background:var(--base);
 }
 .output pre{
   margin:0;font-family:var(--mono);font-size:var(--fs);line-height:1.65;
@@ -498,9 +498,13 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   padding-left:max(12px,env(safe-area-inset-left));
   padding-right:max(12px,env(safe-area-inset-right));
 }
-.output,.optin,.connbar,.stale-top{
+.optin,.connbar,.stale-top{
   padding-left:max(14px,env(safe-area-inset-left));
   padding-right:max(14px,env(safe-area-inset-right));
+}
+.output{
+  padding-left:max(8px,env(safe-area-inset-left));
+  padding-right:max(8px,env(safe-area-inset-right));
 }
 /* Only the composer sits on the bottom edge. */
 .composer{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
