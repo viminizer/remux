@@ -343,6 +343,22 @@ export default function App() {
     guard('key', () => api.keys(currentId, [k]))
   }
 
+  // A slash command, typed but not run.
+  //
+  // C-u first, because these only register at the start of an empty composer:
+  // dropped into a half-written prompt, or onto a suggestion just accepted with
+  // tab, "/clear" appends and the line silently does nothing.
+  //
+  // It stops there rather than submitting. /clear discards a conversation and
+  // cannot be undone, and the chip row scrolls, so chips move under your thumb
+  // between glances - one mis-tap wiping a long session is a bad trade for
+  // saving a single tap on ⏎. Typing it for you is the part that hurts on a
+  // phone; confirming it is not.
+  const sendCommand = async (text: string) => {
+    if (!currentId) return
+    if (await guard('key', () => api.keys(currentId, ['C-u']))) sendText(text, false)
+  }
+
   const checkNow = async () => {
     try {
       const t0 = performance.now()
@@ -523,6 +539,7 @@ export default function App() {
               <KeyPad
                 onKey={sendKey}
                 onText={(t) => sendText(t, false)}
+                onCommand={sendCommand}
                 disabled={inputDisabled}
               />
 

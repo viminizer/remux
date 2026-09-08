@@ -4,14 +4,33 @@
  * These are the keys an agent's menus actually need, always reachable with a
  * thumb.
  *
- * A chip is one of two things. A key name goes through the keys endpoint,
+ * A chip is one of three things. A key name goes through the keys endpoint,
  * which is allowlisted server-side, so this list and KeyAllowlist in
  * internal/tmux/actions.go have to agree. A `text` chip is a literal character
  * and goes through the text endpoint instead - the same path the composer
  * uses, so it needs no server change and does not widen the allowlist, whose
  * whole job is keeping arbitrary strings out of send-keys.
+ *
+ * A `command` chip is a `text` chip that clears the input line first. Slash
+ * commands only register at the start of an empty composer, so typing one into
+ * a half-written prompt produces a line that silently does nothing.
+ *
+ * These are Claude Code commands, and the pad has no per-pane filtering -
+ * `disabled` is only stale || !current - so they show on Codex and plain shell
+ * panes too, where they are just text. Filtering chips by pane command would
+ * be a larger change than this.
  */
-const KEYS: { k: string; label: string; text?: boolean; danger?: boolean }[] = [
+const KEYS: {
+  k: string
+  label: string
+  text?: boolean
+  command?: boolean
+  danger?: boolean
+}[] = [
+  // First, because they are the most used and the row scrolls - the near end
+  // is the part your thumb reaches without moving.
+  { k: '/clear', label: '/clear', command: true },
+  { k: '/compact', label: '/compact', command: true },
   { k: 'Escape', label: 'esc' },
   { k: 'Enter', label: '⏎' },
   { k: 'Tab', label: 'tab' },
@@ -43,10 +62,12 @@ const KEYS: { k: string; label: string; text?: boolean; danger?: boolean }[] = [
 export function KeyPad({
   onKey,
   onText,
+  onCommand,
   disabled,
 }: {
   onKey: (k: string) => void
   onText: (t: string) => void
+  onCommand: (t: string) => void
   disabled: boolean
 }) {
   return (
@@ -56,7 +77,9 @@ export function KeyPad({
           key={key.k}
           className={`key ${key.danger ? 'danger' : ''}`}
           disabled={disabled}
-          onClick={() => (key.text ? onText(key.k) : onKey(key.k))}
+          onClick={() =>
+            key.command ? onCommand(key.k) : key.text ? onText(key.k) : onKey(key.k)
+          }
         >
           {key.label}
         </button>
