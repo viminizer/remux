@@ -413,7 +413,11 @@ export default function App() {
             <Output lines={lines} wrap={settings.wrap} />
 
             <div className="inputbar" ref={setInputbar}>
-              <KeyPad onKey={sendKey} disabled={inputDisabled} />
+              <KeyPad
+                onKey={sendKey}
+                onText={(t) => sendText(t, false)}
+                disabled={inputDisabled}
+              />
 
               <Composer
                 target={meta?.cmd ?? current?.command ?? 'shell'}
