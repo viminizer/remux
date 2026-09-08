@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * Hash routing, deliberately shallow.
@@ -25,11 +25,11 @@ export function useRoute(): [Route, (r: Route) => void] {
     return () => window.removeEventListener('hashchange', on)
   }, [])
 
-  const go = (r: Route) => {
+  const go = useCallback((r: Route) => {
     const hash = r.name === 'settings' ? '#/settings' : r.pane ? `#/p/${encodeURIComponent(r.pane)}` : '#/'
     if (location.hash !== hash) location.hash = hash
     else setRoute(r)
-  }
+  }, [])
 
   return [route, go]
 }

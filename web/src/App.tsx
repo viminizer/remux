@@ -60,6 +60,12 @@ export default function App() {
 
   const panes = useMemo(() => (sessions ? flatten({ sessions }) : []), [sessions])
   const currentId = route.name === 'pane' ? route.pane : null
+
+  // Settings is an overlay you come back from, not a destination. Without
+  // this, Back lands on whatever auto-select picks rather than the pane you
+  // were reading.
+  const lastPane = useRef<string | null>(null)
+  if (currentId) lastPane.current = currentId
   const current = useMemo(
     () => panes.find((p) => p.id === currentId) ?? null,
     [panes, currentId],
@@ -160,12 +166,14 @@ export default function App() {
   }, [currentId, lines, live, current])
 
   // Land on something sensible on first load: whatever needs an answer, else
-  // the first pane.
+  // the first pane. It has to key off the route name, not off the absence of a
+  // pane - `currentId` is null on every non-pane route too, and reading that as
+  // "first load" redirected Settings away the moment it opened.
   useEffect(() => {
-    if (currentId || !panes.length) return
+    if (route.name !== 'pane' || currentId || !panes.length) return
     const wanted = panes.find((p) => p.status === 'waiting') ?? panes[0]
     go({ name: 'pane', pane: wanted.id })
-  }, [panes, currentId, go])
+  }, [route.name, panes, currentId, go])
 
   // Android back closes the drawer, then any sheet, then leaves the app.
   useEffect(() => {
@@ -313,7 +321,7 @@ export default function App() {
             patch={patchNotify}
             notifState={notifState}
             onEnableNotifications={onEnablePush}
-            onBack={() => go({ name: 'pane', pane: currentId })}
+            onBack={() => go({ name: 'pane', pane: lastPane.current })}
             onCheck={checkNow}
           />
         ) : !panes.length ? (
