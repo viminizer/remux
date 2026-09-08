@@ -23,6 +23,9 @@ echo "==> staging the UI into internal/web/dist"
 rm -rf internal/web/dist
 mkdir -p internal/web
 cp -R web/dist internal/web/dist
+# Only .gitkeep is committed here; go:embed needs the directory to exist on a
+# fresh clone, but not to hold a real build.
+touch internal/web/dist/.gitkeep
 
 echo "==> building $OUT ($VERSION)"
 mkdir -p bin

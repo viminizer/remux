@@ -13,3 +13,10 @@
 
 # macOS
 .DS_Store
+
+# staged UI (scripts/build.sh copies web/dist here for go:embed)
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
+# node
+/web/node_modules/

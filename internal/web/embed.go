@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// dist is populated by scripts/build.sh, which stages the Vite output here.
+// Only .gitkeep is committed, so a fresh clone still compiles - go:embed needs
+// the directory to exist, but not to hold a real build.
+//
 //go:embed all:dist
 var dist embed.FS
 
@@ -18,9 +22,10 @@ var dist embed.FS
 // still works on a deep link like /#/p/%14 after a hard reload.
 func Handler() http.Handler {
 	sub, err := fs.Sub(dist, "dist")
-	if err != nil {
+	if err != nil || !Built() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "ui not built", http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			http.Error(w, notBuiltPage, http.StatusServiceUnavailable)
 		})
 	}
 	files := http.FileServer(http.FS(sub))
@@ -40,9 +45,20 @@ func Handler() http.Handler {
 		if strings.HasSuffix(p, "sw.js") {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
+		// Go's mime table does not know .webmanifest, and Chrome will not
+		// offer "Add to Home screen" for one served as text/plain.
+		if strings.HasSuffix(p, ".webmanifest") {
+			w.Header().Set("Content-Type", "application/manifest+json")
+		}
 		files.ServeHTTP(w, r)
 	})
 }
+
+const notBuiltPage = `<!doctype html><meta charset="utf-8"><title>remux</title>` +
+	`<body style="font:14px system-ui;background:#1e1e2e;color:#cdd6f4;padding:40px">` +
+	`<h1 style="font-size:18px">The UI is not in this binary</h1>` +
+	`<p>Build it with <code>./scripts/build.sh</code>, which runs the Vite build ` +
+	`and stages it into <code>internal/web/dist</code> before compiling.</p>`
 
 // Built reports whether a real UI was embedded, so --local can say so plainly
 // instead of serving a blank page.
