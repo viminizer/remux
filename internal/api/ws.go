@@ -1,0 +1,282 @@
+package api
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/viminizer/remux/internal/agent"
+	"github.com/viminizer/remux/internal/tmux"
+)
+
+// The WebSocket carries both the workspace tree and the focused pane's screen,
+// so the phone needs exactly one connection.
+//
+// Polling is server-side and per connection. The phone never polls: it sends
+// "unsub" when the screen goes off and the poller stops entirely, which is the
+// whole battery story.
+
+type wsIn struct {
+	T     string `json:"t"`
+	Pane  string `json:"pane,omitempty"`
+	Lines int    `json:"lines,omitempty"`
+}
+
+type snapMeta struct {
+	Cmd    string `json:"cmd"`
+	Title  string `json:"title"`
+	W      int    `json:"w"`
+	H      int    `json:"h"`
+	InMode bool   `json:"inMode"`
+	Alt    bool   `json:"alt"`
+	Status string `json:"status"`
+}
+
+type conn struct {
+	ws *websocket.Conn
+	mu sync.Mutex // one writer at a time
+}
+
+func (c *conn) send(ctx context.Context, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return c.ws.Write(ctx, websocket.MessageText, b)
+}
+
+func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	// The socket is same-origin: the UI is served by this very binary, so
+	// there is no cross-origin case to allow.
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: false,
+		CompressionMode:    websocket.CompressionDisabled,
+	})
+	if err != nil {
+		log.Printf("ws accept: %v", err)
+		return
+	}
+	defer ws.CloseNow()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	c := &conn{ws: ws}
+	p := &poller{srv: s, conn: c, lines: s.Cfg.Lines}
+
+	go p.loop(ctx)
+
+	for {
+		_, data, err := ws.Read(ctx)
+		if err != nil {
+			return
+		}
+		var msg wsIn
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		switch msg.T {
+		case "sub":
+			if tmux.ValidPaneID(msg.Pane) {
+				lines := s.Cfg.Lines
+				if msg.Lines > 0 {
+					lines = clamp(msg.Lines, 20, 5000)
+				}
+				p.subscribe(msg.Pane, lines)
+			}
+		case "unsub":
+			p.subscribe("", 0)
+		case "resume":
+			p.forceNext()
+		case "focus":
+			// The phone tells us which pane it is looking at so the push
+			// watcher does not notify about a pane already on screen.
+			p.setFocus(msg.Pane)
+		case "ping":
+			_ = c.send(ctx, map[string]any{"t": "pong"})
+		}
+	}
+}
+
+// poller owns all polling for one connection.
+type poller struct {
+	srv   *Server
+	conn  *conn
+	mu    sync.Mutex
+	pane  string
+	lines int
+	force bool
+
+	paneHash [32]byte
+	treeHash [32]byte
+	hasPane  bool
+	hasTree  bool
+}
+
+func (p *poller) subscribe(pane string, lines int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pane = pane
+	if lines > 0 {
+		p.lines = lines
+	}
+	// A fresh subscription must always deliver one snapshot, even if the
+	// screen happens to hash the same as the previous pane's.
+	p.hasPane = false
+	p.force = true
+}
+
+func (p *poller) forceNext() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.force, p.hasPane, p.hasTree = true, false, false
+}
+
+func (p *poller) setFocus(pane string) {
+	if p.srv.Push != nil {
+		p.srv.Push.SetFocus(pane)
+	}
+}
+
+func (p *poller) loop(ctx context.Context) {
+	paneTick := time.NewTicker(p.srv.Cfg.Poll())
+	treeTick := time.NewTicker(p.srv.Cfg.TreePoll())
+	defer paneTick.Stop()
+	defer treeTick.Stop()
+
+	p.pollTree(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-paneTick.C:
+			p.pollPane(ctx)
+		case <-treeTick.C:
+			p.pollTree(ctx)
+		}
+	}
+}
+
+// pollPane captures the subscribed pane and pushes only when the screen
+// actually changed.
+//
+// This is the difference between a poller that is invisible and one that
+// drains the phone's battery: in a browser both look identical, because both
+// show current output. Hashing is what makes a quiet pane cost zero frames.
+func (p *poller) pollPane(ctx context.Context) {
+	p.mu.Lock()
+	pane, lines, force := p.pane, p.lines, p.force
+	p.force = false
+	p.mu.Unlock()
+
+	if pane == "" {
+		return
+	}
+
+	text, err := p.srv.Tmux.Capture(ctx, pane, lines, true)
+	if err != nil {
+		// The pane went away while the phone was reading it. Say so
+		// explicitly - the UI has a real screen for this.
+		if strings.Contains(err.Error(), "can't find pane") ||
+			strings.Contains(err.Error(), "no such pane") {
+			_ = p.conn.send(ctx, map[string]any{"t": "gone", "pane": pane})
+			p.mu.Lock()
+			if p.pane == pane {
+				p.pane = ""
+			}
+			p.mu.Unlock()
+		}
+		return
+	}
+
+	sum := sha256.Sum256([]byte(text))
+
+	p.mu.Lock()
+	unchanged := p.hasPane && sum == p.paneHash && !force
+	p.paneHash, p.hasPane = sum, true
+	p.mu.Unlock()
+
+	if unchanged {
+		return
+	}
+
+	meta := snapMeta{}
+	if tree, err := p.srv.Tmux.Tree(ctx); err == nil {
+		if pn := tree.Pane(pane); pn != nil {
+			meta = snapMeta{
+				Cmd: pn.Command, Title: pn.Title,
+				W: pn.Width, H: pn.Height,
+				InMode: pn.InMode, Alt: pn.Alt,
+				Status: string(agent.Classify(pn.Command, pn.Title, text)),
+			}
+		}
+	}
+
+	_ = p.conn.send(ctx, map[string]any{
+		"t":     "snap",
+		"pane":  pane,
+		"rev":   time.Now().UnixMilli(),
+		"lines": strings.Split(text, "\n"),
+		"meta":  meta,
+	})
+}
+
+// pollTree keeps the drawer live without the phone polling for it. Same
+// hash-and-diff rule: an unchanged workspace sends nothing.
+func (p *poller) pollTree(ctx context.Context) {
+	tree, err := p.srv.Tmux.Tree(ctx)
+	if err != nil {
+		return
+	}
+
+	panes := tree.Panes()
+	ids := make([]string, 0, len(panes))
+	for _, pn := range panes {
+		ids = append(ids, pn.ID)
+	}
+	screens := p.srv.Tmux.Previews(ctx, ids, 40)
+	for _, pn := range panes {
+		pn.Status = string(agent.Classify(pn.Command, pn.Title, screens[pn.ID]))
+	}
+
+	b, err := json.Marshal(tree)
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256(b)
+
+	p.mu.Lock()
+	unchanged := p.hasTree && sum == p.treeHash
+	p.treeHash, p.hasTree = sum, true
+	p.mu.Unlock()
+
+	if unchanged {
+		return
+	}
+	_ = p.conn.send(ctx, map[string]any{
+		"t":        "tree",
+		"rev":      time.Now().UnixMilli(),
+		"sessions": tree.Sessions,
+	})
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}

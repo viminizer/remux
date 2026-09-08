@@ -1,0 +1,54 @@
+Do you want to apply this patch?
+
+❯ 1. Yes, apply
+  2. Yes, and dont ask again this session
+  3. No, tell Codex what to do differently
+
+░▒▓    ~/Desktop/github/workspaces/saas/remux    main ?2                                                                                                                   ✔  0.03s  ▓▒░
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

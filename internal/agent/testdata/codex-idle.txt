@@ -1,0 +1,54 @@
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                         │
+│                                                    │
+│ model:       gpt-6-astra medium   /model to change │
+│ directory:   ~/Desktop/github/…/course/shortlist   │
+│ permissions: YOLO mode                             │
+╰────────────────────────────────────────────────────╯
+
+  Tip: Try the Desktop app. Run 'codex app' or visit
+  https://chatgpt.com/codex?app-landing-page=true
+
+Token usage: total=73,088 input=67,926 (+ 1,723,264 cached) output=5,162
+(reasoning 347)
+To continue this session, run codex resume, then select Plan issue 181
+(01a080e2-dd66-7d71-b49c-03d4eb5165b4)
+
+
+› Ask Codex to do anything
+
+  gpt-6-astra medium · ~/Desktop/github/workspaces/course/shortlist
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

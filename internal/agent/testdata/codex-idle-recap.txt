@@ -1,0 +1,54 @@
+
+
+• I’ll assign @JoonsungUm to code PR #428 and record the reviewed commit and verification results
+  before handing it over.
+
+• Ran gh pr view 428 --json headRefOid,statusCheckRollup; gh pr diff 428
+  └ {"headRefOid":"3e33b01dddd990877d01230d6994a542fb87beae","statusCheckRollup":
+    [{"__typename":"CheckRun","completedAt":"2026-09-08T11:49:01Z","conclusion":"SUCCESS","details
+    … +366 lines (ctrl + t to view transcript)
+                             new ApplicantContactView("홍*동", null), true, 5L, "서울예식장",
+                             LocalDate.of(2026, 9, 19),
+
+• Added /tmp/issue-359-handoff.txt (+9 -0)
+    1 +인계 전 자체 검토
+    2 +
+    3 +- 검토 커밋: `3e33b01dddd990877d01230d6994a542fb87beae`
+    4 +- 결과: 요청 경로 전달, 개인정보 감사 호출 및 회귀 테스트를 확인했으며 추가 조치가 필요한
+       발견 사항은 없습니다.
+    5 +- 검증: 변경 전 업체 경로 회귀 테스트 실패를 확인했고, 변경 후 관련 테스트 123개가 로컬에서
+        통과했습니다. 해당 커밋의 CI 전체 `./gradlew build`, JaCoCo 임계값 검증 및 적용 대상 가드
+       가 모두 통과했습니다. 중복 로컬 전체 실행은 CI 성공 확인 후 중단했습니다.
+    6 +- 범위: 통합 테스트는 실제 컨트롤러·서비스·PostgreSQL 감사 저장을 사용하며 도메인 조회·행위
+       자·프로필은 대역입니다. 보안 필터는 기존 컨트롤러 테스트에서 검증합니다.
+    7 +
+    8 +CI: https://github.com/yegadev/seoul-wedding-api/actions/runs/34222656609
+    9 +관련 문서 PR: yegadev/seoulwomen-docs#386
+
+• Ran gh pr comment 428 --body-file /tmp/issue-359-handoff.txt
+  └ https://github.com/yegadev/seoul-wedding-api/pull/428#issuecomment-5584855792
+
+• Ran gh api repos/yegadev/seoul-wedding-api/issues/comments/5584855792 --jq '{id,html_url}'; gh
+  │ pr edit 428 --add-assignee JoonsungUm; gh pr view 428 --json url,assignees,isDraft
+  └ {"html_url":"https://github.com/yegadev/seoul-wedding-api/
+    pull/428#issuecomment-5584855792","id":5584855792}
+    … +2 lines (ctrl + t to view transcript)
+    Um","databaseId":0}],"isDraft":true,"url":"https://github.com/yegadev/seoul-wedding-api/
+    pull/428"}
+
+──────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Assigned @JoonsungUm to PR #428 (https://github.com/yegadev/seoul-wedding-api/pull/428) and
+  posted the verification handoff. The PR remains a draft.
+
+──────────────────────────────────────────────────────────────────────────────────────────────────
+
+─ Conversation recap ─────────────────────────────────────────────────────────────────────────────
+
+  The handoff is complete: @JoonsungUm was assigned to PR #428, and the verification handoff was
+  posted. The PR remains a draft.
+
+
+› Ask Codex to do anything
+
+  gpt-6-astra medium · ~/Desktop/yegabiz/seoul-wedding-workspace/seoul-wedding-api

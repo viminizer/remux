@@ -1,0 +1,54 @@
+     │                                                                                                      │
+     │ Verification                                                                                         │
+     │                                                                                                      │
+     │ - ./scripts/laptop-invariant.sh passes at the end: active window unmoved, all 27 real panes the      │
+     │   same size, none missing.                                                                           │
+     │ - remux-test scratch session killed.                                                                 │
+     │ - Kevin opens http://<mac-lan-ip>:7399 on his phone and drives a real codex pane.                    │
+     │ - Any HTML/JS validated by parsing before being called done - the mock shipped blank once because a  │
+     │   quote closed a string early.                                                                       │
+     │                                                                                                      │
+     │ Not doing in this pass                                                                               │
+     │                                                                                                      │
+     │ tsnet, TLS, WhoIs, push notifications, service worker, offline cache, remux install, launchd,        │
+     │ Homebrew. All are recorded in docs/plan.md and AGENTS.md and come after it works.                    │
+     ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+✻ Crunched for 34s · done 11:27 PM
+
+❯ i will do it on anoter agent
+
+⏺ Understood - stopping here.
+
+  The repo is ready for handoff. Everything a fresh agent needs is committed and pushed:
+
+  remux/
+  ├── AGENTS.md       build instructions (Codex reads automatically)
+  ├── CLAUDE.md       same rules (Claude Code reads automatically)
+  ├── README.md
+  ├── docs/
+  │   ├── plan.md     the spec
+  │   └── ui-mock.html the UI to port
+  └── scripts/
+      └── laptop-invariant.sh
+
+  Both AGENTS.md and CLAUDE.md load themselves, so you can just point an agent at the folder and say "build it". AGENTS.md already tells it to prioritize phases 1-6 (working app) over 7-9, which
+  matches "make it work first."
+
+  Three things worth checking in the morning:
+
+  1. docs/build-log.md - required, written as it goes. It should say what it verified and how, not just what it wrote.
+  2. ./scripts/laptop-invariant.sh after - proof it didn't touch your 27 live panes. Run it yourself if the log doesn't show it.
+  3. tmux ls - the remux-test scratch session should be gone.
+
+  The tailscale module is now in your Go cache, so it won't lose time downloading ~90 dependencies.
+
+✻ Crunched for 11s · done 11:28 PM
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5 (1M context) | 📁remux | ██░░░░░░░░ 22% of 1000k tokens
+  💬 i will do it on anoter agent
+  -- INSERT -- ⏸ plan mode on (shift+tab to cycle) · ← for agents
+
