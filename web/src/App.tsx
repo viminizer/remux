@@ -180,17 +180,88 @@ export default function App() {
     go({ name: 'pane', pane: wanted.id })
   }, [route.name, panes, currentId, go])
 
+  // Closing the topmost overlay: the menu, then any sheet, then the drawer.
+  // Held in a ref so the popstate listener below can stay mounted once instead
+  // of re-subscribing whenever one of them changes.
+  // Returns whether anything is still open underneath, which the popstate
+  // handler needs synchronously - setState has not landed by then, so it
+  // cannot just re-read the flags.
+  const closeTop = useRef((): boolean => false)
+  closeTop.current = () => {
+    if (menuOpen) {
+      setMenuOpen(false)
+      return sheet !== 'none' || drawerOpen
+    }
+    if (sheet !== 'none') {
+      setSheet('none')
+      return drawerOpen
+    }
+    if (drawerOpen) {
+      setDrawerOpen(false)
+      return false
+    }
+    return false
+  }
+
   // Android back closes the drawer, then any sheet, then leaves the app.
+  //
+  // That is what the comment here always claimed, but the code only listened
+  // for Escape, and Android back drives history navigation rather than a
+  // keydown - so on a phone with no hardware keyboard none of it ran. Escape
+  // stays for the pinned-open desktop layout at min-width:900px, where a
+  // hardware keyboard is the real case.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (menuOpen) setMenuOpen(false)
-      else if (sheet !== 'none') setSheet('none')
-      else if (drawerOpen) setDrawerOpen(false)
+      if (e.key === 'Escape') closeTop.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [menuOpen, sheet, drawerOpen])
+  }, [])
+
+  // One history entry stands for "some overlay is open", not one per overlay.
+  //
+  // Opening the first overlay pushes it; back pops it and closes the topmost
+  // overlay. If another is still open underneath - a sheet opened over the
+  // drawer - this effect immediately pushes a fresh entry, so the next back
+  // closes that one too. One entry, re-armed as it is spent.
+  //
+  // Closing by any other means (the scrim, Cancel, finishing a rename) pops
+  // the entry, so it cannot go stale and leave a back press doing nothing.
+  //
+  // The exception is a navigation. go() replaces the entry and clears this
+  // marker, so the check below fails and the entry is handed to the pane
+  // instead of popped - which is deliberate, and is the only way a pane gets
+  // a history entry at all. Popping there would have reverted the navigation
+  // the moment the drawer closed.
+  const overlayOpen = menuOpen || sheet !== 'none' || drawerOpen
+  const marked = useRef(false)
+
+  useEffect(() => {
+    if (overlayOpen && !marked.current) {
+      history.pushState({ remuxOverlay: true }, '')
+      marked.current = true
+    } else if (!overlayOpen && marked.current) {
+      marked.current = false
+      if (history.state?.remuxOverlay) history.back()
+    }
+  }, [overlayOpen])
+
+  useEffect(() => {
+    const onPop = () => {
+      if (!marked.current) return
+      marked.current = false
+      // Re-arm here rather than leaving it to the effect above: closing a
+      // sheet over an open drawer does not change overlayOpen, so that effect
+      // would not re-run and the drawer would be left with no entry - the next
+      // back would leave the app instead of closing it.
+      if (closeTop.current()) {
+        history.pushState({ remuxOverlay: true }, '')
+        marked.current = true
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   // Ask about notifications once, after the first pane has been opened - never
   // on launch, because a denial is painful to reverse on Android.
