@@ -57,3 +57,28 @@ export async function enablePush(): Promise<'ok' | 'denied' | 'unsupported' | 'e
     return 'error'
   }
 }
+
+/**
+ * Pulls a new UI build.
+ *
+ * From a home-screen PWA there is no address bar and so no reload affordance,
+ * and the app is a non-scrolling layout, so pull-to-refresh is not available
+ * either. Closing the app entirely is the only other way to get a new build,
+ * which is not something to ask of anyone.
+ *
+ * registration.update() is what forces the browser to re-check sw.js. The
+ * worker already calls skipWaiting and clients.claim, so a new one takes over
+ * immediately and the reload lands on it.
+ *
+ * The update check is best-effort: no service worker support, or storage
+ * blocked, must not cost you the reload.
+ */
+export async function pullNewBuild(): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration()
+    await reg?.update()
+  } catch {
+    // Falling through to the reload is the whole point.
+  }
+  location.reload()
+}

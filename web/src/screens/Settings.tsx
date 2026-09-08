@@ -24,6 +24,7 @@ export function SettingsScreen({
   onEnableNotifications,
   onBack,
   onCheck,
+  onUpdate,
 }: {
   health: Health | null
   conn: Conn
@@ -34,7 +35,18 @@ export function SettingsScreen({
   onEnableNotifications: () => void
   onBack: () => void
   onCheck: () => void
+  onUpdate: () => void
 }) {
+  // The server's version is the one being served; __BUILD_VERSION__ is the one
+  // running. They differ exactly when a new build has been deployed and this
+  // tab is still on the old bundle.
+  //
+  // Unknown is not the same as up to date: with no health response there is
+  // nothing to compare, so the button stays available rather than claiming a
+  // state it cannot see.
+  const running = __BUILD_VERSION__
+  const served = health?.version ?? null
+  const stale = served !== null && served !== running
   return (
     <div className="screen on">
       <div className="screen-head">
@@ -217,7 +229,16 @@ export function SettingsScreen({
           <div className="card">
             <div className="crow">
               <div className="lbl">remux</div>
-              <div className="val">{health?.version ?? '—'}</div>
+              <div className="val">{served ?? '—'}</div>
+            </div>
+            <div className="crow">
+              <div className="lbl">
+                Update
+                {stale && <small>version {served} is ready</small>}
+              </div>
+              <button className="linkbtn" onClick={onUpdate}>
+                {stale ? 'Update now' : 'Check for update'}
+              </button>
             </div>
           </div>
         </div>

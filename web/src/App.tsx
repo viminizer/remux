@@ -17,7 +17,7 @@ import { SettingsScreen } from './screens/Settings'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
 import { Toaster, toast } from './components/Toast'
-import { enablePush, notificationState, registerServiceWorker } from './push'
+import { enablePush, notificationState, pullNewBuild, registerServiceWorker } from './push'
 
 export default function App() {
   const { settings, patch } = useSettings()
@@ -323,6 +323,7 @@ export default function App() {
             onEnableNotifications={onEnablePush}
             onBack={() => go({ name: 'pane', pane: lastPane.current })}
             onCheck={checkNow}
+            onUpdate={pullNewBuild}
           />
         ) : !panes.length ? (
           <NoTmux onCreate={() => setSheet('new')} />

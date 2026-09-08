@@ -23,7 +23,10 @@ OUT="bin/remux"
 
 if [ "${SKIP_UI:-0}" != "1" ]; then
   echo "==> building the UI"
-  (cd web && npm run build)
+  # Exported so vite.config.ts can bake it into the bundle as
+  # __BUILD_VERSION__. The app compares that against the version the server
+  # reports at /api/health to tell an upgrade from a pointless reload.
+  (cd web && VERSION="$VERSION" npm run build)
 fi
 
 # go:embed cannot reach outside its own package directory, so the Vite output
