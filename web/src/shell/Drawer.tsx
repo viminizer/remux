@@ -70,10 +70,26 @@ export function Drawer({
         onStar={onStar}
       />
 
-      <div className="drawer-foot" onClick={onSettings}>
+      {/* A real button, not a div with onClick. The div was not focusable, did
+          not answer Enter or Space, and was announced as plain text - while the
+          ✚ New button right above it behaved correctly, for no visible reason.
+
+          Its only affordances were cursor:pointer and a hover background, and
+          both are gated on hardware this app does not run on: a touch screen
+          has no cursor and no hover, and the hover rule sits behind
+          @media (hover:hover). On the device remux is built for there was no
+          signal at all that it did anything.
+
+          Splitting the status and the action is what makes it readable. The
+          state stays dim on the left, the destination is brighter on the right
+          with a gear and a chevron. It also stops "Connected · Settings"
+          parsing as one status string, which is what made tapping the
+          connection state navigate somewhere. */}
+      <button className="drawer-foot" onClick={onSettings}>
         <span className={`dot ${CONN_DOT[conn]}`} />
-        <span className="grow">{CONN_TEXT[conn]} · Settings</span>
-      </div>
+        <span className="grow">{CONN_TEXT[conn]}</span>
+        <span className="foot-settings">⚙ Settings ›</span>
+      </button>
     </aside>
   )
 }
