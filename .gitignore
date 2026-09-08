@@ -20,3 +20,4 @@
 
 # node
 /web/node_modules/
+/web/.test-build/
