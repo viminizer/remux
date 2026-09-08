@@ -4,6 +4,8 @@ export interface Pane {
   id: string
   index: number
   title: string
+  /** A name the user gave this pane from the phone. Wins over `title`. */
+  remuxTitle?: string
   command: string
   path: string
   active: boolean
@@ -92,6 +94,11 @@ export function flatten(tree: Tree): Pane[] {
  * a hostname, a path, or the command repeated back.
  */
 export function paneTitle(p: Pane): string {
+  // A name the user typed always wins. pane_title is the program's to rewrite,
+  // and agents rewrite it constantly, so it can never hold a user's name.
+  const mine = (p.remuxTitle || '').trim()
+  if (mine) return mine
+
   const t = (p.title || '').trim()
   const meaningless =
     !t ||

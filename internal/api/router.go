@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -47,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/panes/{id}/keys", s.handleKeys)
 	mux.HandleFunc("POST /api/panes/{id}/interrupt", s.handleInterrupt)
 	mux.HandleFunc("POST /api/panes/{id}/focus", s.handleFocus)
+	mux.HandleFunc("PATCH /api/panes/{id}", s.handleRenamePane)
 	mux.HandleFunc("DELETE /api/panes/{id}", s.handleKillPane)
 
 	mux.HandleFunc("POST /api/sessions", s.handleNewSession)
@@ -325,14 +327,19 @@ func (s *Server) handleNewWindow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
-	s.rename(w, r, true)
+	s.rename(w, r, s.Tmux.RenameSession)
 }
 
 func (s *Server) handleRenameWindow(w http.ResponseWriter, r *http.Request) {
-	s.rename(w, r, false)
+	s.rename(w, r, s.Tmux.RenameWindow)
 }
 
-func (s *Server) rename(w http.ResponseWriter, r *http.Request, session bool) {
+// Naming a pane sets @remux_title, not the real pane title - see SetPaneTitle.
+func (s *Server) handleRenamePane(w http.ResponseWriter, r *http.Request) {
+	s.rename(w, r, s.Tmux.SetPaneTitle)
+}
+
+func (s *Server) rename(w http.ResponseWriter, r *http.Request, do func(context.Context, string, string) error) {
 	id := r.PathValue("id")
 	var body struct {
 		Name string `json:"name"`
@@ -341,13 +348,7 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request, session bool) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	var err error
-	if session {
-		err = s.Tmux.RenameSession(r.Context(), id, body.Name)
-	} else {
-		err = s.Tmux.RenameWindow(r.Context(), id, body.Name)
-	}
-	if err != nil {
+	if err := do(r.Context(), id, body.Name); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

@@ -11,18 +11,23 @@ import (
 
 // Pane is one tmux pane: the unit the phone UI treats as a "conversation".
 type Pane struct {
-	ID      string `json:"id"`      // %14
-	Index   int    `json:"index"`   // pane index within the window
-	Title   string `json:"title"`   // pane_title - Claude Code puts the live task here
-	Command string `json:"command"` // pane_current_command
-	Path    string `json:"path"`    // pane_current_path
-	Active  bool   `json:"active"`  // active pane in its window
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
-	InMode  bool   `json:"inMode"` // copy/view mode
-	Alt     bool   `json:"alt"`    // alternate screen (vim, htop): no scrollback
-	Dead    bool   `json:"dead"`
-	History int    `json:"history"` // history_size
+	ID    string `json:"id"`    // %14
+	Index int    `json:"index"` // pane index within the window
+	Title string `json:"title"` // pane_title - Claude Code puts the live task here
+	// RemuxTitle is a name the user gave this pane from the phone, held in the
+	// @remux_title pane option. It is separate from Title because pane_title
+	// belongs to the running program: an agent rewrites it every render, so a
+	// name written there survives less than a second.
+	RemuxTitle string `json:"remuxTitle,omitempty"`
+	Command    string `json:"command"` // pane_current_command
+	Path       string `json:"path"`    // pane_current_path
+	Active     bool   `json:"active"`  // active pane in its window
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	InMode     bool   `json:"inMode"` // copy/view mode
+	Alt        bool   `json:"alt"`    // alternate screen (vim, htop): no scrollback
+	Dead       bool   `json:"dead"`
+	History    int    `json:"history"` // history_size
 
 	// Filled in by the API layer, not by tmux.
 	Status  string `json:"status,omitempty"`  // agent status verdict
@@ -101,16 +106,19 @@ const fieldSep = "|~|"
 // pane_title is last on purpose. It is the wildest field - agents write
 // arbitrary text into it - so parsing splits at most treeFields-1 times and
 // lets anything in the title, separator included, survive verbatim.
+// @remux_title sits just before it and is safe there because SetPaneTitle is
+// its only writer and refuses a name containing the separator.
 var treeFormat = strings.Join([]string{
 	"#{session_id}", "#{session_name}", "#{session_attached}",
 	"#{window_id}", "#{window_index}", "#{window_name}", "#{window_active}",
 	"#{pane_id}", "#{pane_index}", "#{pane_current_command}",
 	"#{pane_current_path}", "#{pane_active}", "#{pane_width}", "#{pane_height}",
 	"#{pane_in_mode}", "#{alternate_on}", "#{pane_dead}", "#{history_size}",
+	"#{@remux_title}",
 	"#{pane_title}",
 }, fieldSep)
 
-const treeFields = 19
+const treeFields = 20
 
 var sessionFormat = strings.Join([]string{
 	"#{session_id}", "#{session_attached}", "#{session_name}",
@@ -192,18 +200,19 @@ func parseTreeLine(line string) (*Session, *Window, *Pane, bool) {
 	s := &Session{ID: f[0], Name: f[1], Attached: f[2] == "1", Windows: []*Window{}}
 	w := &Window{ID: f[3], Index: atoi(f[4]), Name: f[5], Active: f[6] == "1", Panes: []*Pane{}}
 	p := &Pane{
-		ID:      f[7],
-		Index:   atoi(f[8]),
-		Command: f[9],
-		Path:    f[10],
-		Active:  f[11] == "1",
-		Width:   atoi(f[12]),
-		Height:  atoi(f[13]),
-		InMode:  f[14] == "1",
-		Alt:     f[15] == "1",
-		Dead:    f[16] == "1",
-		History: atoi(f[17]),
-		Title:   f[18],
+		ID:         f[7],
+		Index:      atoi(f[8]),
+		Command:    f[9],
+		Path:       f[10],
+		Active:     f[11] == "1",
+		Width:      atoi(f[12]),
+		Height:     atoi(f[13]),
+		InMode:     f[14] == "1",
+		Alt:        f[15] == "1",
+		Dead:       f[16] == "1",
+		History:    atoi(f[17]),
+		RemuxTitle: f[18],
+		Title:      f[19],
 	}
 	return s, w, p, true
 }

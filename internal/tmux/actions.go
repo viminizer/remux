@@ -164,6 +164,36 @@ func (c *Client) RenameSession(ctx context.Context, sessionID, name string) erro
 	return err
 }
 
+// SetPaneTitle names one pane, for the drawer to show instead of whatever the
+// running program calls itself.
+//
+// It writes the @remux_title pane option rather than the real pane title.
+// `select-pane -T` would be the obvious choice and it does not move the
+// laptop's cursor - verified against the scratch session - but it loses the
+// race: Codex and Claude Code rewrite pane_title on every render, so a name set
+// there is gone inside a second. Measured on a pane echoing its own title, the
+// rename survived one poll and was overwritten by the next. A user option is
+// the only channel the program cannot clobber.
+//
+// An empty name clears the option and hands the pane back to its own title.
+func (c *Client) SetPaneTitle(ctx context.Context, paneID, name string) error {
+	if err := CheckPaneID(paneID); err != nil {
+		return err
+	}
+	if strings.Contains(name, fieldSep) {
+		return fmt.Errorf("name may not contain %q", fieldSep)
+	}
+	if strings.ContainsAny(name, "\n\r\x00") {
+		return fmt.Errorf("name may not contain control characters")
+	}
+	if name == "" {
+		_, err := c.run(ctx, "set-option", "-p", "-u", "-t", paneID, "@remux_title")
+		return err
+	}
+	_, err := c.run(ctx, "set-option", "-p", "-t", paneID, "--", "@remux_title", name)
+	return err
+}
+
 func (c *Client) RenameWindow(ctx context.Context, windowID, name string) error {
 	if err := CheckWindowID(windowID); err != nil {
 		return err

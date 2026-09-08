@@ -305,13 +305,17 @@ func TestCreateRenameKillRoundTrip(t *testing.T) {
 // ── format parsing ────────────────────────────────────────────────────────
 
 // buildLine assembles a record the way treeFormat would.
-func buildLine(title string) string {
+func buildLine(title string) string { return buildLineWith("", title) }
+
+// buildLineWith takes both names: @remux_title, then pane_title last.
+func buildLineWith(remuxTitle, title string) string {
 	f := []string{
 		"$2", "saas", "1",
 		"@8", "8", "issue168", "1",
 		"%13", "0", "2.1.263",
 		"/Users/mac/dev", "1", "213", "54",
 		"0", "0", "0", "35713",
+		remuxTitle,
 		title,
 	}
 	return strings.Join(f, fieldSep)
@@ -330,6 +334,9 @@ func TestParseTreeLine(t *testing.T) {
 	}
 	if p.ID != "%13" || p.Command != "2.1.263" || p.Title != "✳ Separate worktree" {
 		t.Errorf("pane: %+v", p)
+	}
+	if p.RemuxTitle != "" {
+		t.Errorf("unnamed pane got RemuxTitle %q", p.RemuxTitle)
 	}
 	if p.Width != 213 || p.Height != 54 || p.History != 35713 {
 		t.Errorf("pane geometry: %+v", p)
@@ -356,6 +363,22 @@ func TestSeparatorInsidePaneTitleIsKept(t *testing.T) {
 // "_" when the command has no controlling terminal, which is exactly how remux
 // runs as a LaunchAgent - so a tab works in every interactive test and
 // collapses every record into one field in production.
+func TestRemuxTitleIsItsOwnColumn(t *testing.T) {
+	_, _, p, ok := parseTreeLine(buildLineWith("my name", "✳ agent output"))
+	if !ok {
+		t.Fatal("did not parse")
+	}
+	if p.RemuxTitle != "my name" {
+		t.Errorf("RemuxTitle = %q, want %q", p.RemuxTitle, "my name")
+	}
+	if p.Title != "✳ agent output" {
+		t.Errorf("Title = %q, want the program's own title", p.Title)
+	}
+	if p.History != 35713 {
+		t.Errorf("columns before the new field shifted: History = %d", p.History)
+	}
+}
+
 func TestSeparatorIsNotWhitespaceOrControl(t *testing.T) {
 	for _, r := range fieldSep {
 		if r < 0x21 || r > 0x7e {
@@ -380,4 +403,75 @@ func TestMalformedLineIsRejected(t *testing.T) {
 			t.Errorf("parsed a malformed line: %q", line)
 		}
 	}
+}
+
+// TestPaneTitleSurvivesTheProgramRewritingIts Own is the reason a pane name
+// lives in @remux_title and not in pane_title.
+//
+// `select-pane -T` is the obvious way to name a pane, and it is safe - it sets
+// the title without moving the laptop's active pane. It is still wrong here:
+// pane_title belongs to the running program, and Codex and Claude Code rewrite
+// it on every render. 26 of the 28 panes on this machine set their own title,
+// so a name written there would visibly revert within a second on exactly the
+// panes worth naming.
+func TestPaneTitleSurvivesTheProgramRewritingItsOwn(t *testing.T) {
+	c, pane := scratchPane(t)
+	ctx := context.Background()
+
+	// A stand-in for an agent: reprints its own title once a second.
+	if err := c.SendText(ctx, pane, `while true; do printf '\033]2;program-owns-this\007'; sleep 1; done`, true); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1500 * time.Millisecond)
+
+	if err := c.SetPaneTitle(ctx, pane, "user-owns-this"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Long enough for the program to have rewritten pane_title several times.
+	time.Sleep(2500 * time.Millisecond)
+
+	p := paneByID(t, c, pane)
+	if p.RemuxTitle != "user-owns-this" {
+		t.Errorf("@remux_title = %q, want %q - the program clobbered the user's name",
+			p.RemuxTitle, "user-owns-this")
+	}
+	if p.Title != "program-owns-this" {
+		t.Errorf("pane_title = %q, want the program's own title; the fixture is not "+
+			"reproducing the race this test exists for", p.Title)
+	}
+
+	// An empty name hands the pane back to the program.
+	if err := c.SetPaneTitle(ctx, pane, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := paneByID(t, c, pane).RemuxTitle; got != "" {
+		t.Errorf("after clearing, @remux_title = %q, want empty", got)
+	}
+}
+
+func TestSetPaneTitleRejectsTheFieldSeparator(t *testing.T) {
+	c := New()
+	// @remux_title sits before pane_title in treeFormat, so a separator inside
+	// it would shift the title column. It is refused rather than escaped.
+	err := c.SetPaneTitle(context.Background(), "%1", "a"+fieldSep+"b")
+	if err == nil {
+		t.Fatal("expected a name containing the field separator to be refused")
+	}
+	if err := c.SetPaneTitle(context.Background(), "%1", "two\nlines"); err == nil {
+		t.Fatal("expected a name containing a newline to be refused")
+	}
+}
+
+func paneByID(t *testing.T, c *Client, id string) *Pane {
+	t.Helper()
+	tree, err := c.Tree(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := tree.Pane(id)
+	if p == nil {
+		t.Fatalf("pane %s vanished", id)
+	}
+	return p
 }

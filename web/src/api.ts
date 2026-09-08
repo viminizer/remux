@@ -83,6 +83,13 @@ export const api = {
       body: JSON.stringify({ sessionId, name, path }),
     }),
 
+  /** Names one pane. An empty name hands it back to the program's own title. */
+  renamePane: (id: string, name: string) =>
+    call(`/api/panes/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
   renameWindow: (id: string, name: string) =>
     call(`/api/windows/${encodeURIComponent(id)}`, {
       method: 'PATCH',

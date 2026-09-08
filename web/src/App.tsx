@@ -445,13 +445,14 @@ export default function App() {
 
       <RenameSheet
         open={sheet === 'rename'}
-        what="window"
-        current={renameTarget?.windowName ?? ''}
+        what="pane"
+        current={renameTarget?.remuxTitle ?? ''}
+        placeholder={renameTarget ? paneTitle(renameTarget) : ''}
         onClose={() => setSheet('none')}
         onRename={async (name) => {
           if (!renameTarget) return
-          if (await guard('rename', () => api.renameWindow(renameTarget.windowId, name))) {
-            toast('renamed to ' + name)
+          if (await guard('rename', () => api.renamePane(renameTarget.id, name))) {
+            toast(name ? 'renamed to ' + name : 'name cleared')
             setSheet('none')
             sock.current?.resume()
           }
@@ -521,7 +522,7 @@ function PaneMenu({
       </div>
       <div className="msep" />
       <button className="mi" onClick={onRename}>
-        Rename window
+        Rename pane
       </button>
       <HoldButton label={`Kill pane ${pane.id}`} onConfirm={onKill} />
     </div>
