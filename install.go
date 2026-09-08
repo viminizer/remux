@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,54 @@ import (
 // it at all. A LaunchAgent runs as him, in his session, which is the only way
 // this works.
 const launchLabel = "com.viminizer.remux"
+
+// installedBinary is where install copies the binary to.
+//
+// The plist must not point at wherever the download happened to be run from.
+// macOS protects ~/Desktop, ~/Documents and ~/Downloads with TCC, and a
+// LaunchAgent has no consent to read them: pointing launchd at a binary under
+// ~/Desktop produced a process that hung inside dyld before main() ever ran,
+// with an empty log and no error anywhere. Copying to ~/.local/bin also means
+// deleting the download later does not break the installed service.
+func installedBinary() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "bin", "remux"), nil
+}
+
+// copyBinary installs src at dst, replacing whatever is there.
+//
+// The file is written under a temporary name and renamed, so a running remux
+// keeps its own open file and an interrupted copy cannot leave a truncated
+// binary that launchd would then try to start.
+func copyBinary(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	tmp := dst + ".new"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dst)
+}
 
 func plistPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -44,6 +93,12 @@ func plistBody(binary, logDir string) string {
   <true/>
   <key>KeepAlive</key>
   <true/>
+
+  <!-- Without a throttle, a start that fails fast - a tailnet with HTTPS
+       certificates switched off, say - would have launchd respawning remux in
+       a tight loop instead of leaving one readable error in the log. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
 
   <!-- tmux lives in /usr/local/bin or /opt/homebrew/bin; launchd's default
        PATH has neither. -->
@@ -80,6 +135,16 @@ func cmdInstall() error {
 		return err
 	}
 
+	target, err := installedBinary()
+	if err != nil {
+		return err
+	}
+	if target != binary {
+		if err := copyBinary(binary, target); err != nil {
+			return fmt.Errorf("copy binary to %s: %w", target, err)
+		}
+	}
+
 	path, err := plistPath()
 	if err != nil {
 		return err
@@ -91,7 +156,7 @@ func cmdInstall() error {
 	// Unload any previous copy first, so install is safe to run twice.
 	_ = launchctl("bootout", guiTarget()+"/"+launchLabel)
 
-	if err := os.WriteFile(path, []byte(plistBody(binary, dir)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(plistBody(target, dir)), 0o644); err != nil {
 		return err
 	}
 
@@ -103,7 +168,7 @@ func cmdInstall() error {
 	}
 
 	fmt.Printf("\n  installed  %s\n", path)
-	fmt.Printf("  binary     %s\n", binary)
+	fmt.Printf("  binary     %s\n", target)
 	fmt.Printf("  logs       %s/remux.log\n\n", dir)
 	fmt.Println("  It is running now and will start again at login.")
 	fmt.Println("  First run only: open the login URL printed in the log to enrol the node.")
@@ -123,6 +188,11 @@ func cmdUninstall() error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if target, err := installedBinary(); err == nil {
+		if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
 	fmt.Println("\n  uninstalled. Node state and keys are still in ~/.config/remux -")
 	fmt.Println("  delete that directory too if you want a clean slate.")
 	return nil
@@ -136,6 +206,20 @@ func cmdRestart() error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("not installed - run: remux install")
 	}
+
+	// restart is how a new version is picked up, so refresh the installed
+	// copy from whichever binary is running this command.
+	if self, err := os.Executable(); err == nil {
+		if self, err = filepath.EvalSymlinks(self); err == nil {
+			if target, err := installedBinary(); err == nil && target != self {
+				if err := copyBinary(self, target); err != nil {
+					return fmt.Errorf("update %s: %w", target, err)
+				}
+				fmt.Printf("  updated    %s\n", target)
+			}
+		}
+	}
+
 	_ = launchctl("bootout", guiTarget()+"/"+launchLabel)
 	if err := launchctl("bootstrap", guiTarget(), path); err != nil {
 		return err

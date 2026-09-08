@@ -22,7 +22,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 
 	"tailscale.com/client/local"
 	"tailscale.com/tsnet"
@@ -35,20 +37,34 @@ type Node struct {
 	Hostname string
 }
 
+// authURLRe finds the enrolment URL in tsnet's log output.
+var authURLRe = regexp.MustCompile(`https://login\.tailscale\.com/\S+`)
+
 // Start brings up the node and blocks until it is enrolled.
 //
-// On first run tsnet prints a login URL to stdout; after that the state in dir
-// is enough and every later start is silent.
-func Start(ctx context.Context, hostname, dir string) (*Node, error) {
+// onAuthURL is called once, on first run, with the URL that enrols this node.
+// tsnet reports that through its user logger, which by default goes to stderr
+// mixed in with internal chatter - so under launchd the single most important
+// line of the whole install ends up buried in an error log. It is pulled out
+// here and handed to the caller to present properly.
+func Start(ctx context.Context, hostname, dir string, onAuthURL func(string)) (*Node, error) {
 	stateDir := filepath.Join(dir, "tsnet")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}
 
+	var once sync.Once
 	srv := &tsnet.Server{
 		Hostname: hostname,
 		Dir:      stateDir,
-		Logf:     func(string, ...any) {}, // tsnet is very chatty; keep stdout for our own output
+		// tsnet is very chatty; keep the output for our own messages.
+		Logf: func(string, ...any) {},
+		UserLogf: func(format string, args ...any) {
+			line := fmt.Sprintf(format, args...)
+			if url := authURLRe.FindString(line); url != "" && onAuthURL != nil {
+				once.Do(func() { onAuthURL(url) })
+			}
+		},
 	}
 
 	if _, err := srv.Up(ctx); err != nil {

@@ -162,7 +162,7 @@ func serveTailnet(ctx context.Context, srv *api.Server, cfg *config.Config) erro
 	fmt.Printf("\n  remux %s  ·  joining your tailnet as %q\n", version, cfg.Hostname)
 	fmt.Println("  (first run only: a login URL will appear below - open it once)")
 
-	node, err := tsnode.Start(ctx, cfg.Hostname, dir)
+	node, err := tsnode.Start(ctx, cfg.Hostname, dir, printLoginURL)
 	if err != nil {
 		return err
 	}
@@ -197,6 +197,24 @@ func serveTailnet(ctx context.Context, srv *api.Server, cfg *config.Config) erro
 		return err
 	}
 	return nil
+}
+
+// printLoginURL presents the one-time enrolment step.
+//
+// This is the only thing standing between a fresh install and a working
+// service, and under launchd it is read out of a log file, so it is framed
+// rather than logged in passing.
+func printLoginURL(url string) {
+	fmt.Println()
+	fmt.Println("  ┌──────────────────────────────────────────────────────────┐")
+	fmt.Println("  │  One-time setup: this Mac needs to join your tailnet.    │")
+	fmt.Println("  └──────────────────────────────────────────────────────────┘")
+	fmt.Println()
+	fmt.Println("  Open this and approve the device:")
+	fmt.Printf("\n      %s\n\n", url)
+	fmt.Println("  remux will finish starting by itself once you have. This is asked")
+	fmt.Println("  once - every later start is silent.")
+	fmt.Println()
 }
 
 func shutdown(hs *http.Server) {
