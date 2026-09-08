@@ -1,0 +1,21 @@
+⏺ I'll trace how the tree endpoint denormalises session and window names onto
+  each pane so the drawer needs no lookups.
+
+⏺ Read(internal/tmux/model.go)
+  ⎿  Read 348 lines (ctrl+o to expand)
+
+⏺ Read(internal/api/router.go)
+  ⎿  Read 214 lines (ctrl+o to expand)
+
+⏺ The denormalisation happens in Tree(), after parseTreeLine returns. Each pane
+  gets SessionID, SessionName, WindowID, WindowIndex and WindowName copied onto
+  it from the session and window it was filed under.
+
+✢ Manifesting… (1m 5s · ↓ 4.0k tokens · thought for 1s)
+
+──────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────
+  Opus 5 (1M context) | 📁remux | █░░░░░░░░░ 9% of 1000k tokens
+  💬 explain how the tree endpoint fills in the session names ...
+  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

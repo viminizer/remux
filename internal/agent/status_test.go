@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,7 @@ func TestClassifyFixtures(t *testing.T) {
 		{"shell-zsh.txt", "zsh", Shell},
 		{"waiting-choice.txt", "codex", Waiting},
 		{"busy-working.txt", "codex", Busy},
+		{"claude-busy-long.txt", "2.1.263", Busy},
 	}
 	for _, c := range cases {
 		got := Classify(c.cmd, "", fixture(t, c.file))
@@ -45,6 +47,70 @@ func TestWaitingBeatsBusy(t *testing.T) {
 	screen := "Working (12s · esc to interrupt)\nDo you want to apply this patch?\n❯ 1. Yes"
 	if got := Classify("codex", "", screen); got != Waiting {
 		t.Errorf("got %q, want waiting", got)
+	}
+}
+
+func TestBusyBeatsIdle(t *testing.T) {
+	// The mirror of TestWaitingBeatsBusy, and the case that was missing.
+	// Claude Code's footer chrome - the empty prompt, the mode line - is on
+	// screen the entire time it works, so every busy screen is also an idle
+	// screen by pattern count. Busy has to win.
+	screen := strings.Join([]string{
+		"✢ Manifesting… (1m 5s · ↓ 4.0k tokens)",
+		"──────────────────────────────────────",
+		"❯ ",
+		"──────────────────────────────────────",
+		"  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle)",
+	}, "\n")
+	if got := Classify("2.1.263", "", screen); got != Busy {
+		t.Errorf("got %q, want busy", got)
+	}
+}
+
+func TestLongRunningTimerIsBusy(t *testing.T) {
+	// The regression this all came from: the timer pattern required digits
+	// immediately followed by "s", so it matched the first minute of a task
+	// and nothing after it. A task that runs for an hour is exactly the one
+	// you walk away from, and "busy -> idle" is what fires the "finished"
+	// push.
+	for _, timer := range []string{"(45s ·", "(1m 5s ·", "(12m 3s ·", "(1h 2m 3s ·"} {
+		screen := "Effecting… " + timer + " ↓ 4.0k tokens)\n❯ \n  -- INSERT -- (shift+tab to cycle)"
+		if got := Classify("2.1.263", "", screen); got != Busy {
+			t.Errorf("timer %q: got %q, want busy", timer, got)
+		}
+	}
+}
+
+func TestRandomisedSpinnerWordIsBusy(t *testing.T) {
+	// Claude Code invents the gerund on every render, so a fixed word list
+	// cannot keep up. These four are real, observed on this machine.
+	for _, word := range []string{"Manifesting", "Effecting", "Wandering", "Pondering"} {
+		screen := "✢ " + word + "…\n❯ \n  -- INSERT -- (shift+tab to cycle)"
+		if got := Classify("2.1.263", "", screen); got != Busy {
+			t.Errorf("%s: got %q, want busy", word, got)
+		}
+	}
+}
+
+func TestIdleNeedsTheAbsenceOfActivity(t *testing.T) {
+	// Idle is not "the idle markers are present" - they always are. It is
+	// "they are present and nothing else is".
+	idleOnly := "❯ \n  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle)"
+	if got := Classify("2.1.263", "", idleOnly); got != Idle {
+		t.Errorf("idle screen: got %q, want idle", got)
+	}
+	if got := Classify("2.1.263", "", "✻ Thinking… (3s ·\n"+idleOnly); got != Busy {
+		t.Errorf("same screen plus a spinner: got %q, want busy", got)
+	}
+}
+
+func TestProseAboutAQuotedStringIsNotIdle(t *testing.T) {
+	// The dropped `try "..."` pattern matched any prose containing a quoted
+	// string, which is common in code discussion and was carrying an idle
+	// verdict on its own.
+	screen := `The old pattern was try "[^"]+". Roughly 15 lines to replace it.`
+	if got := Classify("2.1.263", "", screen); got == Idle {
+		t.Errorf("prose classified as idle")
 	}
 }
 

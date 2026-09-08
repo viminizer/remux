@@ -46,6 +46,18 @@ var shells = map[string]bool{
 var claudeCmdRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // IsAgent reports whether a pane command looks like a coding agent.
+//
+// Coverage is not uniform, and the difference matters. Codex and Claude Code
+// are the two this file's idle and busy patterns were tuned against, with
+// fixtures in testdata/ taken from real panes. aider, opencode and crush are
+// recognised here but no idle or busy pattern targets them, so they will
+// mostly report Waiting (those patterns are agent-agnostic - "[y/N]", "do you
+// want") or Unknown.
+//
+// They stay on the list because this is also what decides whether the push
+// watcher follows a pane at all (internal/push/watcher.go). Dropping them
+// would silently stop notifying anyone running one, which is a worse answer
+// than an honest Unknown.
 func IsAgent(cmd string) bool {
 	switch cmd {
 	case "codex", "claude", "aider", "opencode", "crush":
@@ -101,8 +113,17 @@ func numberedMenu(lines []string) bool {
 var busyRe = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)esc to interrupt`),
 	regexp.MustCompile(`(?i)ctrl\+c to (stop|interrupt)`),
-	regexp.MustCompile(`\(\d+s\s*·`), // "(12s · esc to interrupt)"
-	regexp.MustCompile(`(?i)^\s*[▸▶✻✳*]\s*(working|thinking|running|generating)\b`),
+	// The elapsed timer, the most reliable structural signal Claude Code
+	// emits. It must accept a full duration, not just seconds: the old
+	// `\(\d+s` matched "(12s ·" and missed "(1m 5s ·", so it went blind after
+	// the first minute - precisely the tasks where a wrong verdict costs most,
+	// because those are the ones you walk away from and get pushed about.
+	regexp.MustCompile(`\((?:\d+h\s*)?(?:\d+m\s*)?\d+s\s*·`),
+	// A spinner glyph, one word, an ellipsis. Matching the word itself is a
+	// losing game - Claude Code invents a new gerund every render
+	// ("Manifesting", "Effecting", "Wandering"), and a fixed list can only
+	// ever trail it. The shape is what stays constant.
+	regexp.MustCompile(`^\s*[▸▶✻✳✢✽✶*]\s*[A-Za-z]+…`),
 	regexp.MustCompile(`(?i)\b(thinking|working|running)…`),
 	regexp.MustCompile(`[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]`), // braille spinner
 }
@@ -112,10 +133,18 @@ var busyRe = []*regexp.Regexp{
 // Codex prints a placeholder; Claude Code draws an empty "❯" box between two
 // horizontal rules and a status line under it. Both forms are matched because
 // the two agents render nothing alike.
+//
+// None of these prove idleness on their own - Claude Code's footer chrome is
+// on screen while it works too - so Classify only trusts them once every busy
+// signal has failed. See the `idle` term there.
+//
+// `try "[^"]+"` used to live here and was removed: scored against 24 live
+// agent panes on this machine it matched nothing that was idle, and did match
+// ordinary prose discussing a quoted string. It was the loosest pattern in the
+// file and it was carrying a verdict.
 var idleRe = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)ask codex to do anything`),
 	regexp.MustCompile(`(?i)^\s*[›>]\s*ask\b`),
-	regexp.MustCompile(`(?i)try "[^"]+"`), // Claude Code hint line
 	regexp.MustCompile(`(?i)\? for shortcuts`),
 	regexp.MustCompile(`(?i)shift\+tab to cycle`), // Claude Code mode line
 	regexp.MustCompile(`(?i)^\s*--\s*INSERT\s*--`),
@@ -135,20 +164,28 @@ func Classify(cmd, title, screen string) Status {
 	lines := tail(StripANSI(screen), tailLines)
 	joined := strings.Join(lines, "\n")
 
-	if matchAny(waitingRe, lines, joined) || numberedMenu(lines) {
+	waiting := matchAny(waitingRe, lines, joined) || numberedMenu(lines)
+	busy := matchAny(busyRe, lines, joined)
+	// Idle is the one verdict that needs a negative term. The others are
+	// established by evidence; idle markers are footer chrome that an agent
+	// keeps on screen while it works, so "composer looks empty" only means
+	// idle when nothing says otherwise. Writing that here rather than relying
+	// on the order of three returns is what makes it testable - and the order
+	// alone is what let a working pane report idle once the timer pattern
+	// stopped matching past one minute.
+	idle := matchAny(idleRe, lines, joined) && !busy && !waiting
+
+	switch {
+	case waiting:
 		return Waiting
-	}
-	if matchAny(busyRe, lines, joined) {
+	case busy:
 		return Busy
-	}
-	if matchAny(idleRe, lines, joined) {
+	case idle:
 		return Idle
 	}
-	if IsAgent(cmd) {
-		// A known agent whose screen matched nothing. It is running, so
-		// "idle" would be a guess and "shell" would be wrong.
-		return Unknown
-	}
+	// Anything else, agent or not, is Unknown. For a known agent that means a
+	// screen no pattern recognised: "idle" would be a guess and "shell" would
+	// be wrong.
 	return Unknown
 }
 
