@@ -372,3 +372,95 @@ Every write went to `remux-test`. Both the Go test helpers ask tmux
 key if the answer is not `remux-test`.
 
 `remux-test` is killed. `tmux ls` should show your 3 sessions and nothing else.
+
+---
+
+# Addendum - 2026-09-09, first real run on the tailnet
+
+Kevin enrolled the node, renamed the tailnet to `ocicat-hen.ts.net`, and opened
+`https://remux.ocicat-hen.ts.net` on his phone. Three things that the overnight
+build could not test are now tested, and two real bugs surfaced immediately.
+
+## The big one: tmux mangles format output without a controlling terminal
+
+**Symptom.** The app loaded fine over the tailnet, with a valid certificate,
+and reported **"No tmux server running"** against a workspace of 28 live panes.
+
+**Cause.** tmux passes `-F` format output through its vis-escaper, and what
+survives depends on whether the tmux command has a controlling terminal:
+
+| separator | from a shell | under launchd |
+|---|---|---|
+| `\t` (tab) | kept | **becomes `_`** |
+| `\x1f`, `\x1e`, `\x01` | `\037` literal | `\037` literal |
+| `\|`, `\|~\|` | kept | kept |
+
+`treeFormat` used tabs. Every test written overnight ran from a shell, so every
+one of them passed, and the format collapsed into a single field the moment
+remux ran as a LaunchAgent - which is the only way it actually ships. Each
+record failed the field-count check and was skipped, leaving an empty tree.
+
+**Why it hid so well.** `Tree()` treated "no rows parsed" as an empty
+workspace, so the server returned `200 {"sessions":[]}` and the UI correctly
+rendered its empty state. Every layer reported success. Nothing logged a
+warning. The only wrong thing in the entire chain was the answer.
+
+**Fix.** The separator is now `|~|` - printable so it survives escaping, and
+three characters because a bare `|` appears in Claude Code's own status line
+(`Opus 5 (1M context) | remux | ...`). `pane_title` moved to the end of the
+record and parsing uses `SplitN`, so an agent writing the separator into its
+own title cannot shift the columns. `Tree()` now returns an **error** when tmux
+printed records but none parsed, because that is a broken format contract
+rather than an empty workspace.
+
+**Second effect of the same escaping.** tmux decides UTF-8 support from
+`LC_ALL`, `LC_CTYPE` and `LANG`. launchd sets none of them, so tmux concluded
+the client was ASCII-only and replaced every non-ASCII character in format
+output with `_` - Claude Code's `✳ Separate worktree` arrived as
+`_ Separate worktree`. tmux commands now run with a UTF-8 locale guaranteed,
+set in Go rather than in the plist so it holds however remux was started.
+
+`capture-pane` was never affected: byte-identical in both contexts, all 285
+escape sequences intact. Only `-F` output goes through the escaper.
+
+**Method, for next time.** Guessing got nowhere. What worked was building a
+throwaway diagnostic against `internal/tmux`, running it under a real
+LaunchAgent, and printing the raw bytes - which showed
+`"$1_1yegabiz_0_@1_..."` immediately. Anything that only runs under launchd
+needs to be tested under launchd; a shell is not a substitute.
+
+## The pinned identity did not survive a restart
+
+`AllowLogin` was set in memory on first connect and never written anywhere, so
+every restart re-opened the claim to whoever connected next. Spotted in a
+restart log still reading "allowed identity: the first tailnet user to
+connect" after it had already pinned. It now persists to `config.json`.
+
+## Now verified, and previously not
+
+- **`WhoIs` returns a real identity.** `auth: pinned allowed login to
+  ruxcodes@gmail.com`, persisted, and `remux status` shows it. This was the
+  largest untested surface in the overnight build.
+- **`ListenTLS` issues a real certificate.** Chrome loaded the site over HTTPS
+  with no warning, which is also what makes the home-screen install possible.
+- **A tailnet rename is survivable.** Renaming to `ocicat-hen.ts.net` needed
+  only `remux restart`; the node identity persisted and a new certificate was
+  issued. Worth doing before the PWA install, not after.
+- **The whole stack works end to end from a phone**: 28 real panes, grouped by
+  session, over the tailnet.
+
+## Still untested
+
+- **Push delivery.** Everything around it is tested; the wire is not.
+- **`--local` and the tailnet path share almost everything**, but the 403
+  branch - a *different* tailnet identity being refused - has still never
+  executed, because there is only one identity on this tailnet.
+
+## Corrections to the report above
+
+The overnight report's phase 1 and phase 4 results were true for a shell and wrong
+for production: those pane counts and status verdicts were all gathered through
+`--local` from a terminal. They were not evidence that the LaunchAgent could
+see tmux at all. The claim "verified against your real workspace, not a
+fixture" was true; the unstated assumption that a shell and a LaunchAgent
+behave alike was not.
