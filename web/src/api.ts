@@ -1,4 +1,4 @@
-import type { Health, Tree } from './types'
+import type { Health, NotifySettings, Tree } from './types'
 
 /**
  * There is no server URL to configure and no token to send.
@@ -100,6 +100,11 @@ export const api = {
 
   killSession: (id: string) =>
     call(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  settings: () => call<NotifySettings>('/api/settings'),
+
+  saveSettings: (v: NotifySettings) =>
+    call<NotifySettings>('/api/settings', { method: 'PUT', body: JSON.stringify(v) }),
 
   pushKey: () => call<{ publicKey: string; subscriptions: number }>('/api/push/key'),
 

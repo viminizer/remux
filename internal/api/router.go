@@ -57,6 +57,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/windows/{id}", s.handleRenameWindow)
 	mux.HandleFunc("DELETE /api/windows/{id}", s.handleKillWindow)
 
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+
 	mux.HandleFunc("GET /api/push/key", s.handlePushKey)
 	mux.HandleFunc("POST /api/push/subscribe", s.handlePushSubscribe)
 	mux.HandleFunc("POST /api/push/unsubscribe", s.handlePushUnsubscribe)

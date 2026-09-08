@@ -63,6 +63,16 @@ export interface SnapMeta {
   status: Status
 }
 
+/**
+ * The notification toggles live on the server, because the watcher that acts
+ * on them runs there. Keeping them only on the phone would give a switch that
+ * looks like it works and changes nothing.
+ */
+export interface NotifySettings {
+  notifyWaiting: boolean
+  notifyDone: boolean
+}
+
 /** Connection state shown as a dot in the top bar and the drawer footer. */
 export type Conn = 'connecting' | 'live' | 'offline' | 'denied'
 

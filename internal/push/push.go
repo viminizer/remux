@@ -50,6 +50,12 @@ func Open() (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	return OpenIn(dir)
+}
+
+// OpenIn is Open against an explicit directory, so tests do not touch the
+// real config dir or its real VAPID key.
+func OpenIn(dir string) (*Store, error) {
 	s := &Store{dir: dir}
 	if err := s.loadKeys(); err != nil {
 		return nil, err

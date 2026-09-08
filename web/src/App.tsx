@@ -92,6 +92,13 @@ export default function App() {
         setHealth(h)
         setSessions(t.sessions)
         setLastReached(Date.now())
+        // The notification toggles are the server's, not this device's.
+        try {
+          const n = await api.settings()
+          if (!cancelled) patch({ notifyWaiting: n.notifyWaiting, notifyDone: n.notifyDone })
+        } catch {
+          // Non-fatal: the toggles just show the last known local values.
+        }
       } catch (e) {
         if (cancelled) return
         if (e instanceof ApiError && e.status === 403) {
@@ -180,6 +187,17 @@ export default function App() {
     },
     [],
   )
+
+  // Notification toggles must reach the server or they do nothing.
+  const patchNotify = (p: Partial<typeof settings>) => {
+    patch(p)
+    if ('notifyWaiting' in p || 'notifyDone' in p) {
+      const next = { ...settings, ...p }
+      guard('save settings', () =>
+        api.saveSettings({ notifyWaiting: next.notifyWaiting, notifyDone: next.notifyDone }),
+      )
+    }
+  }
 
   const stale = conn !== 'live' || !live
   const inputDisabled = stale || !current
@@ -278,7 +296,7 @@ export default function App() {
             conn={conn}
             lastReached={lastReached}
             settings={settings}
-            patch={patch}
+            patch={patchNotify}
             notifState={notifState}
             onEnableNotifications={onEnablePush}
             onBack={() => go({ name: 'pane', pane: currentId })}
