@@ -19,6 +19,14 @@ const KEYS: { k: string; label: string; text?: boolean; danger?: boolean }[] = [
   // is the cost this row exists to remove.
   { k: '$', label: '$', text: true },
   { k: '/', label: '/', text: true },
+  // The only way to erase a pane's input from the phone. The composer is a
+  // local draft, not a view of the agent's input line, so backspacing there
+  // edits your own text and leaves the agent's alone. ^U is the one that
+  // answers the common case - accept a suggestion with tab, change your mind,
+  // clear the line in one tap. Neither is `danger`; they touch the input line,
+  // not the process, and ^C stays the only red chip.
+  { k: 'BSpace', label: '⌫' },
+  { k: 'C-u', label: '^U' },
   { k: 'BTab', label: '⇧tab' },
   { k: 'Up', label: '↑' },
   { k: 'Down', label: '↓' },
