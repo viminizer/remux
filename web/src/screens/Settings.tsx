@@ -119,6 +119,9 @@ export function SettingsScreen({
               </div>
               <button
                 className={`sw-toggle ${settings.notifyWaiting ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.notifyWaiting}
+                aria-label="An agent needs an answer"
                 onClick={() => patch({ notifyWaiting: !settings.notifyWaiting })}
               />
             </div>
@@ -129,6 +132,9 @@ export function SettingsScreen({
               </div>
               <button
                 className={`sw-toggle ${settings.notifyDone ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.notifyDone}
+                aria-label="A task finished"
                 onClick={() => patch({ notifyDone: !settings.notifyDone })}
               />
             </div>
@@ -145,20 +151,29 @@ export function SettingsScreen({
               </div>
               <button
                 className={`sw-toggle ${settings.wrap ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.wrap}
+                aria-label="Wrap lines"
                 onClick={() => patch({ wrap: !settings.wrap })}
               />
             </div>
             <div className="crow">
               <div className="lbl">Font size</div>
+              <div className="val">{settings.fontSize}px</div>
               <span className="stepper">
-                <button onClick={() => patch({ fontSize: Math.max(10, settings.fontSize - 1) })}>
+                <button
+                  aria-label="Smaller"
+                  onClick={() => patch({ fontSize: Math.max(10, settings.fontSize - 1) })}
+                >
                   −
                 </button>
-                <button onClick={() => patch({ fontSize: Math.min(20, settings.fontSize + 1) })}>
+                <button
+                  aria-label="Larger"
+                  onClick={() => patch({ fontSize: Math.min(20, settings.fontSize + 1) })}
+                >
                   +
                 </button>
               </span>
-              <div className="val">{settings.fontSize}px</div>
             </div>
             <div className="crow">
               <div className="lbl">
@@ -167,6 +182,9 @@ export function SettingsScreen({
               </div>
               <button
                 className={`sw-toggle ${settings.submitOnEnter ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.submitOnEnter}
+                aria-label="Submit with Enter"
                 onClick={() => patch({ submitOnEnter: !settings.submitOnEnter })}
               />
             </div>
@@ -175,15 +193,21 @@ export function SettingsScreen({
                 Scrollback
                 <small>lines captured per pane</small>
               </div>
+              <div className="val">{settings.lines}</div>
               <span className="stepper">
-                <button onClick={() => patch({ lines: Math.max(100, settings.lines - 100) })}>
+                <button
+                  aria-label="Fewer lines"
+                  onClick={() => patch({ lines: Math.max(100, settings.lines - 100) })}
+                >
                   −
                 </button>
-                <button onClick={() => patch({ lines: Math.min(2000, settings.lines + 100) })}>
+                <button
+                  aria-label="More lines"
+                  onClick={() => patch({ lines: Math.min(2000, settings.lines + 100) })}
+                >
                   +
                 </button>
               </span>
-              <div className="val">{settings.lines}</div>
             </div>
           </div>
         </div>

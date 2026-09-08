@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { Pane } from '../types'
 import { displayCommand, paneTitle, statusLabel } from '../types'
 import { StatusDot } from '../components/StatusDot'
@@ -22,7 +23,12 @@ export function PaneRow({
   onOpen: () => void
   onMenu: () => void
 }) {
-  let holdTimer: number | undefined
+  const hold = useRef<{ timer?: number; x: number; y: number }>({ x: 0, y: 0 })
+
+  const cancel = () => {
+    clearTimeout(hold.current.timer)
+    hold.current.timer = undefined
+  }
 
   return (
     <button
@@ -32,11 +38,18 @@ export function PaneRow({
         e.preventDefault()
         onMenu()
       }}
-      onPointerDown={() => {
-        holdTimer = window.setTimeout(onMenu, 550)
+      onPointerDown={(e) => {
+        hold.current = { x: e.clientX, y: e.clientY, timer: window.setTimeout(onMenu, 550) }
       }}
-      onPointerUp={() => clearTimeout(holdTimer)}
-      onPointerLeave={() => clearTimeout(holdTimer)}
+      // A flick down the pane list is a press that lasts well over 550ms. The
+      // menu must only open if the finger stayed put.
+      onPointerMove={(e) => {
+        const h = hold.current
+        if (h.timer && Math.hypot(e.clientX - h.x, e.clientY - h.y) > 10) cancel()
+      }}
+      onPointerUp={cancel}
+      onPointerCancel={cancel}
+      onPointerLeave={cancel}
     >
       <div className="row-t">
         <StatusDot status={pane.status} />

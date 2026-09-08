@@ -35,7 +35,9 @@ export function Output({ lines, wrap }: { lines: string[]; wrap: boolean }) {
   }
 
   return (
-    <>
+    // The wrapper is what "Jump to latest" is positioned against, so the
+    // button tracks the bottom of the output however tall the composer grows.
+    <div className="output-wrap">
       <main className="output" ref={box}>
         {/* The HTML is built by ansiToHtml, which escapes all pane text and
             only emits spans and anchors it constructed itself. */}
@@ -47,6 +49,6 @@ export function Output({ lines, wrap }: { lines: string[]; wrap: boolean }) {
       <button className={`jump ${stuck ? '' : 'show'}`} onClick={toBottom}>
         ↓ Jump to latest
       </button>
-    </>
+    </div>
   )
 }

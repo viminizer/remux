@@ -20,11 +20,16 @@
 html,body{margin:0;height:100%;overscroll-behavior:none}
 body{
   font-family:var(--ui);background:var(--base);color:var(--text);
-  /* dvh, not vh: the Android URL bar and keyboard change the viewport, and
-     vh would leave the composer under the keyboard. */
-  height:100dvh;overflow:hidden;
+  /* --app-h is the visual viewport, set in viewport.ts. dvh is the fallback
+     and the desktop case: it follows the browser chrome but NOT the software
+     keyboard, which on iOS would leave the composer below the fold. */
+  height:var(--app-h,100dvh);overflow:hidden;
 }
-#root{height:100dvh;display:flex;flex-direction:column}
+#root{height:var(--app-h,100dvh);display:flex;flex-direction:column}
+
+/* Every control inherits the UI font unless it asks for mono. Left to the
+   browser, buttons and inputs fall back to Arial. */
+button,input,textarea,select{font-family:inherit}
 
 /* The mock drew a phone frame; the real app is the viewport. */
 .phone{
@@ -36,7 +41,7 @@ body{
    overlaying it. */
 @media (min-width:900px){
   .phone{flex-direction:row}
-  .drawer{position:relative;transform:none!important;flex:0 0 308px}
+  .drawer{position:relative;transform:none!important;flex:0 0 308px;width:308px}
   .scrim{display:none}
   .pane-col{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
   .burger{display:none}
@@ -54,12 +59,17 @@ body{
   border:0;border-radius:10px;background:transparent;color:var(--sub1);
   font-size:17px;cursor:pointer;transition:background .15s;
 }
-.iconbtn:active,.iconbtn:hover{background:var(--s0)}
+.iconbtn:active{background:var(--s0)}
+@media (hover:hover){.iconbtn:hover{background:var(--s0)}}
 .tb-title{flex:1;min-width:0}
 .tb-title h1{
   margin:0;font-size:15px;font-weight:600;color:var(--text);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;
+  white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:7px;
 }
+/* text-overflow does not apply to a flex container - it has to be on the
+   child, and the child needs min-width:0 or it refuses to shrink and pushes
+   the ⋮ button off the screen. */
+.tb-title h1 span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .tb-title p{
   margin:2px 0 0;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -110,6 +120,7 @@ body.offline .stale-bar{display:flex}
 body.optin-on .optin{display:flex}
 .optin p{margin:0;flex:1;font-size:12.5px;color:var(--sub1);line-height:1.4}
 .optin button{
+  flex:0 0 auto;white-space:nowrap;
   border:0;border-radius:8px;cursor:pointer;padding:7px 11px;
   font-family:var(--ui);font-size:12px;font-weight:700;
 }
@@ -117,8 +128,11 @@ body.optin-on .optin{display:flex}
 .optin .no{background:transparent;color:var(--ov1);font-weight:600}
 
 /* ── output ───────────────────────────────────────────────── */
+/* The jump button is positioned against the output, not the page, so a
+   composer grown to five lines cannot push it under the key pad. */
+.output-wrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
 .output{
-  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   padding:16px 14px 8px;background:var(--base);
 }
 .output pre{
@@ -138,7 +152,7 @@ body.offline .output pre{opacity:.62}
 .box{color:var(--s2)}
 
 .jump{
-  position:absolute;left:50%;transform:translateX(-50%);bottom:132px;z-index:3;
+  position:absolute;left:50%;transform:translateX(-50%);bottom:12px;z-index:3;
   background:var(--s0);color:var(--sub1);border:1px solid var(--s1);
   border-radius:20px;padding:7px 14px;font-size:12px;font-weight:500;
   cursor:pointer;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4);
@@ -192,7 +206,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 }
 .scrim.on{opacity:1;pointer-events:auto}
 .drawer{
-  position:absolute;top:0;left:0;bottom:0;width:308px;z-index:9;
+  position:absolute;top:0;left:0;bottom:0;width:min(308px,84vw);z-index:9;
   background:var(--mantle);border-right:1px solid var(--s0);
   display:flex;flex-direction:column;
   transform:translateX(-100%);transition:transform .24s cubic-bezier(.3,.8,.4,1);
@@ -214,7 +228,8 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   font-family:var(--ui);font-size:12.5px;font-weight:600;
 }
 .newbtn:active{background:var(--s1)}
-.list{flex:1;overflow-y:auto;padding:6px 0 20px}
+@media (hover:hover){.newbtn:hover{background:var(--s1)}}
+.list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:6px 0 20px}
 .group{
   padding:14px 16px 6px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;
   text-transform:uppercase;color:var(--ov0);display:flex;align-items:center;gap:7px;
@@ -224,7 +239,8 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
   padding:9px 16px;border-left:2px solid transparent;transition:background .12s;
 }
-.row:active,.row:hover{background:var(--s0)}
+.row:active{background:var(--s0)}
+@media (hover:hover){.row:hover{background:var(--s0)}}
 .row.active{background:var(--s0);border-left-color:var(--blue)}
 .row-t{
   display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text);
@@ -240,7 +256,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   flex:0 0 auto;border-top:1px solid var(--s0);padding:10px 12px;
   display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ov1);cursor:pointer;
 }
-.drawer-foot:hover{background:var(--s0)}
+@media (hover:hover){.drawer-foot:hover{background:var(--s0)}}
 
 /* ── kebab menu ───────────────────────────────────────────── */
 .menu{
@@ -254,7 +270,8 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   border:0;background:transparent;color:var(--sub1);cursor:pointer;
   padding:9px 10px;border-radius:8px;font-family:var(--ui);font-size:13.5px;text-align:left;
 }
-.mi:active,.mi:hover{background:var(--s1);color:var(--text)}
+.mi:active{background:var(--s1);color:var(--text)}
+@media (hover:hover){.mi:hover{background:var(--s1);color:var(--text)}}
 .mi.danger{color:var(--red)}
 .mi small{font-family:var(--mono);font-size:11px;color:var(--ov0)}
 .msep{height:1px;background:var(--s1);margin:5px 2px}
@@ -281,7 +298,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   padding:14px 12px;background:var(--mantle);border-bottom:1px solid var(--s0);
 }
 .screen-head h2{margin:0;font-size:15px;font-weight:600}
-.screen-body{flex:1;overflow-y:auto;padding:20px 18px 30px}
+.screen-body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:20px 18px 30px}
 
 /* centred message screens */
 .msg{
@@ -329,8 +346,15 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 }
 .crow:last-child{border-bottom:0}
 .crow .lbl{flex:1;min-width:0}
-.crow .lbl small{display:block;margin-top:3px;font-size:11.5px;color:var(--ov1);font-family:var(--mono)}
-.crow .val{font-family:var(--mono);font-size:12.5px;color:var(--sub0);flex:0 0 auto}
+.crow .lbl small{
+  display:block;margin-top:3px;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
+  overflow-wrap:anywhere;
+}
+/* A login or hostname is arbitrary length; it shrinks before the label does. */
+.crow .val{
+  font-family:var(--mono);font-size:12.5px;color:var(--sub0);
+  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 .sw-toggle{
   width:44px;height:26px;flex:0 0 44px;border-radius:13px;border:0;cursor:pointer;
   background:var(--s1);position:relative;transition:background .2s;
@@ -359,9 +383,10 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   transition:transform .26s cubic-bezier(.3,.8,.4,1);max-height:78%;
   display:flex;flex-direction:column;
 }
+.sheet:not(.on){pointer-events:none;visibility:hidden;transition:transform .26s cubic-bezier(.3,.8,.4,1),visibility 0s .26s}
 .sheet.on{transform:none}
 .grip{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:10px auto 4px;flex:0 0 auto}
-.sheet-body{padding:8px 18px 22px;overflow-y:auto}
+.sheet-body{padding:8px 18px 22px;overflow-y:auto;overscroll-behavior:contain}
 .sheet h3{margin:6px 0 16px;font-size:16px;font-weight:700}
 .seg{display:flex;gap:4px;background:var(--base);border-radius:11px;padding:4px;margin-bottom:16px}
 .seg button{
@@ -383,11 +408,14 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 /* toast */
 .toast{
-  position:absolute;left:50%;bottom:150px;transform:translate(-50%,10px);z-index:40;
+  position:absolute;left:50%;transform:translate(-50%,10px);z-index:40;
+  /* --inputbar-h is the measured key pad + composer, so the toast clears them
+     however tall the composer has grown. */
+  bottom:calc(var(--inputbar-h,120px) + 14px);
   background:var(--s1);color:var(--text);border:1px solid var(--s2);
   padding:9px 15px;border-radius:11px;font-size:12.5px;font-family:var(--mono);
-  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;white-space:nowrap;
-  max-width:90%;overflow:hidden;text-overflow:ellipsis;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  max-width:min(90%,320px);text-align:center;line-height:1.45;overflow-wrap:anywhere;
 }
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
@@ -424,8 +452,10 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 /* Search with no match, and an empty drawer. */
 .empty{padding:26px 18px;text-align:center;color:var(--ov1);font-size:12.5px;line-height:1.6}
 
-/* The kebab menu is anchored to the pane column, not the page. */
-.menu{top:60px}
+/* The kebab menu is anchored to the pane column, not the page, and the top
+   bar grows by the notch inset - so the menu has to move with it. */
+.menu{top:calc(60px + env(safe-area-inset-top));max-width:calc(100vw - 20px)}
+@media (min-width:900px){.menu{top:60px}}
 
 .sheet .cancel{
   width:100%;margin-top:8px;padding:11px;border:0;border-radius:12px;cursor:pointer;
@@ -435,3 +465,50 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   width:100%;background:var(--base);border:1px solid var(--s1);border-radius:11px;
   padding:12px 13px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:0;
 }
+
+/* ── mobile hardening ─────────────────────────────────────── */
+/* The mock was drawn at 390px in a desktop browser, so nothing below was
+   visible while porting it: a real phone zooms small inputs, keeps :hover
+   after a tap, and needs bigger targets than a mouse does. */
+
+/* iOS Safari zooms the page whenever a focused field is under 16px, and a
+   zoomed layout viewport pushes the composer off the right of the screen.
+   16px on coarse pointers is the only reliable way to stop it. */
+@media (pointer:coarse){
+  .composer textarea,
+  .search input,
+  .field input,
+  .field select{font-size:16px}
+
+  /* Thumb targets. The key pad is the main way to answer an agent, so it is
+     the one that matters most. */
+  .key{height:40px;min-width:42px}
+  .iconbtn{width:40px;height:40px;flex:0 0 40px}
+  .send{width:36px;height:36px;flex:0 0 36px}
+  .stepper button{width:32px;height:32px}
+  .sw-toggle{height:28px}
+  .sw-toggle::after{width:22px;height:22px}
+  .sw-toggle.on::after{transform:translateX(16px)}
+  .linkbtn{padding:9px 13px}
+  .newbtn{height:38px}
+}
+
+/* Landscape on a notched phone puts the inset on the side, not the top. */
+.topbar,.keypad,.composer{
+  padding-left:max(12px,env(safe-area-inset-left));
+  padding-right:max(12px,env(safe-area-inset-right));
+}
+.output,.optin,.connbar,.stale-top{
+  padding-left:max(14px,env(safe-area-inset-left));
+  padding-right:max(14px,env(safe-area-inset-right));
+}
+/* Only the composer sits on the bottom edge. */
+.composer{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+
+/* A scroll container drops its end padding in Safari; a spacer restores it so
+   the last key is not flush against the edge. */
+.keypad::after{content:'';flex:0 0 6px}
+
+/* The key pad and composer are one block visually, and the toast and the
+   sheets both have to clear it. */
+.inputbar{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}

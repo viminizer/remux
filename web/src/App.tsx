@@ -43,6 +43,20 @@ export default function App() {
   const [notifState, setNotifState] = useState(notificationState())
 
   const sock = useRef<Socket | null>(null)
+  const [inputbar, setInputbar] = useState<HTMLDivElement | null>(null)
+
+  // The toast floats above the key pad and composer, and the composer grows
+  // with the text in it. Publishing the measured height keeps the toast clear
+  // of it instead of guessing a fixed offset.
+  useEffect(() => {
+    if (!inputbar) return
+    const measure = () =>
+      document.documentElement.style.setProperty('--inputbar-h', inputbar.offsetHeight + 'px')
+    measure() // ResizeObserver only fires once the tab paints
+    const ro = new ResizeObserver(measure)
+    ro.observe(inputbar)
+    return () => ro.disconnect()
+  }, [inputbar])
 
   const panes = useMemo(() => (sessions ? flatten({ sessions }) : []), [sessions])
   const currentId = route.name === 'pane' ? route.pane : null
@@ -390,14 +404,16 @@ export default function App() {
 
             <Output lines={lines} wrap={settings.wrap} />
 
-            <KeyPad onKey={sendKey} disabled={inputDisabled} />
+            <div className="inputbar" ref={setInputbar}>
+              <KeyPad onKey={sendKey} disabled={inputDisabled} />
 
-            <Composer
-              target={meta?.cmd ?? current?.command ?? 'shell'}
-              disabled={inputDisabled}
-              submitOnEnter={settings.submitOnEnter}
-              onSend={sendText}
-            />
+              <Composer
+                target={meta?.cmd ?? current?.command ?? 'shell'}
+                disabled={inputDisabled}
+                submitOnEnter={settings.submitOnEnter}
+                onSend={sendText}
+              />
+            </div>
           </>
         )}
       </div>
