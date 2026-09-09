@@ -594,6 +594,7 @@ export default function App() {
                 expanded={settings.keypadOpen}
                 onToggle={toggleKeypad}
                 disabled={inputDisabled}
+                custom={settings.chips}
               />
 
               <Composer

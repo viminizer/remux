@@ -179,7 +179,8 @@ body.offline .output pre{opacity:.62}
   display:grid;grid-template-columns:repeat(8,1fr);gap:5px;align-items:center;
   padding:8px 12px;background:var(--mantle);border-top:1px solid var(--s0);
 }
-.key.cmd{grid-column:span 2}
+/* A label that will not fit an eighth of a phone takes two cells. */
+.key.wide{grid-column:span 2}
 
 /* The chevron: a button floating clear above the key pad.
    - It is the second thing that floats there, and .jump is the first, so it
@@ -214,6 +215,12 @@ body.offline .output pre{opacity:.62}
   background:var(--s0);border:1px solid var(--s1);border-radius:8px;
   color:var(--sub1);font-family:var(--mono);font-size:11.5px;font-weight:500;
   white-space:nowrap;cursor:pointer;transition:transform .08s,background .15s;
+  /* A custom label is whatever someone typed, and two columns is about eleven
+     characters. Truncate rather than let it spill: `.key` has no width of its
+     own - the grid gives it one - so an overflowing label would print straight
+     over the chip beside it. The label is separate from the text sent, so the
+     fix for a clipped chip is a shorter label, not a shorter command. */
+  overflow:hidden;text-overflow:ellipsis;
 }
 .key:active{transform:scale(.93);background:var(--s1)}
 .key.danger{color:var(--red);border-color:rgba(243,139,168,.3)}
@@ -468,6 +475,42 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   padding:6px 11px;font-family:var(--ui);font-size:12px;font-weight:600;cursor:pointer;
 }
 
+/* ── the custom chip editor ───────────────────────────────── */
+/* A chip row stacks instead of sitting on the settings grid: three inputs and
+   five buttons do not fit a phone width in one line, and the label field has
+   to stay wide enough to read what it sends. */
+.chip-row{display:block}
+.chip-fields{display:flex;flex-direction:column;gap:7px}
+.chip-fields input{
+  width:100%;background:var(--base);border:1px solid var(--s1);border-radius:9px;
+  padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:13px;outline:0;
+}
+.chip-fields input:focus{border-color:var(--blue)}
+.chip-label{max-width:140px}
+.chip-opts{display:flex;align-items:center;gap:6px}
+.chiptog{
+  height:28px;padding:0 9px;border-radius:8px;cursor:pointer;
+  background:var(--s0);border:1px solid var(--s1);color:var(--ov1);
+  font-family:var(--ui);font-size:11.5px;font-weight:600;
+}
+.chiptog.on{background:var(--blue);border-color:var(--blue);color:var(--crust)}
+/* Pushed to the right so the two toggles read as a pair and the destructive
+   one is nowhere near them. */
+.chip-move{display:flex;gap:6px;margin-left:auto}
+.chip-move button{
+  width:28px;height:28px;border-radius:8px;cursor:pointer;
+  background:var(--s0);border:1px solid var(--s1);color:var(--sub1);
+  font-size:12px;line-height:1;
+}
+.chip-move button:disabled{opacity:.35;cursor:default}
+.chip-move button:last-child{color:var(--red)}
+/* Thumb targets; the 16px these inputs also need on a coarse pointer is with
+   the rest of the iOS zoom guard, further down. */
+@media (pointer:coarse){
+  .chiptog,.chip-move button{height:32px}
+  .chip-move button{width:32px}
+}
+
 /* skeleton */
 .sk{background:var(--s0);border-radius:6px;animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:.85}}
@@ -590,6 +633,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   .composer textarea,
   .search input,
   .field input,
+  .chip-fields input,
   .field select{font-size:16px}
 
   /* Thumb targets. The key pad is the main way to answer an agent, so it is

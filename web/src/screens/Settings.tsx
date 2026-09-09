@@ -1,6 +1,140 @@
 import type { Health, Conn } from '../types'
-import type { Settings } from '../store'
+import type { Settings, CustomChip } from '../store'
 import { ago } from '../store'
+
+/**
+ * The key pad chips someone added themselves.
+ *
+ * Edited in place rather than through an add form and a separate edit path:
+ * Add appends a blank row and you fill it in, so there is one code path and a
+ * typo costs a tap rather than a delete and a retype. A half-filled row simply
+ * does not render in the pad, which makes the blank row a normal state instead
+ * of something to validate.
+ */
+function ChipEditor({
+  chips,
+  patch,
+}: {
+  chips: CustomChip[]
+  patch: (p: Partial<Settings>) => void
+}) {
+  const write = (next: CustomChip[]) => patch({ chips: next })
+  const edit = (i: number, p: Partial<CustomChip>) =>
+    write(chips.map((c, n) => (n === i ? { ...c, ...p } : c)))
+  const move = (i: number, by: number) => {
+    const to = i + by
+    if (to < 0 || to >= chips.length) return
+    const next = [...chips]
+    ;[next[i], next[to]] = [next[to], next[i]]
+    write(next)
+  }
+
+  return (
+    <div className="sec">
+      <h3>Key pad</h3>
+      <div className="card">
+        {chips.length === 0 && (
+          <div className="crow">
+            <div className="lbl">
+              No chips yet
+              <small>a chip sends its text to the pane in one tap</small>
+            </div>
+          </div>
+        )}
+        {chips.map((c, i) => (
+          <div className="crow chip-row" key={c.id}>
+            <div className="chip-fields">
+              <input
+                className="chip-label"
+                value={c.label}
+                placeholder="label"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                aria-label={`Chip ${i + 1} label`}
+                onChange={(e) => edit(i, { label: e.target.value })}
+              />
+              <input
+                className="chip-text"
+                value={c.text}
+                placeholder="text to send"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                aria-label={`Chip ${i + 1} text`}
+                onChange={(e) => edit(i, { text: e.target.value })}
+              />
+              <div className="chip-opts">
+                <button
+                  className={`chiptog ${c.command ? 'on' : ''}`}
+                  aria-pressed={c.command}
+                  title="Clear the input line before sending, the way /clear does"
+                  onClick={() => edit(i, { command: !c.command })}
+                >
+                  clear first
+                </button>
+                <button
+                  className={`chiptog ${c.wide ? 'on' : ''}`}
+                  aria-pressed={c.wide}
+                  title="Take two columns in the grid"
+                  onClick={() => edit(i, { wide: !c.wide })}
+                >
+                  wide
+                </button>
+                <span className="chip-move">
+                  <button aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+                    ↑
+                  </button>
+                  <button
+                    aria-label="Move down"
+                    disabled={i === chips.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    aria-label="Remove chip"
+                    onClick={() => write(chips.filter((_, n) => n !== i))}
+                  >
+                    ✕
+                  </button>
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+        <div className="crow">
+          <div className="lbl">
+            Add a chip
+            <small>shows first when the pad is expanded</small>
+          </div>
+          <button
+            className="linkbtn"
+            onClick={() =>
+              write([
+                ...chips,
+                {
+                  // crypto.randomUUID needs a secure context. The tailnet is
+                  // one and so is localhost, but --local over plain HTTP to a
+                  // LAN address is not, and that is a real way to open this.
+                  id:
+                    globalThis.crypto?.randomUUID?.() ??
+                    `chip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  label: '',
+                  text: '',
+                  command: false,
+                  wide: false,
+                },
+              ])
+            }
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const CONN_DOT: Record<Conn, string> = {
   connecting: 'shell',
@@ -223,6 +357,8 @@ export function SettingsScreen({
             </div>
           </div>
         </div>
+
+        <ChipEditor chips={settings.chips} patch={patch} />
 
         <div className="sec">
           <h3>About</h3>

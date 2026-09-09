@@ -32,6 +32,38 @@ export interface Settings {
    * on it.
    */
   keypadOpen: boolean
+  /**
+   * Extra key pad chips, defined here rather than in the code.
+   *
+   * Device-local for the same reason `starred` and `keypadOpen` are: the
+   * notification toggles live on the server because the watcher reads them,
+   * and nothing on the server ever acts on a chip. /api/settings is the
+   * escalation if these should follow you between the phone and the laptop.
+   */
+  chips: CustomChip[]
+}
+
+/**
+ * A chip someone added themselves.
+ *
+ * Deliberately no key-name variant. A key chip goes through the keys endpoint,
+ * which is gated by KeyAllowlist in internal/tmux/actions.go, so allowing one
+ * here would mean either widening that allowlist - whose whole job is keeping
+ * arbitrary strings out of send-keys - or shipping a chip that the server
+ * refuses. Text and commands go through the same endpoint the composer uses
+ * and need no server change at all.
+ */
+export interface CustomChip {
+  /** Stable id, so React keys survive reordering and editing. */
+  id: string
+  /** What the chip shows. */
+  label: string
+  /** What it sends. */
+  text: string
+  /** Clear the input line first, the way /clear and /compact do. */
+  command: boolean
+  /** Span two grid columns, for a label that will not fit an eighth. */
+  wide: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -43,6 +75,7 @@ const DEFAULTS: Settings = {
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],
+  chips: [],
   keypadOpen: false,
 }
 

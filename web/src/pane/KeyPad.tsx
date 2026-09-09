@@ -28,9 +28,22 @@
  * panes too, where they are just text. Filtering chips by pane command would
  * be a larger change than this.
  */
+import type { CustomChip } from '../store'
+
 type Chip = {
+  /**
+   * What gets sent. For a key chip this is the tmux key name; for a text or
+   * command chip it is the literal string.
+   */
   k: string
+  /**
+   * React key. Two custom chips may legitimately send the same string, so
+   * identity cannot come from `k`. Built-ins are unique and fall back to it.
+   */
+  id?: string
   label: string
+  /** Span two grid columns, for a label that will not fit an eighth. */
+  wide?: boolean
   text?: boolean
   command?: boolean
   danger?: boolean
@@ -73,8 +86,8 @@ const CHIPS: Chip[] = [
   { k: '/', label: '/', text: true },
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
-  { k: '/clear', label: '/clear', command: true },
-  { k: '/compact', label: '/compact', command: true },
+  { k: '/clear', label: '/clear', command: true, wide: true },
+  { k: '/compact', label: '/compact', command: true, wide: true },
   { k: 'Left', label: '←', repeat: true },
   { k: 'Right', label: '→', repeat: true },
   { k: 'y', label: 'y' },
@@ -98,6 +111,7 @@ export function KeyPad({
   expanded,
   onToggle,
   disabled,
+  custom,
 }: {
   onKey: (k: string) => void
   onText: (t: string) => void
@@ -105,8 +119,32 @@ export function KeyPad({
   expanded: boolean
   onToggle: () => void
   disabled: boolean
+  custom: CustomChip[]
 }) {
-  const shown = expanded ? CHIPS : CHIPS.slice(0, COLUMNS)
+  // Custom chips lead the expanded area rather than joining the collapsed row.
+  // The collapsed row is the same eight chips in the same eight places on
+  // every pane and every session, and that predictability is most of what
+  // makes it usable without looking; a list that grows and shrinks from
+  // Settings would take it away. Leading the second row is the next best
+  // position - first thing under the thumb when the pad opens.
+  //
+  // A half-filled chip is dropped rather than rendered. Settings adds a blank
+  // row for you to fill in, so an incomplete one is a normal intermediate
+  // state, not an error worth reporting.
+  const extra: Chip[] = custom
+    .filter((c) => c.label.trim() !== '' && c.text !== '')
+    .map((c) => ({
+      k: c.text,
+      id: c.id,
+      label: c.label,
+      wide: c.wide,
+      text: !c.command,
+      command: c.command,
+    }))
+
+  const shown = expanded
+    ? [...CHIPS.slice(0, COLUMNS), ...extra, ...CHIPS.slice(COLUMNS)]
+    : CHIPS.slice(0, COLUMNS)
 
   const press = (key: Chip) => {
     if (key.command) onCommand(key.k)
@@ -122,8 +160,8 @@ export function KeyPad({
       <div className={`keypad ${expanded ? 'open' : ''}`}>
         {shown.map((key) => (
           <button
-            key={key.k}
-            className={`key ${key.command ? 'cmd' : ''} ${key.danger ? 'danger' : ''}`}
+            key={key.id ?? key.k}
+            className={`key ${key.wide ? 'wide' : ''} ${key.danger ? 'danger' : ''}`}
             disabled={disabled}
             onClick={() => press(key)}
           >
