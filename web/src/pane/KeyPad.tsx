@@ -6,10 +6,10 @@
  * horizontal swipe to a position you could not predict, and horizontal scroll
  * gives no hint anything is out there. There are 20 chips now.
  *
- * Expanded it is a grid of every chip, grouped. The point is seeing them all
- * at once - a longer scrolling row would only move the problem. It pushes the
- * output up rather than covering it, because covering the screen you are
- * reading while you decide what to send is the wrong trade.
+ * Expanded it is a grid of every chip. The point is seeing them all at once -
+ * a longer scrolling row would only move the problem. It pushes the output up
+ * rather than covering it, because covering the screen you are reading while
+ * you decide what to send is the wrong trade.
  *
  * A chip is one of three things. A key name goes through the keys endpoint,
  * which is allowlisted server-side, so this list and KeyAllowlist in
@@ -44,58 +44,45 @@ type Chip = {
   repeat?: boolean
 }
 
+/** How many of CHIPS the collapsed row shows. */
+const ROW = 6
+
 /**
- * The first group is also the collapsed row, so the two orders agree - the row
- * is the top line of the grid rather than a different arrangement you have to
- * re-learn when you expand it.
+ * One flat list, ordered so the collapsed row is its first ROW entries. The
+ * grid is the same list continued rather than a different arrangement you have
+ * to re-learn when you expand it.
+ *
+ * The order is roughly by how often a chip gets tapped, but it is also the
+ * grid: five columns, with the two slash commands two columns wide, so the
+ * first four rows come out full. Reordering this changes the layout.
  */
-const GROUPS: { name: string; keys: Chip[] }[] = [
-  {
-    name: 'Common',
-    keys: [
-      { k: '/clear', label: '/clear', command: true },
-      { k: '/compact', label: '/compact', command: true },
-      { k: 'Escape', label: 'esc' },
-      { k: 'Enter', label: '⏎' },
-      { k: 'Tab', label: 'tab', repeat: true },
-      { k: 'BSpace', label: '⌫', repeat: true },
-    ],
-  },
-  {
-    name: 'Move',
-    keys: [
-      { k: 'Up', label: '↑', repeat: true },
-      { k: 'Down', label: '↓', repeat: true },
-      { k: 'Left', label: '←', repeat: true },
-      { k: 'Right', label: '→', repeat: true },
-    ],
-  },
-  {
-    name: 'Answer',
-    keys: [
-      { k: 'y', label: 'y' },
-      { k: 'n', label: 'n' },
-      { k: '1', label: '1' },
-      { k: '2', label: '2' },
-      { k: '3', label: '3' },
-    ],
-  },
-  {
-    name: 'Edit',
-    keys: [
-      { k: 'BTab', label: '⇧tab', repeat: true },
-      // ^U is the one that answers the common case - accept a suggestion with
-      // tab, change your mind, clear the line in one tap. Neither it nor ⌫ is
-      // `danger`; they touch the input line, not the process, and ^C stays the
-      // only red chip.
-      { k: 'C-u', label: '^U' },
-      // Both are one modifier layer deep on the iOS and Android keyboards,
-      // which is the cost these chips exist to remove.
-      { k: '$', label: '$', text: true },
-      { k: '/', label: '/', text: true },
-    ],
-  },
-  { name: 'Danger', keys: [{ k: 'C-c', label: '^C', danger: true }] },
+const CHIPS: Chip[] = [
+  { k: '/clear', label: '/clear', command: true },
+  { k: '/compact', label: '/compact', command: true },
+  { k: 'Escape', label: 'esc' },
+  { k: 'Enter', label: '⏎' },
+  { k: 'Tab', label: 'tab', repeat: true },
+  { k: 'BSpace', label: '⌫', repeat: true },
+  { k: 'Up', label: '↑', repeat: true },
+  { k: 'Down', label: '↓', repeat: true },
+  { k: 'Left', label: '←', repeat: true },
+  { k: 'Right', label: '→', repeat: true },
+  { k: 'y', label: 'y' },
+  { k: 'n', label: 'n' },
+  { k: '1', label: '1' },
+  { k: '2', label: '2' },
+  { k: '3', label: '3' },
+  { k: 'BTab', label: '⇧tab', repeat: true },
+  // ^U is the one that answers the common case - accept a suggestion with
+  // tab, change your mind, clear the line in one tap. Neither it nor ⌫ is
+  // `danger`; they touch the input line, not the process, and ^C stays the
+  // only red chip.
+  { k: 'C-u', label: '^U' },
+  // Both are one modifier layer deep on the iOS and Android keyboards, which
+  // is the cost these chips exist to remove.
+  { k: '$', label: '$', text: true },
+  { k: '/', label: '/', text: true },
+  { k: 'C-c', label: '^C', danger: true },
 ]
 
 export function KeyPad({
@@ -113,7 +100,7 @@ export function KeyPad({
   onToggle: () => void
   disabled: boolean
 }) {
-  const groups = expanded ? GROUPS : GROUPS.slice(0, 1)
+  const shown = expanded ? CHIPS : CHIPS.slice(0, ROW)
 
   const press = (key: Chip) => {
     if (key.command) onCommand(key.k)
@@ -128,20 +115,15 @@ export function KeyPad({
     // scroll away with the chips - the exact failure this feature fixes.
     <div className="keypad-wrap">
       <div className={`keypad ${expanded ? 'open' : ''}`}>
-        {groups.map((g) => (
-          <div className="kp-row" key={g.name}>
-            {expanded && <span className="kp-label">{g.name}</span>}
-            {g.keys.map((key) => (
-              <button
-                key={key.k}
-                className={`key ${key.danger ? 'danger' : ''}`}
-                disabled={disabled}
-                onClick={() => press(key)}
-              >
-                {key.label}
-              </button>
-            ))}
-          </div>
+        {shown.map((key) => (
+          <button
+            key={key.k}
+            className={`key ${key.command ? 'cmd' : ''} ${key.danger ? 'danger' : ''}`}
+            disabled={disabled}
+            onClick={() => press(key)}
+          >
+            {key.label}
+          </button>
         ))}
       </div>
       {/* Not disabled with the chips. Expanding sends nothing to the pane, so
