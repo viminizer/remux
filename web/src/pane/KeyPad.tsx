@@ -99,10 +99,14 @@ const CHIPS: Chip[] = [
   { k: 'Down', label: '↓', repeat: true },
   // Slash commands need an agent's composer to mean anything. Hidden at a
   // shell prompt, where they are literal text, and on `other` - vim, python, a
-  // pager - for the same reason. Left on every agent rather than on Claude
-  // Code alone: these are Claude Code's commands, but Codex advertises slash
-  // commands of its own, and hiding a chip that works is worse than showing
-  // one that does not.
+  // pager - for the same reason.
+  //
+  // Shown on every agent, not on Claude Code alone. #30 assumed these were
+  // inert on Codex and that assumption was wrong: Kevin confirmed Codex takes
+  // both. So `hideOn` here is about the kind of program, not about which agent
+  // it is, and paneKind's split between `claude` and `agent` is currently
+  // unused by the built-ins. It stays because it is the honest classification
+  // and the next chip may well need it.
   { k: '/clear', label: '/clear', command: true, wide: true, hideOn: ['shell', 'other'] },
   { k: '/compact', label: '/compact', command: true, wide: true, hideOn: ['shell', 'other'] },
   { k: 'Left', label: '←', repeat: true },
