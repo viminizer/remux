@@ -1,8 +1,15 @@
 /**
- * One scrollable row of key chips above the composer.
+ * The key chips above the composer, in two states.
  *
- * These are the keys an agent's menus actually need, always reachable with a
- * thumb.
+ * Collapsed it is one scrolling row, which is all it used to be. That stopped
+ * scaling at about eight chips on a phone: everything past the eighth needed a
+ * horizontal swipe to a position you could not predict, and horizontal scroll
+ * gives no hint anything is out there. There are 20 chips now.
+ *
+ * Expanded it is a grid of every chip, grouped. The point is seeing them all
+ * at once - a longer scrolling row would only move the problem. It pushes the
+ * output up rather than covering it, because covering the screen you are
+ * reading while you decide what to send is the wrong trade.
  *
  * A chip is one of three things. A key name goes through the keys endpoint,
  * which is allowlisted server-side, so this list and KeyAllowlist in
@@ -20,70 +27,134 @@
  * panes too, where they are just text. Filtering chips by pane command would
  * be a larger change than this.
  */
-const KEYS: {
+type Chip = {
   k: string
   label: string
   text?: boolean
   command?: boolean
   danger?: boolean
-}[] = [
-  // First, because they are the most used and the row scrolls - the near end
-  // is the part your thumb reaches without moving.
-  { k: '/clear', label: '/clear', command: true },
-  { k: '/compact', label: '/compact', command: true },
-  { k: 'Escape', label: 'esc' },
-  { k: 'Enter', label: '⏎' },
-  { k: 'Tab', label: 'tab' },
-  // Both are one modifier layer deep on the iOS and Android keyboards, which
-  // is the cost this row exists to remove.
-  { k: '$', label: '$', text: true },
-  { k: '/', label: '/', text: true },
-  // The only way to erase a pane's input from the phone. The composer is a
-  // local draft, not a view of the agent's input line, so backspacing there
-  // edits your own text and leaves the agent's alone. ^U is the one that
-  // answers the common case - accept a suggestion with tab, change your mind,
-  // clear the line in one tap. Neither is `danger`; they touch the input line,
-  // not the process, and ^C stays the only red chip.
-  { k: 'BSpace', label: '⌫' },
-  { k: 'C-u', label: '^U' },
-  { k: 'BTab', label: '⇧tab' },
-  { k: 'Up', label: '↑' },
-  { k: 'Down', label: '↓' },
-  { k: 'Left', label: '←' },
-  { k: 'Right', label: '→' },
-  { k: '1', label: '1' },
-  { k: '2', label: '2' },
-  { k: '3', label: '3' },
-  { k: 'y', label: 'y' },
-  { k: 'n', label: 'n' },
-  { k: 'C-c', label: '^C', danger: true },
+  /**
+   * Whether tapping this leaves the panel open.
+   *
+   * Auto-collapse is a property of the chip, not of the panel. Arrows get
+   * tapped three or four times to walk back through history, and ⌫ more than
+   * that; collapsing after each one would make them unusable. One-shot chips
+   * collapse, because after them you are going back to reading.
+   */
+  repeat?: boolean
+}
+
+/**
+ * The first group is also the collapsed row, so the two orders agree - the row
+ * is the top line of the grid rather than a different arrangement you have to
+ * re-learn when you expand it.
+ */
+const GROUPS: { name: string; keys: Chip[] }[] = [
+  {
+    name: 'Common',
+    keys: [
+      { k: '/clear', label: '/clear', command: true },
+      { k: '/compact', label: '/compact', command: true },
+      { k: 'Escape', label: 'esc' },
+      { k: 'Enter', label: '⏎' },
+      { k: 'Tab', label: 'tab', repeat: true },
+      { k: 'BSpace', label: '⌫', repeat: true },
+    ],
+  },
+  {
+    name: 'Move',
+    keys: [
+      { k: 'Up', label: '↑', repeat: true },
+      { k: 'Down', label: '↓', repeat: true },
+      { k: 'Left', label: '←', repeat: true },
+      { k: 'Right', label: '→', repeat: true },
+    ],
+  },
+  {
+    name: 'Answer',
+    keys: [
+      { k: 'y', label: 'y' },
+      { k: 'n', label: 'n' },
+      { k: '1', label: '1' },
+      { k: '2', label: '2' },
+      { k: '3', label: '3' },
+    ],
+  },
+  {
+    name: 'Edit',
+    keys: [
+      { k: 'BTab', label: '⇧tab', repeat: true },
+      // ^U is the one that answers the common case - accept a suggestion with
+      // tab, change your mind, clear the line in one tap. Neither it nor ⌫ is
+      // `danger`; they touch the input line, not the process, and ^C stays the
+      // only red chip.
+      { k: 'C-u', label: '^U' },
+      // Both are one modifier layer deep on the iOS and Android keyboards,
+      // which is the cost these chips exist to remove.
+      { k: '$', label: '$', text: true },
+      { k: '/', label: '/', text: true },
+    ],
+  },
+  { name: 'Danger', keys: [{ k: 'C-c', label: '^C', danger: true }] },
 ]
 
 export function KeyPad({
   onKey,
   onText,
   onCommand,
+  expanded,
+  onToggle,
   disabled,
 }: {
   onKey: (k: string) => void
   onText: (t: string) => void
   onCommand: (t: string) => void
+  expanded: boolean
+  onToggle: () => void
   disabled: boolean
 }) {
+  const groups = expanded ? GROUPS : GROUPS.slice(0, 1)
+
+  const press = (key: Chip) => {
+    if (key.command) onCommand(key.k)
+    else if (key.text) onText(key.k)
+    else onKey(key.k)
+    if (expanded && !key.repeat) onToggle()
+  }
+
   return (
-    <div className="keypad">
-      {KEYS.map((key) => (
-        <button
-          key={key.k}
-          className={`key ${key.danger ? 'danger' : ''}`}
-          disabled={disabled}
-          onClick={() =>
-            key.command ? onCommand(key.k) : key.text ? onText(key.k) : onKey(key.k)
-          }
-        >
-          {key.label}
-        </button>
-      ))}
+    // The chevron is a sibling of .keypad, never a child. .keypad scrolls
+    // horizontally when collapsed, so a child would either clip at the edge or
+    // scroll away with the chips - the exact failure this feature fixes.
+    <div className="keypad-wrap">
+      <div className={`keypad ${expanded ? 'open' : ''}`}>
+        {groups.map((g) => (
+          <div className="kp-row" key={g.name}>
+            {expanded && <span className="kp-label">{g.name}</span>}
+            {g.keys.map((key) => (
+              <button
+                key={key.k}
+                className={`key ${key.danger ? 'danger' : ''}`}
+                disabled={disabled}
+                onClick={() => press(key)}
+              >
+                {key.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      {/* Not disabled with the chips. Expanding sends nothing to the pane, so
+          there is no reason a stale connection should stop you looking at what
+          you could send once it comes back. */}
+      <button
+        className={`kp-toggle ${expanded ? 'open' : ''}`}
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse the key pad' : 'Show all keys'}
+      >
+        <span aria-hidden="true">⌃</span>
+      </button>
     </div>
   )
 }

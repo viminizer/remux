@@ -22,6 +22,16 @@ export interface Settings {
    * ever need to follow you between the phone and the laptop.
    */
   starred: string[]
+  /**
+   * Whether the key pad is expanded into its full grid.
+   *
+   * Kept here rather than in component state so it survives switching panes
+   * and reloading - it is a preference about how you work, not a per-pane
+   * mode, and having it reset on every pane open would be its own annoyance.
+   * Device-local for the same reason `starred` is: nothing on the server acts
+   * on it.
+   */
+  keypadOpen: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -33,6 +43,7 @@ const DEFAULTS: Settings = {
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],
+  keypadOpen: false,
 }
 
 const KEY = 'remux.settings'

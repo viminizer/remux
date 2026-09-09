@@ -184,8 +184,8 @@ export default function App() {
   // hidden, so there is nothing to open or close. drawerOpen can still be true
   // on arrival there - open the drawer on a phone, turn it landscape, cross
   // the breakpoint - and a stale true is not cosmetic: overlayOpen feeds the
-  // history entry Android back consumes, so it would leave an overlay marked
-  // open that the user can neither see nor dismiss.
+  // history entry that Android back consumes, so it would leave an overlay
+  // marked open that the user can neither see nor dismiss.
   useEffect(() => {
     const pinned = window.matchMedia('(min-width:900px)')
     const sync = () => pinned.matches && setDrawerOpen(false)
@@ -201,20 +201,29 @@ export default function App() {
   // landing in that gap hit no listener and the menu stayed open.
   const closeMenu = useCallback(() => setMenuOpen(false), [])
 
-  // Closing the topmost overlay: the menu, then any sheet, then the drawer.
+  // Closing the topmost overlay: the menu, then any sheet, then the expanded
+  // key pad, then the drawer.
   // Held in a ref so the popstate listener below can stay mounted once instead
   // of re-subscribing whenever one of them changes.
   // Returns whether anything is still open underneath, which the popstate
   // handler needs synchronously - setState has not landed by then, so it
   // cannot just re-read the flags.
+  //
+  // The key pad sits above the drawer and below the sheets. It is the only
+  // tier here that is also a saved preference, so back collapsing it writes
+  // that preference - which is right: you closed it, it stays closed.
   const closeTop = useRef((): boolean => false)
   closeTop.current = () => {
     if (menuOpen) {
       setMenuOpen(false)
-      return sheet !== 'none' || drawerOpen
+      return sheet !== 'none' || settings.keypadOpen || drawerOpen
     }
     if (sheet !== 'none') {
       setSheet('none')
+      return settings.keypadOpen || drawerOpen
+    }
+    if (settings.keypadOpen) {
+      patch({ keypadOpen: false })
       return drawerOpen
     }
     if (drawerOpen) {
@@ -254,7 +263,7 @@ export default function App() {
   // instead of popped - which is deliberate, and is the only way a pane gets
   // a history entry at all. Popping there would have reverted the navigation
   // the moment the drawer closed.
-  const overlayOpen = menuOpen || sheet !== 'none' || drawerOpen
+  const overlayOpen = menuOpen || sheet !== 'none' || settings.keypadOpen || drawerOpen
   const marked = useRef(false)
 
   useEffect(() => {
@@ -384,6 +393,18 @@ export default function App() {
   const sendCommand = async (text: string) => {
     if (!currentId) return
     if (await guard('key', () => api.keys(currentId, ['C-u']))) sendText(text, false)
+  }
+
+  // Expanding dismisses the software keyboard.
+  //
+  // viewport.ts shrinks --app-h while the keyboard is up, and the expanded pad
+  // takes another ~140px, which between them would leave almost no output
+  // visible. The key pad exists so the keyboard is not needed to answer an
+  // agent, so when you ask for the full grid, the keyboard is what should go.
+  const toggleKeypad = () => {
+    const next = !settings.keypadOpen
+    if (next && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    patch({ keypadOpen: next })
   }
 
   const checkNow = async () => {
@@ -570,6 +591,8 @@ export default function App() {
                 onKey={sendKey}
                 onText={(t) => sendText(t, false)}
                 onCommand={sendCommand}
+                expanded={settings.keypadOpen}
+                onToggle={toggleKeypad}
                 disabled={inputDisabled}
               />
 

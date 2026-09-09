@@ -151,12 +151,50 @@ body.offline .output pre{opacity:.62}
 .jump.show{display:block}
 
 /* ── key pad ──────────────────────────────────────────────── */
+/* The wrap exists only to give the chevron something to position against.
+   .keypad's rows scroll when collapsed, so the chevron cannot live inside one:
+   it would clip at the edge or scroll away with the chips, which is the exact
+   failure this feature fixes. */
+.keypad-wrap{position:relative;flex:0 0 auto}
 .keypad{
-  flex:0 0 auto;display:flex;gap:6px;padding:8px 12px;
-  overflow-x:auto;background:var(--mantle);border-top:1px solid var(--s0);
-  scrollbar-width:none;
+  display:flex;flex-direction:column;gap:6px;padding:8px 12px;
+  background:var(--mantle);border-top:1px solid var(--s0);
 }
-.keypad::-webkit-scrollbar{display:none}
+/* Collapsed: one row scrolling sideways, as it always was. Expanded: rows
+   stack and wrap, so nothing is off-screen, and the block grows downward in
+   the column - which pushes the output up instead of covering it. */
+.kp-row{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.keypad.open .kp-row{flex-wrap:wrap;overflow-x:visible}
+.kp-row::-webkit-scrollbar{display:none}
+/* Room so a chip never sits under the chevron. Only the collapsed row needs
+   it; expanded, the chevron sits above the first row's own wrap point. */
+.keypad:not(.open) .kp-row{padding-right:34px}
+.kp-label{
+  flex:0 0 46px;font-size:10.5px;font-weight:600;color:var(--ov0);
+  text-transform:uppercase;letter-spacing:.04em;
+}
+
+/* The chevron: a handle overhanging the key pad's top edge.
+   - It overhangs upward, not rightward, because .keypad already carries
+     env(safe-area-inset-right) and the app is fullscreen, so the right edge is
+     safe-area territory. Overhanging up is also what makes it read as a grip.
+   - The --mantle backing is not decoration: chips scroll underneath, and
+     without it they show through the glyph and read as a rendering bug.
+   - The glyph is small; the target is not. Padding does that, so the drawing
+     stays light while the hit box meets the 44px below. */
+.kp-toggle{
+  position:absolute;right:10px;top:-13px;z-index:2;
+  display:grid;place-items:center;width:34px;height:30px;padding:0;
+  border:1px solid var(--s0);border-bottom:0;border-radius:9px 9px 0 0;
+  background:var(--mantle);color:var(--sub1);
+  font-size:13px;line-height:1;cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.kp-toggle span{display:block;transition:transform .18s}
+.kp-toggle.open span{transform:rotate(180deg)}
+.kp-toggle:active{background:var(--s0);color:var(--text)}
+@media (hover:hover){.kp-toggle:hover{background:var(--s0);color:var(--text)}}
+@media (prefers-reduced-motion:reduce){.kp-toggle span{transition:none}}
 .key{
   flex:0 0 auto;min-width:38px;height:34px;padding:0 11px;
   background:var(--s0);border:1px solid var(--s1);border-radius:9px;
@@ -503,6 +541,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   /* Thumb targets. The key pad is the main way to answer an agent, so it is
      the one that matters most. */
   .key{height:40px;min-width:42px}
+  /* 44px of touch target without a 44px drawing. The button stays 34x30 so it
+     still reads as a small handle; ::before extends the hit box below and to
+     the sides, which matters because it sits in the bottom-right corner -
+     after the app went fullscreen, that is where Android's gesture area is. */
+  .kp-toggle::before{content:'';position:absolute;inset:-9px -9px -18px}
   .iconbtn{width:40px;height:40px;flex:0 0 40px}
   .send{width:36px;height:36px;flex:0 0 36px}
   .stepper button{width:32px;height:32px}
@@ -531,7 +574,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 /* A scroll container drops its end padding in Safari; a spacer restores it so
    the last key is not flush against the edge. */
-.keypad::after{content:'';flex:0 0 6px}
+.kp-row::after{content:'';flex:0 0 6px}
 
 /* The key pad and composer are one block visually, and the toast and the
    sheets both have to clear it. */
