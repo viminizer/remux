@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Settings, CustomChip } from '../store'
-import { CHIPS, COLUMNS } from '../pane/KeyPad'
+import { CHIPS, COLLAPSED } from '../pane/KeyPad'
 
 /**
  * Everything about the key pad, on its own screen.
@@ -84,14 +84,14 @@ function BuiltIns({
             <small>the row above the composer</small>
           </div>
         </div>
-        <div className="crow chip-grid-row">{grid(CHIPS.slice(0, COLUMNS))}</div>
+        <div className="crow chip-grid-row">{grid(CHIPS.slice(0, COLLAPSED))}</div>
         <div className="crow chip-grid-row">
           <div className="lbl">
             Behind the chevron
             <small>some of these hide themselves on panes they are useless on</small>
           </div>
         </div>
-        <div className="crow chip-grid-row">{grid(CHIPS.slice(COLUMNS))}</div>
+        <div className="crow chip-grid-row">{grid(CHIPS.slice(COLLAPSED))}</div>
       </div>
     </div>
   )

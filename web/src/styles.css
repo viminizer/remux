@@ -190,8 +190,14 @@ body.offline .output pre{opacity:.62}
   padding:8px 12px;background:var(--mantle);border-top:1px solid var(--s0);
   overflow:hidden;transition:height .2s cubic-bezier(.3,.8,.4,1);
 }
-/* A label that will not fit an eighth of a phone takes two cells. */
+/* A label that will not fit an eighth of a phone takes two cells, and so do
+   esc and ⏎ - not for the label's sake but because they are the two pressed
+   without looking, anchored to the row's two edges where a thumb lands first. */
 .key.wide{grid-column:span 2}
+/* Breaks the row before this chip. Must come after .key.wide and tie with it
+   on specificity, so a wide chip that also starts a block keeps both: the
+   shorthand above sets grid-column-start to auto, and this puts it back. */
+.key.newrow{grid-column-start:1}
 
 /* The chevron: a button floating clear above the key pad.
    - It is the second thing that floats there, and .jump is the first, so it

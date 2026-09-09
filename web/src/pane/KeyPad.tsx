@@ -49,6 +49,13 @@ export type Chip = {
   /** Span two grid columns, for a label that will not fit an eighth. */
   wide?: boolean
   /**
+   * Start this chip at column 1, breaking the row before it.
+   *
+   * Set by the pad, never by a definition: it marks the first custom chip, so
+   * that block always begins on a line of its own.
+   */
+  newrow?: boolean
+  /**
    * Pane kinds this chip is not worth a cell on. Absent means every pane.
    *
    * A hide-list rather than a show-list so that each entry is a claim someone
@@ -71,32 +78,48 @@ export type Chip = {
   repeat?: boolean
 }
 
-/**
- * The grid is eight wide, and the collapsed row is its first row - the same
- * eight chips in the same places, so expanding adds to what you were looking
- * at instead of rearranging it.
- */
+/** The grid's width in cells. */
 export const COLUMNS = 8
 
 /**
- * One flat list in grid order. The first COLUMNS entries are the collapsed
- * row, and they are the eight worth a permanent slot: the four keys a TUI
- * answers to; $ and / because both sit one modifier layer deep on the iOS and
- * Android keyboards, which is the cost these chips exist to remove; and ↑ ↓,
- * which with ⏎ are a whole answer to an agent's numbered prompt without ever
- * expanding the pad.
+ * How many entries of CHIPS make the collapsed row.
  *
- * Eighteen chips, one cell each, so the grid is 8 / 8 / 2 before any custom
+ * Not the same number as COLUMNS any more, and that is the whole reason it
+ * exists: esc and ⏎ take two cells each, so six chips fill the eight. These
+ * two have to stay in step - the first COLLAPSED chips must come to exactly
+ * COLUMNS cells, or the collapsed state renders a partial row or spills into
+ * the next one.
+ */
+export const COLLAPSED = 6
+
+/**
+ * One flat list in grid order. The first COLLAPSED entries are the row that is
+ * always on screen.
+ *
+ * esc and ⏎ are the two that are worth double: they are the answer to most of
+ * what an agent puts on the screen, they are pressed without looking, and a
+ * thumb reaching the bottom of a phone finds the far edges before it finds the
+ * middle. So esc anchors the left of the row and ⏎ the right, and the four
+ * single cells between them - tab, ⌫, $ and / - are the ones that cost a
+ * modifier layer on the iOS and Android keyboards, which is the cost these
+ * chips exist to remove.
+ *
+ * ↑ ↓ used to hold the right end and now lead the second row. They are worth a
+ * permanent slot far less than ⏎ is: walking back through history is a thing
+ * you do deliberately, with the pad already open.
+ *
+ * Eighteen chips over twenty cells, so the grid is 8 / 8 / 4 before any custom
  * chip is added and before hideOn drops any. Reordering this changes the
  * layout.
  */
 export const CHIPS: Chip[] = [
-  { k: 'Escape', label: 'esc' },
-  { k: 'Enter', label: '⏎' },
+  { k: 'Escape', label: 'esc', wide: true },
   { k: 'Tab', label: 'tab', repeat: true },
   { k: 'BSpace', label: '⌫', repeat: true },
   { k: '$', label: '$', text: true },
   { k: '/', label: '/', text: true },
+  { k: 'Enter', label: '⏎', wide: true },
+  // ── everything below is behind the chevron ──
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
   // /clear and /compact were here, and are not any more. They were the only
@@ -173,16 +196,16 @@ export function KeyPad({
   /** pane_current_command of the pane on screen, for choosing chips. */
   command: string
 }) {
-  // Custom chips lead the expanded area rather than joining the collapsed row.
-  // The collapsed row is the same eight chips in the same eight places on
-  // every pane and every session, and that predictability is most of what
-  // makes it usable without looking; a list that grows and shrinks from
-  // Settings would take it away. Leading the second row is the next best
-  // position - first thing under the thumb when the pad opens.
+  // Custom chips come last, on a row of their own. They used to lead the
+  // expanded area, which put them first under the thumb but mixed them into
+  // the built-ins: a row that was half keys and half whatever you had defined,
+  // reflowing every time one was added. A block of their own is easier to aim
+  // at precisely because its contents are yours and its position does not move
+  // when a pane switch drops a built-in.
   //
-  // A half-filled chip is dropped rather than rendered. Settings adds a blank
-  // row for you to fill in, so an incomplete one is a normal intermediate
-  // state, not an error worth reporting.
+  // A half-filled chip is dropped rather than rendered. The key pad screen
+  // adds a blank row for you to fill in, so an incomplete one is a normal
+  // intermediate state, not an error worth reporting.
   const extra: Chip[] = custom
     .filter((c) => c.label.trim() !== '' && c.text !== '')
     .map((c) => ({
@@ -195,12 +218,11 @@ export function KeyPad({
       hideOn: HIDE_FOR[c.on ?? 'all'],
     }))
 
-  // Filtering stops at the collapsed row. Those eight are the same chips in
-  // the same eight places on every pane, which is what makes them usable
-  // without looking; letting a pane switch reflow them would cost more than
-  // the cells it saved. They are also the eight that are useful everywhere -
-  // esc, enter, tab, backspace, $, /, and the two arrows - so nothing is
-  // given up by exempting them.
+  // Filtering stops at the collapsed row. Those six are the same chips in the
+  // same places on every pane, which is what makes them usable without
+  // looking; letting a pane switch reflow them would cost more than the cells
+  // it saved. They are also the six that are useful everywhere - esc, tab,
+  // backspace, $, / and enter - so nothing is given up by exempting them.
   const kind = paneKind(command)
   const visible = (c: Chip) => !c.hideOn?.includes(kind)
 
@@ -209,10 +231,17 @@ export function KeyPad({
   // hideOn. The row keeps its order and simply gets shorter: a hole would say
   // "something is missing here", and nothing is.
   const on = (c: Chip) => !hidden.includes(c.k)
-  const first = CHIPS.slice(0, COLUMNS).filter(on)
+  const first = CHIPS.slice(0, COLLAPSED).filter(on)
+
+  // The first custom chip carries `newrow`, which starts it at column 1 and so
+  // pushes the whole block onto a fresh line. Doing it on the chip rather than
+  // with a spacer element keeps the pad one grid, which is what the height
+  // measurement and the two-state render both rest on.
+  const mine = extra.filter(visible)
+  if (mine.length) mine[0] = { ...mine[0], newrow: true }
 
   const shown = expanded
-    ? [...first, ...extra.filter(visible), ...CHIPS.slice(COLUMNS).filter(on).filter(visible)]
+    ? [...first, ...CHIPS.slice(COLLAPSED).filter(on).filter(visible), ...mine]
     : first
 
   const press = (key: Chip) => {
@@ -268,7 +297,7 @@ export function KeyPad({
         {shown.map((key) => (
           <button
             key={key.id ?? key.k}
-            className={`key ${key.wide ? 'wide' : ''} ${key.danger ? 'danger' : ''}`}
+            className={`key ${key.wide ? 'wide' : ''} ${key.newrow ? 'newrow' : ''} ${key.danger ? 'danger' : ''}`}
             disabled={disabled}
             onClick={() => press(key)}
           >
