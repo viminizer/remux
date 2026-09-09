@@ -44,6 +44,13 @@ export function Composer({
   return (
     <div className="composer">
       <div className="wrap">
+        {/* No autocapitalise. `sentences` treats an empty field as the start of
+            one and spends the shift on the letter after a leading `/`, so a
+            typed slash command or skill call arrives as `/Compact` and the
+            agent reads it as a message rather than running it. Prompts, paths
+            and shell commands all care about case; a prose capital is the only
+            thing typed here that does not. Every other field in the app is
+            already off. */}
         <textarea
           ref={ta}
           rows={1}
@@ -52,7 +59,7 @@ export function Composer({
           placeholder={placeholder}
           spellCheck={false}
           autoCorrect="off"
-          autoCapitalize="sentences"
+          autoCapitalize="off"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             // Shift+Enter always means "new line", on every platform.
