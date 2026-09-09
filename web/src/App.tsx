@@ -606,7 +606,6 @@ export default function App() {
               <PaneMenu
                 pane={current}
                 wrap={settings.wrap}
-                fontSize={settings.fontSize}
                 starred={settings.starred.includes(current.id)}
                 onClose={closeMenu}
                 onStar={() => {
@@ -614,12 +613,14 @@ export default function App() {
                   setMenuOpen(false)
                 }}
                 onWrap={() => {
+                  // Every tap in this menu closes it now. The only thing that
+                  // does not is Kill pane, and that is not a tap - HoldButton
+                  // fires on a long press, so a stray tap there leaves both the
+                  // pane and the menu alone, which is the point of the hold.
+                  setMenuOpen(false)
                   patch({ wrap: !settings.wrap })
                   toast(settings.wrap ? 'mirror — exact tmux screen' : 'wrap on — reflowed for reading')
                 }}
-                onFont={(d) =>
-                  patch({ fontSize: Math.min(20, Math.max(10, settings.fontSize + d)) })
-                }
                 onInterrupt={async () => {
                   setMenuOpen(false)
                   if (await guard('interrupt', () => api.interrupt(current.id)))
@@ -772,7 +773,6 @@ function PaneMenu({
   wrap,
   onClose,
   onWrap,
-  onFont,
   onInterrupt,
   onFocus,
   onRename,
@@ -782,11 +782,9 @@ function PaneMenu({
 }: {
   pane: Pane
   wrap: boolean
-  fontSize: number
   starred: boolean
   onClose: () => void
   onWrap: () => void
-  onFont: (d: number) => void
   onInterrupt: () => void
   onFocus: () => void
   onRename: () => void
@@ -816,16 +814,14 @@ function PaneMenu({
         Focus on laptop
       </button>
       <div className="msep" />
+      {/* Font size was here, with a stepper. It was the only control in the
+          menu you were meant to press more than once, which is why the menu
+          used to stay open after a tap - one exception that made the whole
+          menu feel unresponsive on every other item. It lives in Settings,
+          where a stepper belongs and where it already was. */}
       <button className="mi" onClick={onWrap}>
         Wrap lines <small>{wrap ? 'on' : 'off'}</small>
       </button>
-      <div className="mi" style={{ cursor: 'default' }}>
-        Font size
-        <span className="stepper">
-          <button onClick={() => onFont(-1)}>−</button>
-          <button onClick={() => onFont(1)}>+</button>
-        </span>
-      </div>
       <div className="msep" />
       <button className="mi" onClick={onStar}>
         {starred ? 'Unstar pane' : 'Star pane'}
