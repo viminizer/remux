@@ -398,7 +398,7 @@ export default function App() {
   if (denied) return <NotAuthorized login={denied.login} allowed={denied.allowed} />
   if (sessions === null) return <BootSkeleton />
 
-  const title = current ? paneTitle(current) : gone ? gone : 'remux'
+  const title = current ? paneTitle(current) : gone ? gone : 'Remux'
   const sub = current
     ? `${current.sessionName} · win ${current.windowIndex} · ${displayCommand(meta?.cmd ?? current.command)}`
     : ''

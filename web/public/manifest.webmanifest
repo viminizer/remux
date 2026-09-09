@@ -1,6 +1,6 @@
 {
-  "name": "remux",
-  "short_name": "remux",
+  "name": "Remux",
+  "short_name": "Remux",
   "description": "Supervise your Mac's tmux sessions and coding agents from your phone.",
   "start_url": "/",
   "scope": "/",

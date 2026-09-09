@@ -59,7 +59,7 @@ self.addEventListener('push', (event) => {
   } catch (e) {
     data = {}
   }
-  const title = data.title || 'remux'
+  const title = data.title || 'Remux'
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || 'An agent needs an answer.',

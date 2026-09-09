@@ -228,7 +228,7 @@ export function SettingsScreen({
           <h3>About</h3>
           <div className="card">
             <div className="crow">
-              <div className="lbl">remux</div>
+              <div className="lbl">Remux</div>
               <div className="val">{served ?? '—'}</div>
             </div>
             <div className="crow">
