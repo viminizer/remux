@@ -491,6 +491,33 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 }
 .linkbtn:disabled{opacity:.4;cursor:default}
 
+/* A .crow that navigates. Not a div with onClick: the drawer footer was one,
+   and it was not focusable, did not answer Enter or Space, and was announced
+   as plain text. Same fix here - a real button, made to sit on the grid. */
+.rowlink{
+  width:100%;border:0;background:transparent;font-family:var(--ui);
+  color:var(--text);text-align:left;cursor:pointer;
+}
+.rowlink .val{color:var(--ov0);font-size:16px}
+.rowlink:active{background:var(--s0)}
+@media (hover:hover){.rowlink:hover{background:var(--s0)}}
+
+/* ── the built-in chip toggles ────────────────────────────── */
+/* The pad's own grid, rendered where you can edit it: turning a chip off is a
+   visible change to the thing you use rather than a switch in a list of
+   twenty. Eight columns like the real pad, so a wide chip looks wide and the
+   first row looks like the row you actually see.
+
+   It is two cells narrower than the pad - the settings card has 14px of
+   padding against the pad's 12px - so a label sits one pixel tighter here than
+   it will in use. `.key` truncates either way. */
+.chipgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;width:100%}
+.chip-grid-row{padding-top:9px;padding-bottom:9px}
+.chip-grid-row + .chip-grid-row{padding-top:0;border-top:0}
+/* Off is dimmed rather than crossed out or hollow: it is still the same chip,
+   and dimming is the one treatment that survives `danger` keeping its red. */
+.key.off{opacity:.3}
+
 /* ── the custom chip editor ───────────────────────────────── */
 /* A chip is a summary line until it is opened. Showing every control for every
    chip cost about 178px each on a 390px phone - two stacked inputs at the 16px
@@ -550,10 +577,20 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .chiptog.on{background:var(--blue);border-color:var(--blue);color:var(--crust)}
 /* Segmented, so "where it shows" reads as one choice with one answer rather
    than three switches that could all be off. */
-.chip-on{display:flex;border:1px solid var(--s1);border-radius:8px;overflow:hidden}
+/* Five equal cells rather than five buttons sized to their labels: they are
+   one question with five answers, and a group whose segments jump width as the
+   answer changes reads as five separate controls. Equal cells also make it fit
+   - at 360px, the narrowest phone worth supporting, the group has ~304px to
+   spend, which is 60px a cell against the ~55px `claude` needs. */
+.chip-on{
+  display:grid;grid-template-columns:repeat(5,1fr);width:100%;
+  border:1px solid var(--s1);border-radius:8px;overflow:hidden;
+}
 .chip-on button{
-  height:28px;padding:0 9px;border:0;border-left:1px solid var(--s1);cursor:pointer;
-  background:var(--s0);color:var(--ov1);font-family:var(--ui);font-size:11.5px;font-weight:600;
+  min-width:0;height:28px;padding:0 4px;border:0;border-left:1px solid var(--s1);
+  cursor:pointer;background:var(--s0);color:var(--ov1);
+  font-family:var(--ui);font-size:11.5px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .chip-on button:first-child{border-left:0}
 .chip-on button.on{background:var(--blue);color:var(--crust)}

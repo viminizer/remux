@@ -4,10 +4,11 @@
  * It used to be one row that scrolled sideways. That stopped scaling at about
  * eight chips on a phone: everything past the eighth needed a horizontal swipe
  * to a position you could not predict, and horizontal scroll gives no hint
- * anything is out there. There are 20 chips now.
+ * anything is out there. There are 18 built-ins now, plus whatever has been
+ * added on the key pad screen.
  *
- * So it is one six-column grid, and the two states differ only in how much of
- * it is rendered: collapsed is the first row, expanded is all of it. Nothing
+ * So it is one eight-column grid, and the two states differ only in how much
+ * of it is rendered: collapsed is the first row, expanded is all of it. Nothing
  * scrolls in either. Expanded pushes the output up rather than covering it,
  * because covering the screen you are reading while you decide what to send is
  * the wrong trade.
@@ -21,19 +22,19 @@
  *
  * A `command` chip is a `text` chip that clears the input line first. Slash
  * commands only register at the start of an empty composer, so typing one into
- * a half-written prompt produces a line that silently does nothing.
+ * a half-written prompt produces a line that silently does nothing. No
+ * built-in is one any more - the two that were are better made by hand - but
+ * a custom chip can be.
  *
- * These are Claude Code commands, and the pad has no per-pane filtering -
- * `disabled` is only stale || !current - so they show on Codex and plain shell
- * panes too, where they are just text. Filtering chips by pane command would
- * be a larger change than this.
+ * Which chips a pane gets is `hideOn` against paneKind, and which exist at all
+ * is the key pad screen: `hidden` turns a built-in off, `custom` adds one.
  */
 import { useLayoutEffect, useRef } from 'react'
 import type { CustomChip } from '../store'
 import type { PaneKind } from '../types'
 import { paneKind } from '../types'
 
-type Chip = {
+export type Chip = {
   /**
    * What gets sent. For a key chip this is the tmux key name; for a text or
    * command chip it is the literal string.
@@ -75,7 +76,7 @@ type Chip = {
  * eight chips in the same places, so expanding adds to what you were looking
  * at instead of rearranging it.
  */
-const COLUMNS = 8
+export const COLUMNS = 8
 
 /**
  * One flat list in grid order. The first COLUMNS entries are the collapsed
@@ -85,11 +86,11 @@ const COLUMNS = 8
  * which with ⏎ are a whole answer to an agent's numbered prompt without ever
  * expanding the pad.
  *
- * The slash commands are two columns wide - `/compact` does not fit an eighth
- * of a phone - so 20 chips fill 22 cells and it comes out 8 / 6 / 6 with no
- * ragged row but the last. Reordering this changes the layout.
+ * Eighteen chips, one cell each, so the grid is 8 / 8 / 2 before any custom
+ * chip is added and before hideOn drops any. Reordering this changes the
+ * layout.
  */
-const CHIPS: Chip[] = [
+export const CHIPS: Chip[] = [
   { k: 'Escape', label: 'esc' },
   { k: 'Enter', label: '⏎' },
   { k: 'Tab', label: 'tab', repeat: true },
@@ -98,18 +99,17 @@ const CHIPS: Chip[] = [
   { k: '/', label: '/', text: true },
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
-  // Slash commands need an agent's composer to mean anything. Hidden at a
-  // shell prompt, where they are literal text, and on `other` - vim, python, a
-  // pager - for the same reason.
+  // /clear and /compact were here, and are not any more. They were the only
+  // built-ins that were somebody's particular workflow rather than a key a
+  // terminal answers to, and now that a chip can be defined on the key pad
+  // screen - `command` and `wide` and all - shipping two opinions about which
+  // slash commands matter is worse than shipping none. Anyone who wants them
+  // makes them, alongside the ones this list would never have guessed.
   //
-  // Shown on every agent, not on Claude Code alone. #30 assumed these were
-  // inert on Codex and that assumption was wrong: Kevin confirmed Codex takes
-  // both. So `hideOn` here is about the kind of program, not about which agent
-  // it is, and paneKind's split between `claude` and `agent` is currently
-  // unused by the built-ins. It stays because it is the honest classification
-  // and the next chip may well need it.
-  { k: '/clear', label: '/clear', command: true, wide: true, hideOn: ['shell', 'other'] },
-  { k: '/compact', label: '/compact', command: true, wide: true, hideOn: ['shell', 'other'] },
+  // What they leave behind is used by custom chips and stays: `command`,
+  // `wide`, and paneKind naming Claude Code and Codex separately - which no
+  // built-in needs, and which is exactly what a hand-made skill chip needs,
+  // since the two spell a skill call differently.
   { k: 'Left', label: '←', repeat: true },
   { k: 'Right', label: '→', repeat: true },
   // Answers to an agent's prompt. Hidden only at a shell, where you would
@@ -133,14 +133,21 @@ const CHIPS: Chip[] = [
  * A custom chip states where it belongs; the pad filters on where a chip does
  * not. This is the one place the two meet.
  *
- * `agent` and `shell` both exclude `other`, unlike the built-ins: a person who
- * picked "agents only" in Settings said what they meant, and guessing past
- * that would be second-guessing them.
+ * Every one of these excludes `other`, unlike the built-ins: someone who
+ * picked a target on the key pad screen said what they meant, and stretching
+ * it to cover vim and python would be second-guessing them.
+ *
+ * `claude` and `codex` are their own targets because a skill call is spelled
+ * differently on each - a slash against a dollar - and that is the single most
+ * common thing a custom chip is for. `agent` is the wider answer, for a chip
+ * that suits any of them.
  */
-const HIDE_FOR: Record<'all' | 'agent' | 'shell', PaneKind[]> = {
+const HIDE_FOR: Record<CustomChip['on'], PaneKind[]> = {
   all: [],
+  claude: ['codex', 'agent', 'shell', 'other'],
+  codex: ['claude', 'agent', 'shell', 'other'],
   agent: ['shell', 'other'],
-  shell: ['claude', 'agent', 'other'],
+  shell: ['claude', 'codex', 'agent', 'other'],
 }
 
 export function KeyPad({
@@ -151,6 +158,7 @@ export function KeyPad({
   onToggle,
   disabled,
   custom,
+  hidden,
   command,
 }: {
   onKey: (k: string) => void
@@ -160,6 +168,8 @@ export function KeyPad({
   onToggle: () => void
   disabled: boolean
   custom: CustomChip[]
+  /** `k` of every built-in turned off on the key pad screen. */
+  hidden: string[]
   /** pane_current_command of the pane on screen, for choosing chips. */
   command: string
 }) {
@@ -194,9 +204,16 @@ export function KeyPad({
   const kind = paneKind(command)
   const visible = (c: Chip) => !c.hideOn?.includes(kind)
 
+  // Turning a built-in off is a decision, not a guess about the pane, so it
+  // applies to the collapsed row too - the exemption above is only from
+  // hideOn. The row keeps its order and simply gets shorter: a hole would say
+  // "something is missing here", and nothing is.
+  const on = (c: Chip) => !hidden.includes(c.k)
+  const first = CHIPS.slice(0, COLUMNS).filter(on)
+
   const shown = expanded
-    ? [...CHIPS.slice(0, COLUMNS), ...extra.filter(visible), ...CHIPS.slice(COLUMNS).filter(visible)]
-    : CHIPS.slice(0, COLUMNS)
+    ? [...first, ...extra.filter(visible), ...CHIPS.slice(COLUMNS).filter(on).filter(visible)]
+    : first
 
   const press = (key: Chip) => {
     if (key.command) onCommand(key.k)

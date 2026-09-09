@@ -41,6 +41,18 @@ export interface Settings {
    * escalation if these should follow you between the phone and the laptop.
    */
   chips: CustomChip[]
+  /**
+   * Built-in chips turned off, by their `k`.
+   *
+   * A hide-list rather than a show-list, so a chip added to CHIPS later
+   * appears for everyone instead of only for someone who has never opened
+   * this screen. The cost is that a `k` here is a string with no owner: if a
+   * built-in is ever renamed or dropped, the stale entry hides nothing, which
+   * is the harmless direction to fail in.
+   *
+   * Device-local, same as `chips`.
+   */
+  hiddenKeys: string[]
 }
 
 /**
@@ -54,13 +66,25 @@ export interface Settings {
  * and need no server change at all.
  */
 export interface CustomChip {
-  /** Stable id, so React keys survive reordering and editing. */
+  /**
+   * Stable id, so React keys survive reordering and editing.
+   *
+   * It is also the only identity a chip has. Neither `label` nor `text` is
+   * unique and neither is meant to be: the common pair is one label on two
+   * chips that send different things - `review` sending /review on Claude and
+   * $review on Codex, each pinned with `on` - and the mirror case, two labels
+   * sending the same string, is just as legal. Nothing may key off either.
+   */
   id: string
-  /** What the chip shows. */
+  /** What the chip shows. Not unique - see `id`. */
   label: string
-  /** What it sends. */
+  /** What it sends. Not unique either. */
   text: string
-  /** Clear the input line first, the way /clear and /compact do. */
+  /**
+   * Clear the input line first. A slash or dollar command only registers on an
+   * empty line, so without this one typed into a half-written prompt silently
+   * does nothing.
+   */
   command: boolean
   /** Span two grid columns, for a label that will not fit an eighth. */
   wide: boolean
@@ -68,10 +92,15 @@ export interface CustomChip {
    * Which panes this chip is worth showing on.
    *
    * Stated as intent rather than as a list of kinds to hide, because that is
-   * what someone picking in Settings is actually deciding. KeyPad turns it
-   * into the same hide-list the built-in chips use.
+   * what someone picking on the key pad screen is actually deciding. KeyPad
+   * turns it into the same hide-list the built-in chips use.
+   *
+   * `claude` and `codex` are separate answers because the two spell a skill
+   * call differently - a slash against a dollar - so a chip written for one is
+   * dead text on the other. `agent` is still there for a chip that suits any
+   * of them.
    */
-  on: 'all' | 'agent' | 'shell'
+  on: 'all' | 'claude' | 'codex' | 'agent' | 'shell'
 }
 
 const DEFAULTS: Settings = {
@@ -84,6 +113,7 @@ const DEFAULTS: Settings = {
   askedNotifications: false,
   starred: [],
   chips: [],
+  hiddenKeys: [],
   keypadOpen: false,
 }
 

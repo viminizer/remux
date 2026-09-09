@@ -15,6 +15,7 @@ import { NewSheet } from './sheets/NewSheet'
 import { RenameSheet } from './sheets/RenameSheet'
 import { PaneActionsSheet } from './sheets/PaneActionsSheet'
 import { SettingsScreen } from './screens/Settings'
+import { KeyPadScreen } from './screens/KeyPadScreen'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
 import { Toaster, toast } from './components/Toast'
@@ -515,8 +516,15 @@ export default function App() {
             notifState={notifState}
             onEnableNotifications={onEnablePush}
             onBack={() => go({ name: 'pane', pane: lastPane.current })}
+            onKeyPad={() => go({ name: 'keypad' })}
             onCheck={checkNow}
             onUpdate={pullNewBuild}
+          />
+        ) : route.name === 'keypad' ? (
+          <KeyPadScreen
+            settings={settings}
+            patch={patch}
+            onBack={() => go({ name: 'settings' })}
           />
         ) : !panes.length ? (
           <NoTmux onCreate={() => setSheet('new')} />
@@ -623,6 +631,7 @@ export default function App() {
                 onToggle={toggleKeypad}
                 disabled={inputDisabled}
                 custom={settings.chips}
+                hidden={settings.hiddenKeys}
                 command={meta?.cmd ?? current?.command ?? 'shell'}
               />
 

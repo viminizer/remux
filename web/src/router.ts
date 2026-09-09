@@ -3,14 +3,19 @@ import { useCallback, useEffect, useState } from 'react'
 /**
  * Hash routing, deliberately shallow.
  *
- * `#/p/%14` is the only real route, plus `#/settings`. Anything deeper would
- * be navigation the drawer already does in one tap.
+ * `#/p/%14` is the only real route, plus `#/settings` and the key pad screen
+ * hanging off it. Anything deeper would be navigation the drawer already does
+ * in one tap.
  */
-export type Route = { name: 'pane'; pane: string | null } | { name: 'settings' }
+export type Route =
+  | { name: 'pane'; pane: string | null }
+  | { name: 'settings' }
+  | { name: 'keypad' }
 
 function parse(hash: string): Route {
   const h = hash.replace(/^#/, '')
   if (h === '/settings') return { name: 'settings' }
+  if (h === '/keypad') return { name: 'keypad' }
   const m = /^\/p\/(.+)$/.exec(h)
   if (m) return { name: 'pane', pane: decodeURIComponent(m[1]) }
   return { name: 'pane', pane: null }
@@ -44,7 +49,14 @@ export function useRoute(): [Route, (r: Route) => void] {
   //
   // replaceState fires no hashchange, so the route is set here directly.
   const go = useCallback((r: Route) => {
-    const hash = r.name === 'settings' ? '#/settings' : r.pane ? `#/p/${encodeURIComponent(r.pane)}` : '#/'
+    const hash =
+      r.name === 'settings'
+        ? '#/settings'
+        : r.name === 'keypad'
+          ? '#/keypad'
+          : r.pane
+            ? `#/p/${encodeURIComponent(r.pane)}`
+            : '#/'
     if (location.hash !== hash) history.replaceState(null, '', hash)
     setRoute(r)
   }, [])

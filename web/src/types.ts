@@ -148,15 +148,24 @@ export function isShell(cmd: string): boolean {
  * What kind of thing a pane is running, for deciding which key chips are worth
  * showing on it.
  *
- * `claude` is separated from `agent` because the slash commands in the pad are
- * Claude Code's, not every agent's. `other` is a real answer, not a fallback
- * for failure: a pane running vim or python is neither an agent nor a shell,
- * and chips are chosen for it deliberately rather than by defaulting.
+ * Claude Code and Codex are named separately rather than lumped into `agent`,
+ * because the thing chips are most often for is calling a skill and the two
+ * spell that differently: Claude takes a slash, Codex takes a dollar. A chip
+ * that is right on one is dead text on the other, so "agents" is not a fine
+ * enough answer to the question "where does this belong".
+ *
+ * `agent` is what is left - aider, opencode, crush - and stays a kind rather
+ * than being folded into `other`, because those do take a prompt, and a chip
+ * meant for every agent should reach them. `other` is a real answer too, not a
+ * fallback for failure: a pane running vim or python is none of the above, and
+ * chips are chosen for it deliberately rather than by defaulting.
  */
-export type PaneKind = 'claude' | 'agent' | 'shell' | 'other'
+export type PaneKind = 'claude' | 'codex' | 'agent' | 'shell' | 'other'
 
 export function paneKind(cmd: string): PaneKind {
-  if (displayCommand(cmd) === 'claude') return 'claude'
+  const name = displayCommand(cmd)
+  if (name === 'claude') return 'claude'
+  if (name === 'codex') return 'codex'
   if (isAgent(cmd)) return 'agent'
   if (isShell(cmd)) return 'shell'
   return 'other'
