@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { RefObject } from 'react'
 import type { Conn, Pane } from '../types'
 import { PaneList } from './PaneList'
 
@@ -18,6 +19,8 @@ const CONN_TEXT: Record<Conn, string> = {
 
 export function Drawer({
   open,
+  panelRef,
+  drag,
   panes,
   current,
   conn,
@@ -29,6 +32,9 @@ export function Drawer({
   onSettings,
 }: {
   open: boolean
+  panelRef: RefObject<HTMLElement>
+  /** How far a swipe has pulled the drawer out, 0 to 1, or null when idle. */
+  drag: number | null
   panes: Pane[]
   current: string | null
   conn: Conn
@@ -42,7 +48,14 @@ export function Drawer({
   const [q, setQ] = useState('')
 
   return (
-    <aside className={`drawer ${open ? 'on' : ''}`}>
+    // While a finger is on it the drawer follows that finger, so the class
+    // that animates it has to stand aside. On release the inline transform and
+    // the class both go, and the transition runs from wherever it was left.
+    <aside
+      ref={panelRef}
+      className={`drawer ${open ? 'on' : ''} ${drag !== null ? 'dragging' : ''}`}
+      style={drag !== null ? { transform: `translateX(${(drag - 1) * 100}%)` } : undefined}
+    >
       <div className="drawer-head">
         <div className="search">
           <span style={{ color: 'var(--ov0)', fontSize: 13 }}>⌕</span>

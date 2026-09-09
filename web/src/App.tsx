@@ -7,6 +7,8 @@ import type { Conn, Health, Pane, Session, SnapMeta } from './types'
 import { displayCommand, flatten, paneTitle } from './types'
 
 import { Drawer } from './shell/Drawer'
+import { usePinned } from './shell/layout'
+import { useDrawerSwipe } from './shell/useDrawerSwipe'
 import { TopBar } from './shell/TopBar'
 import { Output } from './pane/Output'
 import { KeyPad } from './pane/KeyPad'
@@ -184,19 +186,27 @@ export default function App() {
     go({ name: 'pane', pane: wanted.id })
   }, [route.name, panes, currentId, go])
 
-  // Above 900px the drawer is pinned beside the content and the burger is
-  // hidden, so there is nothing to open or close. drawerOpen can still be true
-  // on arrival there - open the drawer on a phone, turn it landscape, cross
-  // the breakpoint - and a stale true is not cosmetic: overlayOpen feeds the
-  // history entry that Android back consumes, so it would leave an overlay
+  // Past the breakpoint the drawer is pinned beside the content and the burger
+  // is hidden, so there is nothing to open or close. drawerOpen can still be
+  // true on arrival there - open the drawer on a phone, turn it landscape,
+  // cross the breakpoint - and a stale true is not cosmetic: overlayOpen feeds
+  // the history entry that Android back consumes, so it would leave an overlay
   // marked open that the user can neither see nor dismiss.
+  const pinned = usePinned()
   useEffect(() => {
-    const pinned = window.matchMedia('(min-width:900px)')
-    const sync = () => pinned.matches && setDrawerOpen(false)
-    sync()
-    pinned.addEventListener('change', sync)
-    return () => pinned.removeEventListener('change', sync)
-  }, [])
+    if (pinned) setDrawerOpen(false)
+  }, [pinned])
+
+  // Swipe right to open the drawer, left to close it. Off while a sheet is up
+  // - the sheet is the thing being answered - and off past the breakpoint,
+  // where the drawer is already beside the content.
+  const drawerEl = useRef<HTMLElement>(null)
+  const { rootRef, drag } = useDrawerSwipe({
+    open: drawerOpen,
+    setOpen: setDrawerOpen,
+    panel: drawerEl,
+    enabled: !pinned && sheet === 'none',
+  })
 
   // Stable identity on purpose. PaneMenu's outside-click effect lists its
   // onClose in the dependency array, so an inline arrow re-ran that effect on
@@ -487,13 +497,16 @@ export default function App() {
     : ''
 
   return (
-    <div className="phone">
-      <div className="scrim" onClick={() => { setDrawerOpen(false); setSheet('none') }}
-           style={{ opacity: drawerOpen || sheet !== 'none' ? 1 : 0,
+    <div className="phone" ref={rootRef}>
+      <div className={`scrim ${drag !== null ? 'dragging' : ''}`}
+           onClick={() => { setDrawerOpen(false); setSheet('none') }}
+           style={{ opacity: drag ?? (drawerOpen || sheet !== 'none' ? 1 : 0),
                     pointerEvents: drawerOpen || sheet !== 'none' ? 'auto' : 'none' }} />
 
       <Drawer
         open={drawerOpen}
+        panelRef={drawerEl}
+        drag={drag}
         panes={panes}
         current={currentId}
         conn={conn}

@@ -32,9 +32,17 @@ body{
 button,input,textarea,select{font-family:inherit}
 
 /* The mock drew a phone frame; the real app is the viewport. */
+/* touch-action decides who owns a touch at the moment it starts, and there is
+   no taking it back mid-drag. pan-y leaves vertical scrolling native and hands
+   every horizontal drag to useDrawerSwipe - which is what lets the drawer and
+   mirror mode's sideways panning share one direction. It also means the
+   panning itself is driven from there, by writing scrollLeft.
+   pinch-zoom is named explicitly because pan-y alone would drop it, and the
+   viewport meta deliberately allows zooming: a terminal on a phone is exactly
+   the thing someone pinches into. */
 .phone{
   position:relative;flex:1;min-height:0;display:flex;flex-direction:column;
-  background:var(--base);overflow:hidden;
+  background:var(--base);overflow:hidden;touch-action:pan-y pinch-zoom;
 }
 
 .pane-col{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
@@ -319,6 +327,9 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   transform:translateX(-100%);transition:transform .24s cubic-bezier(.3,.8,.4,1);
 }
 .drawer.on{transform:none}
+/* Following a finger, so nothing may ease. Both come off together on release
+   and the transition runs from wherever the drag left the panel. */
+.drawer.dragging,.scrim.dragging{transition:none}
 .drawer-head{
   flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:10px 12px;border-bottom:1px solid var(--s0);
