@@ -354,6 +354,12 @@ export default function App() {
   // between glances - one mis-tap wiping a long session is a bad trade for
   // saving a single tap on ⏎. Typing it for you is the part that hurts on a
   // phone; confirming it is not.
+  //
+  // The C-u is best effort. Claude Code's vim mode ignores it in normal mode,
+  // where nothing clears the line, so a command tapped onto a half-written
+  // prompt still appends. The command text itself always arrives intact -
+  // SendText pastes rather than types - and an empty composer, which is when
+  // you reach for these, is unaffected either way.
   const sendCommand = async (text: string) => {
     if (!currentId) return
     if (await guard('key', () => api.keys(currentId, ['C-u']))) sendText(text, false)

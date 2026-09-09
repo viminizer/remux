@@ -197,8 +197,8 @@ func TestWithoutBracketedPasteItWouldSubmitEarly(t *testing.T) {
 
 	reset(t, c, pane)
 
-	// The same text sent with -l alone, which is what SendText does for
-	// single-line input.
+	// The same text sent with -l alone, which is what SendText used to do
+	// before it switched to paste-buffer.
 	if _, err := c.run(ctx, "send-keys", "-t", pane, "-l", "--",
 		"echo remux_gamma\necho remux_delta"); err != nil {
 		t.Fatal(err)
@@ -214,6 +214,52 @@ func TestWithoutBracketedPasteItWouldSubmitEarly(t *testing.T) {
 	}
 	if strings.Contains(screen, "remux_delta\n") && strings.Count(screen, "remux_delta") > 1 {
 		t.Errorf("expected the second line to be left dangling, got:\n%s", screen)
+	}
+	reset(t, c, pane)
+}
+
+// TestPasteMarkersDoNotLeakToPlainPrograms is the other half of bracketing.
+//
+// SendText pastes everything now, not just multi-line text, because a literal
+// keystroke is not literal to a modal TUI - Claude Code's vim mode turns
+// "/compact" into "ct". The risk that buys is the opposite one: a program that
+// never asked for bracketed paste would see the markers as input.
+//
+// paste-buffer -p is what resolves it, and this pins that down. cat reads a
+// tty in canonical mode and never requests bracketed paste, so it must receive
+// the bytes and nothing else.
+func TestPasteMarkersDoNotLeakToPlainPrograms(t *testing.T) {
+	c, pane := scratchPane(t)
+	ctx := context.Background()
+
+	reset(t, c, pane)
+
+	// cat echoes its input back, so the screen shows exactly what arrived.
+	if err := c.SendText(ctx, pane, "cat", true); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := c.SendText(ctx, pane, "/compact", false); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	screen, err := c.Capture(ctx, pane, 60, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// C-c before any assertion, so a failure cannot leave cat holding the pane.
+	_ = c.SendKeys(ctx, pane, []string{"C-c"})
+	time.Sleep(200 * time.Millisecond)
+
+	if !strings.Contains(screen, "/compact") {
+		t.Errorf("text did not arrive intact:\n%s", screen)
+	}
+	for _, marker := range []string{"[200~", "[201~"} {
+		if strings.Contains(screen, marker) {
+			t.Errorf("bracketed paste marker %q leaked to a plain program:\n%s", marker, screen)
+		}
 	}
 	reset(t, c, pane)
 }

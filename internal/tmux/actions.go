@@ -41,55 +41,44 @@ func NormalizeKey(k string) (string, error) {
 	return k, nil
 }
 
-// Bracketed paste markers, as hex byte arguments to send-keys -H.
-//
-// ESC [ 200 ~ ... ESC [ 201 ~
-var (
-	pasteStart = []string{"1b", "5b", "32", "30", "30", "7e"}
-	pasteEnd   = []string{"1b", "5b", "32", "30", "31", "7e"}
-)
-
 // SendText types text into a pane.
 //
-// Multi-line text is wrapped in bracketed paste. Without it, the newlines in
-// the middle of a prompt are read as submissions by Codex and Claude Code, so
-// a three-line instruction gets sent as three separate half-finished ones.
-// Inside the paste markers the agent inserts a literal newline instead.
+// It goes in as a paste, not as keystrokes, because a keystroke is not
+// literal. Claude Code's vim mode reads "/compact" as normal-mode commands -
+// c is an operator, o aborts it, mp sets a mark, a opens insert - and what
+// lands in the composer is "ct". Any modal TUI has its own version of that.
+// A paste is inserted as text whatever mode the program is in.
 //
-// Single-line text does not need the wrapper and skips it.
+// paste-buffer -p is what makes this safe for every send rather than only the
+// multi-line ones. tmux emits the bracketed-paste markers only when the
+// program has actually asked for them, so a paste-aware TUI gets one literal
+// insert - newlines included, instead of a three-line prompt arriving as three
+// half-finished submissions - while a program that never asked, like cat in
+// canonical mode, still gets plain bytes instead of a stray ESC [ 200 ~. That
+// is the part hand-written markers got wrong in both directions.
+//
+// The buffer is named per pane, so two sends cannot clobber each other, and
+// -d drops it once pasted. A named buffer also stays off tmux's numbered
+// stack, which on this machine holds real work that must not be renumbered.
 func (c *Client) SendText(ctx context.Context, paneID, text string, submit bool) error {
 	if err := CheckPaneID(paneID); err != nil {
 		return err
 	}
 	if text != "" {
-		multiline := strings.ContainsAny(text, "\n\r")
-
-		if multiline {
-			if err := c.sendHex(ctx, paneID, pasteStart); err != nil {
-				return err
-			}
-		}
-		// -l sends the string literally; -- stops text that begins with a
-		// dash from being read as a flag.
-		if _, err := c.run(ctx, "send-keys", "-t", paneID, "-l", "--", text); err != nil {
+		// Pane ids are %N, so this is always a safe buffer name.
+		buf := "remux_paste_" + strings.TrimPrefix(paneID, "%")
+		// -- stops text that begins with a dash from being read as a flag.
+		if _, err := c.run(ctx, "set-buffer", "-b", buf, "--", text); err != nil {
 			return err
 		}
-		if multiline {
-			if err := c.sendHex(ctx, paneID, pasteEnd); err != nil {
-				return err
-			}
+		if _, err := c.run(ctx, "paste-buffer", "-d", "-p", "-b", buf, "-t", paneID); err != nil {
+			return err
 		}
 	}
 	if submit {
 		return c.SendKeys(ctx, paneID, []string{"Enter"})
 	}
 	return nil
-}
-
-func (c *Client) sendHex(ctx context.Context, paneID string, hex []string) error {
-	args := append([]string{"send-keys", "-t", paneID, "-H"}, hex...)
-	_, err := c.run(ctx, args...)
-	return err
 }
 
 // SendKeys sends allowlisted key names to a pane.
