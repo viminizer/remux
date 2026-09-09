@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Health, Conn } from '../types'
 import type { Settings, CustomChip } from '../store'
 import { ago } from '../store'
@@ -18,6 +19,18 @@ import { ago } from '../store'
  * the behaviour: Add is disabled until the row above it is usable, so it can
  * never look like the way to commit, and the section says outright that
  * typing is saving.
+ *
+ * One row is open at a time. Showing every control for every chip cost about
+ * 178px per chip on a 390px phone - two stacked inputs at the 16px the iOS
+ * zoom guard forces, then eight controls wrapping onto two lines - so four
+ * chips filled the settings screen and each new one made it worse. Collapsed,
+ * a chip is a 44px line that says what it is called and what it sends, which
+ * is what you are scanning for when you are not editing.
+ *
+ * Add opens the row it just made, so the model above survives intact: the new
+ * chip is still a blank row you fill in, it is just the only one expanded. A
+ * chip you leave half-filled says so on its summary line rather than looking
+ * like a working chip that never appears in the pad.
  */
 function ChipEditor({
   chips,
@@ -26,6 +39,9 @@ function ChipEditor({
   chips: CustomChip[]
   patch: (p: Partial<Settings>) => void
 }) {
+  // The open row is tracked by id, not by index, so moving a chip up or down
+  // keeps the one you are editing open instead of handing it to its neighbour.
+  const [open, setOpen] = useState<string | null>(null)
   const write = (next: CustomChip[]) => patch({ chips: next })
   const edit = (i: number, p: Partial<CustomChip>) =>
     write(chips.map((c, n) => (n === i ? { ...c, ...p } : c)))
@@ -52,6 +68,49 @@ function ChipEditor({
         </div>
         {chips.map((c, i) => (
           <div className="crow chip-row" key={c.id}>
+            <div className="chip-head">
+              {/* The whole line opens the row - the chevron is a hint, not the
+                  target. Remove is a sibling and not a child, because a button
+                  inside a button is invalid, and a delete that has to
+                  stopPropagation to avoid also toggling the row is a trap
+                  waiting for the next person to move it. */}
+              <button
+                className="chip-summary"
+                aria-expanded={open === c.id}
+                onClick={() => setOpen(open === c.id ? null : c.id)}
+              >
+                <span className="chip-sum-label">{c.label.trim() || 'new chip'}</span>
+                {c.label.trim() !== '' && c.text !== '' ? (
+                  <span className="chip-sum-text">{c.text}</span>
+                ) : (
+                  // A chip missing either half does not render in the pad. That
+                  // is deliberate, but it used to be invisible: the row looked
+                  // finished and the chip simply never appeared.
+                  <span className="chip-sum-text blank">not shown yet</span>
+                )}
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 9l7 7 7-7" />
+                </svg>
+              </button>
+              <button
+                className="chip-del"
+                aria-label={`Remove ${c.label.trim() || 'chip'}`}
+                onClick={() => write(chips.filter((_, n) => n !== i))}
+              >
+                ✕
+              </button>
+            </div>
+            {open === c.id && (
             <div className="chip-fields">
               <input
                 className="chip-label"
@@ -73,13 +132,14 @@ function ChipEditor({
                 aria-label={`Chip ${i + 1} text`}
                 onChange={(e) => edit(i, { text: e.target.value })}
               />
+              {/* These four settings were explained in `title` attributes,
+                  which is the same as not explaining them: title only appears
+                  on hover, and this app runs on a phone. Now that one row is
+                  open at a time there is room to say it on the screen. */}
               <div className="chip-opts">
-                {/* `on` reads as one control, so it is a segmented group
-                    rather than three loose toggles. */}
                 <button
                   className={`chiptog ${c.command ? 'on' : ''}`}
                   aria-pressed={c.command}
-                  title="Clear the input line before sending, the way /clear does"
                   onClick={() => edit(i, { command: !c.command })}
                 >
                   clear first
@@ -87,11 +147,34 @@ function ChipEditor({
                 <button
                   className={`chiptog ${c.wide ? 'on' : ''}`}
                   aria-pressed={c.wide}
-                  title="Take two columns in the grid"
                   onClick={() => edit(i, { wide: !c.wide })}
                 >
                   wide
                 </button>
+                <span className="chip-move">
+                  <button aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+                    ↑
+                  </button>
+                  <button
+                    aria-label="Move down"
+                    disabled={i === chips.length - 1}
+                    onClick={() => move(i, 1)}
+                  >
+                    ↓
+                  </button>
+                </span>
+              </div>
+              <p className="chip-help">
+                <b>clear first</b> wipes whatever is on the input line before sending, the
+                way /clear does. Slash commands only register on an empty line.
+                <br />
+                <b>wide</b> gives the chip two of the pad's eight columns, for a label
+                that will not fit one.
+              </p>
+
+              <div className="chip-opts">
+                {/* One choice with one answer, so a segmented group rather
+                    than three switches that could all be off. */}
                 <span className="chip-on">
                   {(['all', 'agent', 'shell'] as const).map((v) => (
                     <button
@@ -104,26 +187,14 @@ function ChipEditor({
                     </button>
                   ))}
                 </span>
-                <span className="chip-move">
-                  <button aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-                    ↑
-                  </button>
-                  <button
-                    aria-label="Move down"
-                    disabled={i === chips.length - 1}
-                    onClick={() => move(i, 1)}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    aria-label="Remove chip"
-                    onClick={() => write(chips.filter((_, n) => n !== i))}
-                  >
-                    ✕
-                  </button>
-                </span>
               </div>
+              <p className="chip-help">
+                Which panes show it. <b>agents</b> means Claude Code and Codex;{' '}
+                <b>shells</b> means a plain prompt. Anything else - vim, a pager, python -
+                counts as neither, so only <b>all</b> reaches it.
+              </p>
             </div>
+            )}
           </div>
         ))}
         <div className="crow">
@@ -138,16 +209,20 @@ function ChipEditor({
           <button
             className="linkbtn"
             disabled={incomplete}
-            onClick={() =>
+            onClick={() => {
+              // crypto.randomUUID needs a secure context. The tailnet is one
+              // and so is localhost, but --local over plain HTTP to a LAN
+              // address is not, and that is a real way to open this.
+              const id =
+                globalThis.crypto?.randomUUID?.() ??
+                `chip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+              // Open it. Adding a row you then have to tap to fill in would be
+              // two steps where there was one.
+              setOpen(id)
               write([
                 ...chips,
                 {
-                  // crypto.randomUUID needs a secure context. The tailnet is
-                  // one and so is localhost, but --local over plain HTTP to a
-                  // LAN address is not, and that is a real way to open this.
-                  id:
-                    globalThis.crypto?.randomUUID?.() ??
-                    `chip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  id,
                   label: '',
                   text: '',
                   command: false,
@@ -155,7 +230,7 @@ function ChipEditor({
                   on: 'all',
                 },
               ])
-            }
+            }}
           >
             Add
           </button>

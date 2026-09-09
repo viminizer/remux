@@ -219,7 +219,9 @@ body.offline .output pre{opacity:.62}
 @media (hover:hover){.kp-toggle:hover{background:var(--s1);color:var(--text)}}
 /* The pad still gets its height written inline either way - only the travel
    between the two goes. */
-@media (prefers-reduced-motion:reduce){.kp-toggle svg,.keypad{transition:none}}
+@media (prefers-reduced-motion:reduce){
+  .kp-toggle svg,.keypad,.chip-summary svg{transition:none}
+}
 /* The grid sets the width, so the padding is only there to stop a label
    touching the border on the narrowest phone - hence 2px, not the 11px this
    needed back when a chip sized itself to its own label. */
@@ -490,11 +492,48 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .linkbtn:disabled{opacity:.4;cursor:default}
 
 /* ── the custom chip editor ───────────────────────────────── */
-/* A chip row stacks instead of sitting on the settings grid: three inputs and
-   five buttons do not fit a phone width in one line, and the label field has
-   to stay wide enough to read what it sends. */
-.chip-row{display:block}
-.chip-fields{display:flex;flex-direction:column;gap:7px}
+/* A chip is a summary line until it is opened. Showing every control for every
+   chip cost about 178px each on a 390px phone - two stacked inputs at the 16px
+   the iOS zoom guard forces, then eight controls wrapping onto two lines - so
+   four chips filled the settings screen and each new one made it worse.
+   Collapsed it is one 44px line; only the row being edited spends the space.
+
+   The padding moves off .chip-row and onto its children, so the summary can be
+   a full-width tap target rather than a word floating in a padded box. */
+.chip-row{display:block;padding:0}
+.chip-head{display:flex;align-items:center}
+.chip-summary{
+  flex:1;min-width:0;display:flex;align-items:center;gap:10px;
+  padding:12px 4px 12px 14px;border:0;background:transparent;cursor:pointer;
+  color:var(--text);text-align:left;
+}
+/* The label is what you named it, so it takes the chip's own type; the text is
+   secondary and dims. Both truncate - a chip can send a whole paragraph. */
+.chip-sum-label{
+  flex:0 1 auto;min-width:0;font-family:var(--mono);font-size:12.5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chip-sum-text{
+  flex:1 1 auto;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--ov1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chip-sum-text.blank{font-style:italic;color:var(--ov0)}
+.chip-summary svg{flex:0 0 auto;color:var(--ov0);transition:transform .18s}
+.chip-summary[aria-expanded='true'] svg{transform:rotate(180deg)}
+/* Remove sits outside the summary button and away from the chevron, so the
+   destructive control is never the one you hit reaching for "open". */
+.chip-del{
+  flex:0 0 auto;width:34px;height:34px;margin-right:8px;
+  border:0;border-radius:8px;background:transparent;color:var(--red);
+  font-size:12px;line-height:1;cursor:pointer;
+}
+.chip-fields{display:flex;flex-direction:column;gap:7px;padding:2px 14px 13px}
+/* What each toggle does, said on the screen. It used to live in `title`
+   attributes, which on a touch device is the same as not saying it. */
+.chip-help{
+  margin:-1px 0 4px;font-size:11.5px;line-height:1.5;color:var(--ov1);
+}
+.chip-help b{color:var(--sub0);font-weight:600;font-family:var(--mono)}
 .chip-fields input{
   width:100%;background:var(--base);border:1px solid var(--s1);border-radius:9px;
   padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:13px;outline:0;
@@ -534,6 +573,8 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 @media (pointer:coarse){
   .chiptog,.chip-move button,.chip-on button{height:32px}
   .chip-move button{width:32px}
+  .chip-summary{padding-top:14px;padding-bottom:14px}
+  .chip-del{width:40px;height:40px}
 }
 
 /* skeleton */
