@@ -37,15 +37,6 @@ button,input,textarea,select{font-family:inherit}
   background:var(--base);overflow:hidden;
 }
 
-/* On a laptop the drawer is pinned open beside the content rather than
-   overlaying it. */
-@media (min-width:900px){
-  .phone{flex-direction:row}
-  .drawer{position:relative;transform:none!important;flex:0 0 308px;width:308px}
-  .scrim{display:none}
-  .pane-col{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
-  .burger{display:none}
-}
 .pane-col{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 
 /* ── top bar ──────────────────────────────────────────────── */
@@ -545,3 +536,28 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 /* The key pad and composer are one block visually, and the toast and the
    sheets both have to clear it. */
 .inputbar{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}
+
+/* ── the pinned-drawer layout ─────────────────────────────── */
+/* On a laptop the drawer is pinned open beside the content rather than
+   overlaying it.
+
+   This block lives at the end of the file, and that is load-bearing. A media
+   query adds no specificity, so every rule here ties with the base rule it
+   means to override, and the winner is whichever comes later in the file.
+   Sitting at the top, this block lost every one of those ties:
+   .drawer{position:relative} lost to the later .drawer{position:absolute},
+   which left the drawer out of flow and covering the left 308px of the pane
+   column, and .burger{display:none} lost to .iconbtn{display:grid}, which is
+   why the burger stayed visible at every width. Only transform survived,
+   because it carries !important - the tell that this was patched once before
+   at the symptom rather than the cause.
+
+   Two rules, then: this block stays last, and .iconbtn.burger carries two
+   classes so it wins on specificity even if it is ever moved back. */
+@media (min-width:900px){
+  .phone{flex-direction:row}
+  .drawer{position:relative;transform:none!important;flex:0 0 308px;width:308px}
+  .scrim{display:none}
+  .pane-col{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+  .iconbtn.burger{display:none}
+}

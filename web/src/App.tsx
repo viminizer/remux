@@ -180,6 +180,20 @@ export default function App() {
     go({ name: 'pane', pane: wanted.id })
   }, [route.name, panes, currentId, go])
 
+  // Above 900px the drawer is pinned beside the content and the burger is
+  // hidden, so there is nothing to open or close. drawerOpen can still be true
+  // on arrival there - open the drawer on a phone, turn it landscape, cross
+  // the breakpoint - and a stale true is not cosmetic: overlayOpen feeds the
+  // history entry Android back consumes, so it would leave an overlay marked
+  // open that the user can neither see nor dismiss.
+  useEffect(() => {
+    const pinned = window.matchMedia('(min-width:900px)')
+    const sync = () => pinned.matches && setDrawerOpen(false)
+    sync()
+    pinned.addEventListener('change', sync)
+    return () => pinned.removeEventListener('change', sync)
+  }, [])
+
   // Stable identity on purpose. PaneMenu's outside-click effect lists its
   // onClose in the dependency array, so an inline arrow re-ran that effect on
   // every render of this component - which is every poll - tearing the
