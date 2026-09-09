@@ -143,8 +143,17 @@ body.optin-on .optin{display:flex}
   margin:0;font-family:var(--mono);font-size:var(--fs);line-height:1.65;
   white-space:pre-wrap;overflow-wrap:break-word;color:var(--text);
 }
-body.mirror .output{overflow-x:auto}
-body.mirror .output pre{white-space:pre;overflow-wrap:normal}
+/* Mirror: the exact tmux screen, nothing reflowed, panned sideways to read
+   past the right edge. The class is on .output itself rather than on <body>,
+   because it belongs to this one component - the body.mirror version was
+   ported from the mock, where a script toggled it, and nothing in the app ever
+   added the class. So the <pre> stopped wrapping and .output went on clipping
+   at overflow-x:hidden: the long lines were there and unreachable.
+   min-width on the pre is what makes the box as wide as its widest line, so
+   the padding survives to the end of the scroll and a full-width line is not
+   flush against the edge. */
+.output.mirror{overflow-x:auto}
+.output.mirror pre{white-space:pre;overflow-wrap:normal;min-width:max-content}
 body.offline .output pre{opacity:.62}
 .output::-webkit-scrollbar,.list::-webkit-scrollbar,.sheet-body::-webkit-scrollbar{width:6px}
 .output::-webkit-scrollbar-thumb,.list::-webkit-scrollbar-thumb,.sheet-body::-webkit-scrollbar-thumb{background:var(--s1);border-radius:3px}

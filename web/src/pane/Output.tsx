@@ -38,13 +38,10 @@ export function Output({ lines, wrap }: { lines: string[]; wrap: boolean }) {
     // The wrapper is what "Jump to latest" is positioned against, so the
     // button tracks the bottom of the output however tall the composer grows.
     <div className="output-wrap">
-      <main className="output" ref={box}>
+      <main className={wrap ? 'output' : 'output mirror'} ref={box}>
         {/* The HTML is built by ansiToHtml, which escapes all pane text and
             only emits spans and anchors it constructed itself. */}
-        <pre
-          style={wrap ? undefined : { whiteSpace: 'pre', wordBreak: 'normal' }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <pre dangerouslySetInnerHTML={{ __html: html }} />
       </main>
       <button className={`jump ${stuck ? '' : 'show'}`} onClick={toBottom}>
         ↓ Jump to latest
