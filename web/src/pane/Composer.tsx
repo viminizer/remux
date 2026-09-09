@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { displayCommand } from '../types'
-
-const SHELLS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'nu'])
+import { displayCommand, isShell } from '../types'
 
 /**
  * Auto-growing textarea, labelled with the target so it is always obvious
@@ -39,7 +37,7 @@ export function Composer({
   }
 
   const name = displayCommand(target)
-  const placeholder = SHELLS.has(name) ? 'Type a command…' : `Message ${name}…`
+  const placeholder = isShell(target) ? 'Type a command…' : `Message ${name}…`
 
   return (
     <div className="composer">

@@ -10,6 +10,14 @@ import { ago } from '../store'
  * typo costs a tap rather than a delete and a retype. A half-filled row simply
  * does not render in the pad, which makes the blank row a normal state instead
  * of something to validate.
+ *
+ * There is no Save button because every keystroke is already saved. That was
+ * not obvious to the first person who used it - the first thing they looked
+ * for was Save, and pressing Add produced a second blank row, which read as
+ * "the first one was not committed". Two things fix the reading rather than
+ * the behaviour: Add is disabled until the row above it is usable, so it can
+ * never look like the way to commit, and the section says outright that
+ * typing is saving.
  */
 function ChipEditor({
   chips,
@@ -21,6 +29,9 @@ function ChipEditor({
   const write = (next: CustomChip[]) => patch({ chips: next })
   const edit = (i: number, p: Partial<CustomChip>) =>
     write(chips.map((c, n) => (n === i ? { ...c, ...p } : c)))
+  // Adding while the last row is still blank is what made this look unsaved.
+  const last = chips[chips.length - 1]
+  const incomplete = last !== undefined && (last.label.trim() === '' || last.text === '')
   const move = (i: number, by: number) => {
     const to = i + by
     if (to < 0 || to >= chips.length) return
@@ -33,14 +44,12 @@ function ChipEditor({
     <div className="sec">
       <h3>Key pad</h3>
       <div className="card">
-        {chips.length === 0 && (
-          <div className="crow">
-            <div className="lbl">
-              No chips yet
-              <small>a chip sends its text to the pane in one tap</small>
-            </div>
+        <div className="crow">
+          <div className="lbl">
+            Your chips
+            <small>saved as you type, no save button</small>
           </div>
-        )}
+        </div>
         {chips.map((c, i) => (
           <div className="crow chip-row" key={c.id}>
             <div className="chip-fields">
@@ -65,6 +74,8 @@ function ChipEditor({
                 onChange={(e) => edit(i, { text: e.target.value })}
               />
               <div className="chip-opts">
+                {/* `on` reads as one control, so it is a segmented group
+                    rather than three loose toggles. */}
                 <button
                   className={`chiptog ${c.command ? 'on' : ''}`}
                   aria-pressed={c.command}
@@ -81,6 +92,18 @@ function ChipEditor({
                 >
                   wide
                 </button>
+                <span className="chip-on">
+                  {(['all', 'agent', 'shell'] as const).map((v) => (
+                    <button
+                      key={v}
+                      className={(c.on ?? 'all') === v ? 'on' : ''}
+                      aria-pressed={(c.on ?? 'all') === v}
+                      onClick={() => edit(i, { on: v })}
+                    >
+                      {v === 'all' ? 'all' : v === 'agent' ? 'agents' : 'shells'}
+                    </button>
+                  ))}
+                </span>
                 <span className="chip-move">
                   <button aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
                     ↑
@@ -106,10 +129,15 @@ function ChipEditor({
         <div className="crow">
           <div className="lbl">
             Add a chip
-            <small>shows first when the pad is expanded</small>
+            <small>
+              {incomplete
+                ? 'fill in the label and text above first'
+                : 'shows first when the pad is expanded'}
+            </small>
           </div>
           <button
             className="linkbtn"
+            disabled={incomplete}
             onClick={() =>
               write([
                 ...chips,
@@ -124,6 +152,7 @@ function ChipEditor({
                   text: '',
                   command: false,
                   wide: false,
+                  on: 'all',
                 },
               ])
             }

@@ -595,6 +595,7 @@ export default function App() {
                 onToggle={toggleKeypad}
                 disabled={inputDisabled}
                 custom={settings.chips}
+                command={meta?.cmd ?? current?.command ?? 'shell'}
               />
 
               <Composer

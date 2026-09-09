@@ -132,6 +132,36 @@ export function isAgent(cmd: string): boolean {
   return ['codex', 'claude', 'aider', 'opencode', 'crush'].includes(displayCommand(cmd))
 }
 
+/**
+ * Mirrors agent.IsShell on the server, whose list is the authority - this one
+ * was short two entries (tcsh, csh) while it lived in Composer.tsx.
+ */
+const SHELLS = new Set([
+  'zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh', 'nu',
+])
+
+export function isShell(cmd: string): boolean {
+  return SHELLS.has(displayCommand(cmd))
+}
+
+/**
+ * What kind of thing a pane is running, for deciding which key chips are worth
+ * showing on it.
+ *
+ * `claude` is separated from `agent` because the slash commands in the pad are
+ * Claude Code's, not every agent's. `other` is a real answer, not a fallback
+ * for failure: a pane running vim or python is neither an agent nor a shell,
+ * and chips are chosen for it deliberately rather than by defaulting.
+ */
+export type PaneKind = 'claude' | 'agent' | 'shell' | 'other'
+
+export function paneKind(cmd: string): PaneKind {
+  if (displayCommand(cmd) === 'claude') return 'claude'
+  if (isAgent(cmd)) return 'agent'
+  if (isShell(cmd)) return 'shell'
+  return 'other'
+}
+
 export function statusLabel(s: Status | undefined): string {
   switch (s) {
     case 'waiting': return 'needs an answer'

@@ -474,6 +474,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   background:transparent;border:1px solid var(--s1);border-radius:8px;color:var(--sub1);
   padding:6px 11px;font-family:var(--ui);font-size:12px;font-weight:600;cursor:pointer;
 }
+.linkbtn:disabled{opacity:.4;cursor:default}
 
 /* ── the custom chip editor ───────────────────────────────── */
 /* A chip row stacks instead of sitting on the settings grid: three inputs and
@@ -487,15 +488,26 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 }
 .chip-fields input:focus{border-color:var(--blue)}
 .chip-label{max-width:140px}
-.chip-opts{display:flex;align-items:center;gap:6px}
+/* Three controls and a three-way group do not fit 390px on one line. */
+.chip-opts{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .chiptog{
   height:28px;padding:0 9px;border-radius:8px;cursor:pointer;
   background:var(--s0);border:1px solid var(--s1);color:var(--ov1);
   font-family:var(--ui);font-size:11.5px;font-weight:600;
 }
 .chiptog.on{background:var(--blue);border-color:var(--blue);color:var(--crust)}
-/* Pushed to the right so the two toggles read as a pair and the destructive
-   one is nowhere near them. */
+/* Segmented, so "where it shows" reads as one choice with one answer rather
+   than three switches that could all be off. */
+.chip-on{display:flex;border:1px solid var(--s1);border-radius:8px;overflow:hidden}
+.chip-on button{
+  height:28px;padding:0 9px;border:0;border-left:1px solid var(--s1);cursor:pointer;
+  background:var(--s0);color:var(--ov1);font-family:var(--ui);font-size:11.5px;font-weight:600;
+}
+.chip-on button:first-child{border-left:0}
+.chip-on button.on{background:var(--blue);color:var(--crust)}
+
+/* Pushed to the right so the toggles read as a group and the destructive
+   button is nowhere near them. */
 .chip-move{display:flex;gap:6px;margin-left:auto}
 .chip-move button{
   width:28px;height:28px;border-radius:8px;cursor:pointer;
@@ -507,7 +519,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 /* Thumb targets; the 16px these inputs also need on a coarse pointer is with
    the rest of the iOS zoom guard, further down. */
 @media (pointer:coarse){
-  .chiptog,.chip-move button{height:32px}
+  .chiptog,.chip-move button,.chip-on button{height:32px}
   .chip-move button{width:32px}
 }
 

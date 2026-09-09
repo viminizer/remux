@@ -64,6 +64,14 @@ export interface CustomChip {
   command: boolean
   /** Span two grid columns, for a label that will not fit an eighth. */
   wide: boolean
+  /**
+   * Which panes this chip is worth showing on.
+   *
+   * Stated as intent rather than as a list of kinds to hide, because that is
+   * what someone picking in Settings is actually deciding. KeyPad turns it
+   * into the same hide-list the built-in chips use.
+   */
+  on: 'all' | 'agent' | 'shell'
 }
 
 const DEFAULTS: Settings = {

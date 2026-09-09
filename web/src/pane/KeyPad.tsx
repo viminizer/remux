@@ -29,6 +29,8 @@
  * be a larger change than this.
  */
 import type { CustomChip } from '../store'
+import type { PaneKind } from '../types'
+import { paneKind } from '../types'
 
 type Chip = {
   /**
@@ -44,6 +46,15 @@ type Chip = {
   label: string
   /** Span two grid columns, for a label that will not fit an eighth. */
   wide?: boolean
+  /**
+   * Pane kinds this chip is not worth a cell on. Absent means every pane.
+   *
+   * A hide-list rather than a show-list so that each entry is a claim someone
+   * can check: `hideOn: ['shell']` says "useless at a shell prompt", which is
+   * either true or not. A show-list would silently hide the chip from every
+   * kind nobody thought to name.
+   */
+  hideOn?: PaneKind[]
   text?: boolean
   command?: boolean
   danger?: boolean
@@ -86,15 +97,24 @@ const CHIPS: Chip[] = [
   { k: '/', label: '/', text: true },
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
-  { k: '/clear', label: '/clear', command: true, wide: true },
-  { k: '/compact', label: '/compact', command: true, wide: true },
+  // Slash commands need an agent's composer to mean anything. Hidden at a
+  // shell prompt, where they are literal text, and on `other` - vim, python, a
+  // pager - for the same reason. Left on every agent rather than on Claude
+  // Code alone: these are Claude Code's commands, but Codex advertises slash
+  // commands of its own, and hiding a chip that works is worse than showing
+  // one that does not.
+  { k: '/clear', label: '/clear', command: true, wide: true, hideOn: ['shell', 'other'] },
+  { k: '/compact', label: '/compact', command: true, wide: true, hideOn: ['shell', 'other'] },
   { k: 'Left', label: '←', repeat: true },
   { k: 'Right', label: '→', repeat: true },
-  { k: 'y', label: 'y' },
-  { k: 'n', label: 'n' },
-  { k: '1', label: '1' },
-  { k: '2', label: '2' },
-  { k: '3', label: '3' },
+  // Answers to an agent's prompt. Hidden only at a shell, where you would
+  // type them; kept on `other`, because a digit is a count in vim and `y` is
+  // yank, and those are real uses rather than leftovers.
+  { k: 'y', label: 'y', hideOn: ['shell'] },
+  { k: 'n', label: 'n', hideOn: ['shell'] },
+  { k: '1', label: '1', hideOn: ['shell'] },
+  { k: '2', label: '2', hideOn: ['shell'] },
+  { k: '3', label: '3', hideOn: ['shell'] },
   { k: 'BTab', label: '⇧tab', repeat: true },
   // ^U is the one that answers the common case - accept a suggestion with
   // tab, change your mind, clear the line in one tap. Neither it nor ⌫ is
@@ -104,6 +124,20 @@ const CHIPS: Chip[] = [
   { k: 'C-c', label: '^C', danger: true },
 ]
 
+/**
+ * A custom chip states where it belongs; the pad filters on where a chip does
+ * not. This is the one place the two meet.
+ *
+ * `agent` and `shell` both exclude `other`, unlike the built-ins: a person who
+ * picked "agents only" in Settings said what they meant, and guessing past
+ * that would be second-guessing them.
+ */
+const HIDE_FOR: Record<'all' | 'agent' | 'shell', PaneKind[]> = {
+  all: [],
+  agent: ['shell', 'other'],
+  shell: ['claude', 'agent', 'other'],
+}
+
 export function KeyPad({
   onKey,
   onText,
@@ -112,6 +146,7 @@ export function KeyPad({
   onToggle,
   disabled,
   custom,
+  command,
 }: {
   onKey: (k: string) => void
   onText: (t: string) => void
@@ -120,6 +155,8 @@ export function KeyPad({
   onToggle: () => void
   disabled: boolean
   custom: CustomChip[]
+  /** pane_current_command of the pane on screen, for choosing chips. */
+  command: string
 }) {
   // Custom chips lead the expanded area rather than joining the collapsed row.
   // The collapsed row is the same eight chips in the same eight places on
@@ -140,10 +177,20 @@ export function KeyPad({
       wide: c.wide,
       text: !c.command,
       command: c.command,
+      hideOn: HIDE_FOR[c.on ?? 'all'],
     }))
 
+  // Filtering stops at the collapsed row. Those eight are the same chips in
+  // the same eight places on every pane, which is what makes them usable
+  // without looking; letting a pane switch reflow them would cost more than
+  // the cells it saved. They are also the eight that are useful everywhere -
+  // esc, enter, tab, backspace, $, /, and the two arrows - so nothing is
+  // given up by exempting them.
+  const kind = paneKind(command)
+  const visible = (c: Chip) => !c.hideOn?.includes(kind)
+
   const shown = expanded
-    ? [...CHIPS.slice(0, COLUMNS), ...extra, ...CHIPS.slice(COLUMNS)]
+    ? [...CHIPS.slice(0, COLUMNS), ...extra.filter(visible), ...CHIPS.slice(COLUMNS).filter(visible)]
     : CHIPS.slice(0, COLUMNS)
 
   const press = (key: Chip) => {
