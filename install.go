@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
 	"github.com/viminizer/remux/internal/config"
@@ -154,17 +155,24 @@ func cmdInstall() error {
 	}
 
 	// Unload any previous copy first, so install is safe to run twice.
-	_ = launchctl("bootout", guiTarget()+"/"+launchLabel)
+	unload()
 
 	if err := os.WriteFile(path, []byte(plistBody(target, dir)), 0o644); err != nil {
 		return err
 	}
 
-	if err := launchctl("bootstrap", guiTarget(), path); err != nil {
-		// Leave no half-installed state behind: a plist that exists but was
-		// never loaded is worse than no install, because `status` would lie.
-		os.Remove(path)
-		return fmt.Errorf("could not load the launch agent: %w", err)
+	if err := load(path); err != nil {
+		// The plist stays. It is valid and points at the new binary, so the
+		// recovery is one command - and `status` already reports this state
+		// accurately ("plist exists but launchd does not have it").
+		//
+		// Removing it, as this used to, was strictly worse: the previous
+		// instance had already been stopped on the line above, so a failed
+		// upgrade left the service down with nothing to start it at login
+		// either. There is no state here worth protecting by deleting the one
+		// file that makes recovery possible.
+		return fmt.Errorf("could not load the launch agent: %w\n"+
+			"  the plist is installed and the old instance is stopped - run: remux restart", err)
 	}
 
 	fmt.Printf("\n  installed  %s\n", path)
@@ -220,8 +228,8 @@ func cmdRestart() error {
 		}
 	}
 
-	_ = launchctl("bootout", guiTarget()+"/"+launchLabel)
-	if err := launchctl("bootstrap", guiTarget(), path); err != nil {
+	unload()
+	if err := load(path); err != nil {
 		return err
 	}
 	fmt.Println("\n  restarted.")
@@ -269,6 +277,41 @@ func cmdStatus() error {
 // guiTarget is the launchd domain for the current user's GUI session, which is
 // where a LaunchAgent belongs.
 func guiTarget() string { return fmt.Sprintf("gui/%d", os.Getuid()) }
+
+// agentTarget is the launchd address of our job.
+func agentTarget() string { return guiTarget() + "/" + launchLabel }
+
+// unload removes the job and waits for launchd to finish removing it.
+//
+// bootout returns once the request is accepted, not once the job is gone.
+// Bootstrapping the same label while the old one is still registered is what
+// produces "Bootstrap failed: 5: Input/output error", which is why retrying
+// the identical command a moment later always worked.
+//
+// It waits on the condition rather than sleeping a guessed interval: launchctl
+// print fails exactly when launchd no longer knows the label.
+func unload() {
+	_ = launchctl("bootout", agentTarget())
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := exec.Command("launchctl", "print", agentTarget()).Run(); err != nil {
+			return
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+}
+
+// load bootstraps the plist, retrying because error 5 is transient by nature.
+func load(path string) error {
+	var err error
+	for i := 0; i < 4; i++ {
+		if err = launchctl("bootstrap", guiTarget(), path); err == nil {
+			return nil
+		}
+		time.Sleep(time.Duration(i+1) * 150 * time.Millisecond)
+	}
+	return err
+}
 
 func launchctl(args ...string) error {
 	out, err := exec.Command("launchctl", args...).CombinedOutput()
