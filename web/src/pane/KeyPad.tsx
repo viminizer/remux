@@ -28,6 +28,7 @@
  * panes too, where they are just text. Filtering chips by pane command would
  * be a larger change than this.
  */
+import { useLayoutEffect, useRef } from 'react'
 import type { CustomChip } from '../store'
 import type { PaneKind } from '../types'
 import { paneKind } from '../types'
@@ -204,11 +205,49 @@ export function KeyPad({
     if (expanded && !key.repeat) onToggle()
   }
 
+  // Opening and closing the pad is a jump cut without this: the output above
+  // it moves 70-odd pixels in one frame and you have to re-find where you
+  // were reading.
+  //
+  // The height is measured rather than written down, because the two states
+  // do not have fixed heights any more. A pane switch filters chips by kind,
+  // Settings adds and removes custom ones, a `wide` chip that will not fit
+  // wraps and leaves a hole, and a coarse pointer makes every row 6px taller.
+  // A pair of numbers in the stylesheet would be wrong on the first of those
+  // and silently wrong on the rest, so the pad is pinned to a measured height
+  // at all times: measure the one the new chips want, put back the one we
+  // came from, and let the transition cover the gap.
+  //
+  // It stays pinned rather than going back to `auto` at the end, so the
+  // height we came from is always readable from the element itself and never
+  // has to be remembered across a render. Nothing that changes the natural
+  // height happens without a render - the row count is the same in portrait
+  // and landscape, since the grid is eight columns wide either way - so there
+  // is no resize case to catch.
+  //
+  // No dependency array on purpose: any commit can change the chip set, and
+  // all of them should re-measure.
+  const pad = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = pad.current
+    if (!el) return
+    const from = el.style.height
+    el.style.height = 'auto'
+    const to = el.offsetHeight + 'px'
+    if (from && from !== to) {
+      el.style.height = from
+      // Read the layout back, or both writes land in one frame and the
+      // browser transitions nothing.
+      void el.offsetHeight
+    }
+    el.style.height = to
+  })
+
   return (
     // The chevron is a sibling of .keypad, never a child: it floats above the
     // pad's top edge, which a grid item cannot do.
     <div className="keypad-wrap">
-      <div className={`keypad ${expanded ? 'open' : ''}`}>
+      <div ref={pad} className={`keypad ${expanded ? 'open' : ''}`}>
         {shown.map((key) => (
           <button
             key={key.id ?? key.k}

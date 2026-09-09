@@ -175,9 +175,20 @@ body.offline .output pre{opacity:.62}
    Eight columns is as many as fits: at 320px, the narrowest phone still worth
    supporting, that is a 33px cell and `⇧tab` - the widest single-cell label -
    needs 32 of it. The slash commands take two cells each. */
+/* The height is set inline by KeyPad, which measures it - see the note there
+   for why it cannot be a pair of numbers here. This side only says how it
+   moves, and clips the rows that are on their way in or out; without
+   overflow:hidden they spill over the composer for the length of the
+   transition. align-content is the one that is not obvious: its default
+   stretches auto-sized rows into whatever space is left over, and a closing
+   pad is one row of chips in a box still 70px too tall - so the row would
+   stretch and the chips would ride down the middle of it at half speed.
+   Pinned to the top, they travel with the pad's own top edge instead. */
 .keypad{
-  display:grid;grid-template-columns:repeat(8,1fr);gap:5px;align-items:center;
+  display:grid;grid-template-columns:repeat(8,1fr);gap:5px;
+  align-items:center;align-content:start;
   padding:8px 12px;background:var(--mantle);border-top:1px solid var(--s0);
+  overflow:hidden;transition:height .2s cubic-bezier(.3,.8,.4,1);
 }
 /* A label that will not fit an eighth of a phone takes two cells. */
 .key.wide{grid-column:span 2}
@@ -206,7 +217,9 @@ body.offline .output pre{opacity:.62}
 .kp-toggle.open svg{transform:rotate(180deg)}
 .kp-toggle:active{background:var(--s1);color:var(--text)}
 @media (hover:hover){.kp-toggle:hover{background:var(--s1);color:var(--text)}}
-@media (prefers-reduced-motion:reduce){.kp-toggle svg{transition:none}}
+/* The pad still gets its height written inline either way - only the travel
+   between the two goes. */
+@media (prefers-reduced-motion:reduce){.kp-toggle svg,.keypad{transition:none}}
 /* The grid sets the width, so the padding is only there to stop a label
    touching the border on the narrowest phone - hence 2px, not the 11px this
    needed back when a chip sized itself to its own label. */
