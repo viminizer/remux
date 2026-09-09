@@ -27,9 +27,13 @@ export function PaneList({
   onStar: (p: Pane) => void
 }) {
   const f = filter.trim().toLowerCase()
+  // windowName stays searchable because paneTitle falls back to it, so it can
+  // be the name actually on the row. windowIndex does not: it is not shown
+  // anywhere, and matching it made a search for "2" return every pane that
+  // happened to sit in window 2.
   const shown = f
     ? panes.filter((p) =>
-        `${paneTitle(p)} ${p.sessionName} ${p.windowName} ${p.command} ${p.windowIndex}`
+        `${paneTitle(p)} ${p.sessionName} ${p.windowName} ${p.command}`
           .toLowerCase()
           .includes(f),
       )

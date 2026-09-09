@@ -97,23 +97,11 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
 
-  renameWindow: (id: string, name: string) =>
-    call(`/api/windows/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ name }),
-    }),
-
-  renameSession: (id: string, name: string) =>
-    call(`/api/sessions/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ name }),
-    }),
-
-  killWindow: (id: string) =>
-    call(`/api/windows/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-  killSession: (id: string) =>
-    call(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // No renameWindow, renameSession, killWindow or killSession here. The UI
+  // exposes panes as the unit and sessions only as grouping, so nothing could
+  // call them - they sat unused, implying levels the user cannot reach. The
+  // server keeps those routes; adding a client call back is the small half of
+  // exposing one deliberately.
 
   settings: () => call<NotifySettings>('/api/settings'),
 

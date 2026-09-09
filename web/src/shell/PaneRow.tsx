@@ -6,9 +6,13 @@ import { StatusDot } from '../components/StatusDot'
 /**
  * One row per pane.
  *
- * Windows stopped being a navigation level: the window name is the row's
- * subtitle instead, so tmux's three levels flatten into two of hierarchy and
- * any pane is one tap away from anywhere.
+ * The pane is the unit and the session is the grouping; the window level is
+ * not shown at all. See "Which levels the UI exposes" in docs/plan.md.
+ *
+ * So the subtitle is what the pane is running and how it is doing, and the
+ * session comes from the group heading above the row. It used to read
+ * "win 3 · zsh · shell", but a window index is an internal coordinate - not
+ * something anyone named, and not a level this UI lets you act on.
  */
 export function PaneRow({
   pane,
@@ -65,7 +69,7 @@ export function PaneRow({
           <span>{paneTitle(pane)}</span>
         </div>
         <div className="row-s">
-          win {pane.windowIndex} · {displayCommand(pane.command)} · {statusLabel(pane.status)}
+          {displayCommand(pane.command)} · {statusLabel(pane.status)}
         </div>
       </button>
       <button

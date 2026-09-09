@@ -165,7 +165,7 @@ export default function App() {
       pane: currentId,
       lines,
       title: current ? paneTitle(current) : currentId,
-      sub: current ? `${current.sessionName} · win ${current.windowIndex} · ${current.command}` : '',
+      sub: current ? `${current.sessionName} · ${current.command}` : '',
       at: Date.now(),
     })
   }, [currentId, lines, live, current])
@@ -407,7 +407,7 @@ export default function App() {
 
   const title = current ? paneTitle(current) : gone ? gone : 'Remux'
   const sub = current
-    ? `${current.sessionName} · win ${current.windowIndex} · ${displayCommand(meta?.cmd ?? current.command)}`
+    ? `${current.sessionName} · ${displayCommand(meta?.cmd ?? current.command)}`
     : ''
 
   return (
@@ -532,7 +532,7 @@ export default function App() {
                 onFocus={async () => {
                   setMenuOpen(false)
                   if (await guard('focus', () => api.focus(current.id)))
-                    toast(`laptop switched to ${current.sessionName}:${current.windowIndex}`)
+                    toast(`laptop switched to ${paneTitle(current)}`)
                 }}
                 onRename={() => {
                   setMenuOpen(false)
@@ -604,9 +604,10 @@ export default function App() {
         }}
         onFocus={async () => {
           if (!actionTarget) return
+          const target = actionTarget
           setSheet('none')
-          if (await guard('focus', () => api.focus(actionTarget.id)))
-            toast(`laptop switched to ${actionTarget.sessionName}:${actionTarget.windowIndex}`)
+          if (await guard('focus', () => api.focus(target.id)))
+            toast(`laptop switched to ${paneTitle(target)}`)
         }}
         onKill={async () => {
           if (!actionTarget) return

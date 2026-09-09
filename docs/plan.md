@@ -289,6 +289,29 @@ drawer, so opening any pane is one tap from anywhere.
 Routing is hash-based and shallow: `#/p/%14` is the only real route, plus `#/settings`. The Android
 back button closes the drawer, then any open sheet, then leaves the app.
 
+### Which levels the UI exposes
+
+tmux has three levels: a **session** holds windows, a **window** holds panes, a **pane** runs one
+program. remux exposes two of them.
+
+| Level | Role in the UI |
+|---|---|
+| Pane | **The unit.** What you open, rename, star, split, interrupt and kill. |
+| Session | **Grouping only.** A drawer heading, and one half of the top bar subtitle. Creatable, because a session is how you start a new piece of work. |
+| Window | **Not shown.** Never named, never numbered, never acted on. Still creatable, because a new window is how you get a pane in a fresh tab. |
+
+Two rules follow, and they are what stops the vocabulary drifting again:
+
+- **No user-facing string names a level the action does not operate on.** "Rename pane" renames a
+  pane. There is no "Rename window", because there is no window level to rename.
+- **No raw window index in user-facing text.** `win 3` is an internal coordinate, not something a
+  person named. It used to appear in the row subtitle and the top bar; both now carry the command
+  instead, and the session comes from the drawer's group heading.
+
+The client API mirrors this: it has no `renameWindow`, `renameSession`, `killWindow` or
+`killSession`, because nothing could call them. The server keeps those routes, so exposing a level
+later is a deliberate act rather than an accident of a helper already being there.
+
 ### The drawer - a flat pane list grouped by session
 
 ```
