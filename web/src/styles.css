@@ -193,10 +193,14 @@ body.offline .output pre{opacity:.62}
 /* A label that will not fit an eighth of a phone takes two cells, and so do
    esc and ⏎ - not for the label's sake but because they are the two pressed
    without looking, anchored to the row's two edges where a thumb lands first. */
-.key.wide{grid-column:span 2}
-/* Breaks the row before this chip. Must come after .key.wide and tie with it
-   on specificity, so a wide chip that also starts a block keeps both: the
-   shorthand above sets grid-column-start to auto, and this puts it back. */
+.key.wide{grid-column-end:span 2}
+/* Breaks the row before this chip, by pinning it to the first column.
+   grid-column-END above, not the `grid-column: span 2` shorthand it replaced.
+   That shorthand puts the span in grid-column-START and leaves the end auto,
+   so this rule overwrote the span itself and a chip that was both wide and
+   first in the custom block rendered one cell wide. Written as the end
+   longhand the two are independent: the start says which column, the end says
+   how many. */
 .key.newrow{grid-column-start:1}
 
 /* The chevron: a button floating clear above the key pad.
