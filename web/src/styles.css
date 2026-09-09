@@ -708,12 +708,15 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    The horizontal edges have always worked this way, a few rules down. This is
    the vertical axis catching up.
 
-   Where an inset is 0 there is genuinely nothing to clear, and a bar sits on
-   the edge of the viewport. That is the honest reading of an inset of 0 rather
-   than a bug, but it is also the case to look at first if this reads tight -
-   `max(12px, env(...))` is the fallback, and it keeps the two axes matching. */
-.topbar{padding-top:env(safe-area-inset-top)}
-.composer{padding-bottom:env(safe-area-inset-bottom)}
+   The floor is what happens when an inset really is 0, which is what this
+   phone reports: the inset alone put the title on the top edge of the viewport
+   and the send button on the bottom one. 5px is not clearance from anything -
+   there is nothing there to clear - it is only the gap that stops a control
+   reading as clipped. Hence a floor well under the horizontal 12px rather than
+   a matching one: sideways that 12px is the reading margin for a wall of
+   monospace text, and here it would just be the old constant back. */
+.topbar{padding-top:max(5px,env(safe-area-inset-top))}
+.composer{padding-bottom:max(5px,env(safe-area-inset-bottom))}
 /* The other two things that can sit on that edge: the drawer footer when the
    drawer is a full-height overlay, and an open sheet. Both keep a constant on
    top of the inset, unlike the two above: they are surfaces that open over the
