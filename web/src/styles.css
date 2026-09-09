@@ -151,46 +151,33 @@ body.offline .output pre{opacity:.62}
 .jump.show{display:block}
 
 /* ── key pad ──────────────────────────────────────────────── */
-/* The wrap exists only to give the chevron something to position against.
-   .keypad's rows scroll when collapsed, so the chevron cannot live inside one:
-   it would clip at the edge or scroll away with the chips, which is the exact
-   failure this feature fixes. */
+/* The wrap exists only to give the chevron something to position against: the
+   chevron sits above .keypad's top edge, which a grid item cannot do. */
 .keypad-wrap{position:relative;flex:0 0 auto}
-/* Collapsed: one row scrolling sideways, as it always was. */
+/* One grid in both states - collapsed renders the first row of it, expanded
+   renders all of it, and neither scrolls. Equal columns rather than chips
+   sized to their labels, because a chip that is always in the same place is
+   the thing that makes it findable by thumb.
+
+   Six columns is as many as fits: at 320px that is a 44px cell, which `⇧tab`
+   needs all of. The slash commands take two cells each. */
 .keypad{
-  display:flex;gap:6px;align-items:center;padding:8px 12px;
-  overflow-x:auto;scrollbar-width:none;
-  background:var(--mantle);border-top:1px solid var(--s0);
+  display:grid;grid-template-columns:repeat(6,1fr);gap:6px;align-items:center;
+  padding:8px 12px;background:var(--mantle);border-top:1px solid var(--s0);
 }
-.keypad::-webkit-scrollbar{display:none}
-/* Trailing space, two jobs: it keeps the last chip clear of the chevron at the
-   scroll end, and a scroll container drops its end padding in Safari, so a
-   flex item is the only thing that reliably reserves it. Not padding-right
-   either - the landscape safe-area block later in the file sets that on
-   .keypad and would win the tie. */
-.keypad:not(.open)::after{content:'';flex:0 0 34px}
+.key.cmd{grid-column:span 2}
 
-/* Expanded: every chip at once, in a grid. Fixed columns rather than a
-   wrapping row so a chip is always in the same place, which is what makes it
-   findable by thumb; the block grows downward in the column, pushing the
-   output up instead of covering it.
-
-   Five columns, and the two slash commands span two of them - `/compact` does
-   not fit a fifth of a phone. That lands the first four rows exactly full. */
-.keypad.open{display:grid;grid-template-columns:repeat(5,1fr);overflow-x:visible}
-.keypad.open .key.cmd{grid-column:span 2}
-
-/* The chevron: a handle overhanging the key pad's top edge.
-   - It overhangs upward, not rightward, because .keypad already carries
-     env(safe-area-inset-right), so on a notched phone in landscape the right
-     edge is safe-area territory. Overhanging up is also what makes it read as
-     a grip.
-   - The --mantle backing is not decoration: chips scroll underneath, and
-     without it they show through the glyph and read as a rendering bug.
-   - The glyph is small; the target is not. Padding does that, so the drawing
-     stays light while the hit box meets the 44px below. */
+/* The chevron: a tab sitting on the key pad's top edge.
+   - Its own height above the edge, so it clears the chips entirely rather than
+     covering the corner of the top-right one. The missing bottom border lets
+     the pad's top border close it, which is what makes it read as a grip
+     rather than a floating button.
+   - Up and not sideways because .keypad carries env(safe-area-inset-right), so
+     on a notched phone in landscape the right edge is safe-area territory.
+   - The glyph is small; the target is not. ::before does that below, so the
+     drawing stays light while the hit box meets 44px. */
 .kp-toggle{
-  position:absolute;right:10px;top:-13px;z-index:2;
+  position:absolute;right:10px;top:-30px;z-index:2;
   display:grid;place-items:center;width:34px;height:30px;padding:0;
   border:1px solid var(--s0);border-bottom:0;border-radius:9px 9px 0 0;
   background:var(--mantle);color:var(--sub1);
@@ -563,10 +550,10 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
      the one that matters most. */
   .key{height:40px;min-width:42px}
   /* 44px of touch target without a 44px drawing. The button stays 34x30 so it
-     still reads as a small handle; ::before extends the hit box below and to
-     the sides, which matters because it sits in the bottom-right corner -
-     which is the corner nearest Android's gesture pill. */
-  .kp-toggle::before{content:'';position:absolute;inset:-9px -9px -18px}
+     still reads as a small handle; ::before extends the hit box to 52x48.
+     Mostly upward: the pad below it is chips now, and a transparent hit box
+     reaching down over the top-right one would quietly eat taps on it. */
+  .kp-toggle::before{content:'';position:absolute;inset:-14px -9px -4px}
   .iconbtn{width:40px;height:40px;flex:0 0 40px}
   .send{width:36px;height:36px;flex:0 0 36px}
   .stepper button{width:32px;height:32px}

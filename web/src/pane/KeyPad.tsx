@@ -1,15 +1,16 @@
 /**
  * The key chips above the composer, in two states.
  *
- * Collapsed it is one scrolling row, which is all it used to be. That stopped
- * scaling at about eight chips on a phone: everything past the eighth needed a
- * horizontal swipe to a position you could not predict, and horizontal scroll
- * gives no hint anything is out there. There are 20 chips now.
+ * It used to be one row that scrolled sideways. That stopped scaling at about
+ * eight chips on a phone: everything past the eighth needed a horizontal swipe
+ * to a position you could not predict, and horizontal scroll gives no hint
+ * anything is out there. There are 20 chips now.
  *
- * Expanded it is a grid of every chip. The point is seeing them all at once -
- * a longer scrolling row would only move the problem. It pushes the output up
- * rather than covering it, because covering the screen you are reading while
- * you decide what to send is the wrong trade.
+ * So it is one six-column grid, and the two states differ only in how much of
+ * it is rendered: collapsed is the first row, expanded is all of it. Nothing
+ * scrolls in either. Expanded pushes the output up rather than covering it,
+ * because covering the screen you are reading while you decide what to send is
+ * the wrong trade.
  *
  * A chip is one of three things. A key name goes through the keys endpoint,
  * which is allowlisted server-side, so this list and KeyAllowlist in
@@ -44,25 +45,32 @@ type Chip = {
   repeat?: boolean
 }
 
-/** How many of CHIPS the collapsed row shows. */
-const ROW = 6
+/**
+ * The grid is six wide, and the collapsed row is its first row - the same six
+ * chips in the same places, so expanding adds to what you were looking at
+ * instead of rearranging it.
+ */
+const COLUMNS = 6
 
 /**
- * One flat list, ordered so the collapsed row is its first ROW entries. The
- * grid is the same list continued rather than a different arrangement you have
- * to re-learn when you expand it.
+ * One flat list in grid order. The first COLUMNS entries are the collapsed
+ * row, and they are the six that are worth a permanent slot: the four keys a
+ * TUI answers to, plus $ and / because both sit one modifier layer deep on the
+ * iOS and Android keyboards, which is the cost these chips exist to remove.
  *
- * The order is roughly by how often a chip gets tapped, but it is also the
- * grid: five columns, with the two slash commands two columns wide, so the
- * first four rows come out full. Reordering this changes the layout.
+ * The slash commands are two columns wide - `/compact` does not fit a sixth of
+ * a phone - so 20 chips fill 22 cells and the first three rows come out
+ * exactly full. Reordering this changes the layout.
  */
 const CHIPS: Chip[] = [
-  { k: '/clear', label: '/clear', command: true },
-  { k: '/compact', label: '/compact', command: true },
   { k: 'Escape', label: 'esc' },
   { k: 'Enter', label: '⏎' },
   { k: 'Tab', label: 'tab', repeat: true },
   { k: 'BSpace', label: '⌫', repeat: true },
+  { k: '$', label: '$', text: true },
+  { k: '/', label: '/', text: true },
+  { k: '/clear', label: '/clear', command: true },
+  { k: '/compact', label: '/compact', command: true },
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
   { k: 'Left', label: '←', repeat: true },
@@ -78,10 +86,6 @@ const CHIPS: Chip[] = [
   // `danger`; they touch the input line, not the process, and ^C stays the
   // only red chip.
   { k: 'C-u', label: '^U' },
-  // Both are one modifier layer deep on the iOS and Android keyboards, which
-  // is the cost these chips exist to remove.
-  { k: '$', label: '$', text: true },
-  { k: '/', label: '/', text: true },
   { k: 'C-c', label: '^C', danger: true },
 ]
 
@@ -100,7 +104,7 @@ export function KeyPad({
   onToggle: () => void
   disabled: boolean
 }) {
-  const shown = expanded ? CHIPS : CHIPS.slice(0, ROW)
+  const shown = expanded ? CHIPS : CHIPS.slice(0, COLUMNS)
 
   const press = (key: Chip) => {
     if (key.command) onCommand(key.k)
@@ -110,9 +114,8 @@ export function KeyPad({
   }
 
   return (
-    // The chevron is a sibling of .keypad, never a child. .keypad scrolls
-    // horizontally when collapsed, so a child would either clip at the edge or
-    // scroll away with the chips - the exact failure this feature fixes.
+    // The chevron is a sibling of .keypad, never a child: it is positioned
+    // against the pad's top edge and overhangs it, which a grid item cannot do.
     <div className="keypad-wrap">
       <div className={`keypad ${expanded ? 'open' : ''}`}>
         {shown.map((key) => (
