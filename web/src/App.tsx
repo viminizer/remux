@@ -589,6 +589,13 @@ export default function App() {
           setRenameTarget(actionTarget)
           setSheet('rename')
         }}
+        onSplit={async (direction) => {
+          if (!actionTarget) return
+          const target = actionTarget
+          setSheet('none')
+          if (await guard('split', () => api.newPane(target.id, direction)))
+            toast(`split ${target.id} ${direction}`)
+        }}
         onInterrupt={async () => {
           if (!actionTarget) return
           setSheet('none')

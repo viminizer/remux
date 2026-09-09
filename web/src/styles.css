@@ -301,6 +301,8 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 @media (hover:hover){.mi:hover{background:var(--s1);color:var(--text)}}
 .mi.danger{color:var(--red)}
 .mi small{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+/* A row that states why an action is unavailable rather than hiding it. */
+.mi.muted{color:var(--ov0)}
 .msep{height:1px;background:var(--s1);margin:5px 2px}
 .stepper{display:flex;gap:4px}
 .stepper button{

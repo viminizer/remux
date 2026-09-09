@@ -140,6 +140,33 @@ func (c *Client) NewWindow(ctx context.Context, sessionID, name, path string) (s
 	return strings.TrimSpace(out), err
 }
 
+// SplitPane splits one pane in two and returns the new pane's id.
+//
+// A split is a resize of the pane being split - that is what it is - and
+// resize-pane and resize-window are forbidden here precisely because changing
+// the laptop's geometry is what remux must not do. The difference is that a
+// split only touches its target: the other panes in the window keep their
+// size. So the rule this enforces is narrow and checkable, and it lives in the
+// API layer where the pane's current command is already known: a pane running
+// an agent is never split, because reflowing a live Codex or Claude Code TUI
+// from the phone is exactly the surprise the forbidden list exists to prevent.
+//
+// right splits side by side (tmux -h), otherwise the new pane goes below (-v).
+func (c *Client) SplitPane(ctx context.Context, paneID string, right bool) (string, error) {
+	if err := CheckPaneID(paneID); err != nil {
+		return "", err
+	}
+	dir := "-v"
+	if right {
+		dir = "-h"
+	}
+	// -d leaves the laptop's active pane where it is. Without it tmux makes
+	// the new pane active, which moves the cursor on the Mac - the one thing
+	// only Focus is allowed to do, and then only when asked.
+	out, err := c.run(ctx, "split-window", "-d", dir, "-P", "-F", "#{pane_id}", "-t", paneID)
+	return strings.TrimSpace(out), err
+}
+
 // ── rename ────────────────────────────────────────────────────────────────
 
 func (c *Client) RenameSession(ctx context.Context, sessionID, name string) error {
@@ -241,6 +268,15 @@ func (c *Client) Focus(ctx context.Context, paneID string) error {
 
 // SessionOf reports which session a pane belongs to. Tests use it to prove a
 // destructive target is inside the scratch session before touching it.
+// CommandOf reports the program a pane is currently running.
+func (c *Client) CommandOf(ctx context.Context, paneID string) (string, error) {
+	if err := CheckPaneID(paneID); err != nil {
+		return "", err
+	}
+	out, err := c.run(ctx, "display-message", "-p", "-t", paneID, "#{pane_current_command}")
+	return strings.TrimSpace(out), err
+}
+
 func (c *Client) SessionOf(ctx context.Context, paneID string) (string, error) {
 	if err := CheckPaneID(paneID); err != nil {
 		return "", err

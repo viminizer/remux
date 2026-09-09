@@ -264,6 +264,71 @@ func TestPasteMarkersDoNotLeakToPlainPrograms(t *testing.T) {
 	reset(t, c, pane)
 }
 
+// TestSplitPane covers the pane creation path added for issue #16.
+//
+// The safety rule - never split a pane running an agent - lives in the API
+// layer, so what matters here is narrower and mechanical: the split lands in
+// the scratch session, produces a second pane in that window, and leaves the
+// laptop's active pane alone. That last part is what -d buys, and it is the
+// reason this is allowed to exist beside the forbidden resize commands.
+func TestSplitPane(t *testing.T) {
+	c, pane := scratchPane(t)
+	ctx := context.Background()
+
+	before, err := c.SessionOf(ctx, pane)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != scratchSession {
+		t.Fatalf("refusing to split %s: it is in %q, not %s", pane, before, scratchSession)
+	}
+
+	newID, err := c.SplitPane(ctx, pane, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ValidPaneID(newID) {
+		t.Fatalf("split returned %q, want a %%N pane id", newID)
+	}
+
+	// The new pane has to be in the scratch session too, or something targeted
+	// the wrong window entirely.
+	if sess, err := c.SessionOf(ctx, newID); err != nil || sess != scratchSession {
+		t.Fatalf("new pane %s landed in %q (err %v), not %s", newID, sess, err, scratchSession)
+	}
+
+	tree, err := c.Tree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var winID string
+	count := 0
+	for _, p := range tree.Panes() {
+		if p.ID == pane {
+			winID = p.WindowID
+		}
+	}
+	for _, p := range tree.Panes() {
+		if p.WindowID == winID {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("window holds %d panes after one split, want 2", count)
+	}
+
+	// -d means the split must not have stolen the active pane.
+	for _, p := range tree.Panes() {
+		if p.ID == newID && p.Active {
+			t.Errorf("the new pane %s was made active; -d should have prevented that", newID)
+		}
+	}
+
+	if err := c.KillPane(ctx, newID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // reset returns the scratch pane to a clean prompt.
 func reset(t *testing.T, c *Client, pane string) {
 	t.Helper()

@@ -1,5 +1,5 @@
 import type { Pane } from '../types'
-import { paneTitle } from '../types'
+import { displayCommand, isAgent, paneTitle } from '../types'
 import { HoldButton } from '../components/HoldButton'
 
 /**
@@ -22,6 +22,7 @@ export function PaneActionsSheet({
   onOpen,
   onStar,
   onRename,
+  onSplit,
   onInterrupt,
   onFocus,
   onKill,
@@ -33,6 +34,7 @@ export function PaneActionsSheet({
   onOpen: () => void
   onStar: () => void
   onRename: () => void
+  onSplit: (direction: 'right' | 'below') => void
   onInterrupt: () => void
   onFocus: () => void
   onKill: () => void
@@ -54,6 +56,24 @@ export function PaneActionsSheet({
             <button className="mi" onClick={onRename}>
               Rename pane
             </button>
+            {/* A split halves the pane it targets, so an agent's screen would
+                reflow under it. The server refuses that outright; saying so
+                here is better than offering an action that fails. */}
+            {isAgent(pane.command) ? (
+              <div className="mi muted" style={{ cursor: 'default' }}>
+                Split pane
+                <small>not while {displayCommand(pane.command)} is running</small>
+              </div>
+            ) : (
+              <>
+                <button className="mi" onClick={() => onSplit('right')}>
+                  Split right
+                </button>
+                <button className="mi" onClick={() => onSplit('below')}>
+                  Split below
+                </button>
+              </>
+            )}
             <button className="mi" onClick={onInterrupt}>
               Interrupt <small>^C</small>
             </button>

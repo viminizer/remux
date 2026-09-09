@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/panes/{id}", s.handleRenamePane)
 	mux.HandleFunc("DELETE /api/panes/{id}", s.handleKillPane)
 
+	mux.HandleFunc("POST /api/panes", s.handleNewPane)
 	mux.HandleFunc("POST /api/sessions", s.handleNewSession)
 	mux.HandleFunc("PATCH /api/sessions/{id}", s.handleRenameSession)
 	mux.HandleFunc("DELETE /api/sessions/{id}", s.handleKillSession)
@@ -304,6 +305,51 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "new-session", id, body.Name)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+// handleNewPane splits an existing pane in two.
+//
+// A pane running an agent is refused. Splitting halves the pane it targets,
+// which reflows that program's TUI, and remux's whole posture is that the
+// laptop's geometry is not the phone's to change - resize-pane and
+// resize-window are forbidden outright for the same reason. Refusing here
+// rather than in the tmux client keeps the check where the pane's current
+// command is already a question the API knows how to ask.
+//
+// Only the target pane is affected, so this is narrower than "no splitting in
+// a window that holds an agent": a shell beside a running Claude Code can
+// still be split, because the agent's pane does not move.
+func (s *Server) handleNewPane(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Pane      string `json:"pane"`
+		Direction string `json:"direction"` // "right" or "below"
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := tmux.CheckPaneID(body.Pane); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	cmd, err := s.Tmux.CommandOf(r.Context(), body.Pane)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if agent.IsAgent(cmd) {
+		writeErr(w, http.StatusConflict,
+			"refusing to split a pane running "+agent.DisplayCommand(cmd)+
+				": it would resize the agent's screen")
+		return
+	}
+	id, err := s.Tmux.SplitPane(r.Context(), body.Pane, body.Direction == "right")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.audit(r, "new-pane", id, "split "+body.Pane+" "+body.Direction)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
 }
 

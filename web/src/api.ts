@@ -71,6 +71,13 @@ export const api = {
   killPane: (pane: string) =>
     call(`/api/panes/${encodeURIComponent(pane)}`, { method: 'DELETE' }),
 
+  /** Splits an existing pane. The server refuses if that pane runs an agent. */
+  newPane: (pane: string, direction: 'right' | 'below') =>
+    call<{ id: string }>('/api/panes', {
+      method: 'POST',
+      body: JSON.stringify({ pane, direction }),
+    }),
+
   newSession: (name: string, path: string) =>
     call<{ id: string }>('/api/sessions', {
       method: 'POST',

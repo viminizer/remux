@@ -119,6 +119,18 @@ export function displayCommand(cmd: string): string {
   return /^\d+\.\d+\.\d+$/.test(cmd) ? 'claude' : cmd
 }
 
+/**
+ * Whether a pane is running a coding agent.
+ *
+ * Mirrors agent.IsAgent on the server, which is the actual authority - this
+ * copy only decides whether to offer the split action, and the server still
+ * refuses one it should not have been offered. displayCommand does the work
+ * for Claude Code, whose pane command is its version number.
+ */
+export function isAgent(cmd: string): boolean {
+  return ['codex', 'claude', 'aider', 'opencode', 'crush'].includes(displayCommand(cmd))
+}
+
 export function statusLabel(s: Status | undefined): string {
   switch (s) {
     case 'waiting': return 'needs an answer'

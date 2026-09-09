@@ -66,6 +66,18 @@ func IsAgent(cmd string) bool {
 	return claudeCmdRe.MatchString(cmd)
 }
 
+// DisplayCommand is the name to show a person for a pane command.
+//
+// Claude Code reports its version as pane_current_command, so the raw value is
+// "2.1.265" - accurate and meaningless in a sentence. Twin of displayCommand
+// in web/src/types.ts.
+func DisplayCommand(cmd string) string {
+	if claudeCmdRe.MatchString(cmd) {
+		return "claude"
+	}
+	return cmd
+}
+
 // IsShell reports whether a pane command is a plain shell.
 func IsShell(cmd string) bool { return shells[cmd] }
 
