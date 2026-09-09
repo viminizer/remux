@@ -29,7 +29,7 @@
  * Which chips a pane gets is `hideOn` against paneKind, and which exist at all
  * is the key pad screen: `hidden` turns a built-in off, `custom` adds one.
  */
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { CustomChip } from '../store'
 import type { PaneKind } from '../types'
 import { paneKind } from '../types'
@@ -68,12 +68,12 @@ export type Chip = {
   command?: boolean
   danger?: boolean
   /**
-   * Whether tapping this leaves the panel open.
+   * Whether this chip is pressed over and over.
    *
-   * Auto-collapse is a property of the chip, not of the panel. Arrows get
-   * tapped three or four times to walk back through history, and ⌫ more than
-   * that; collapsing after each one would make them unusable. One-shot chips
-   * collapse, because after them you are going back to reading.
+   * Two things follow from it. The panel does not auto-collapse after one -
+   * arrows get tapped three or four times to walk back through history, and ⌫
+   * more than that - and holding the chip repeats it. One-shot chips do
+   * neither, because after them you are going back to reading.
    */
   repeat?: boolean
 }
@@ -273,6 +273,54 @@ export function KeyPad({
     if (expanded && !key.repeat) onToggle()
   }
 
+  // Hold a `repeat` chip and it repeats.
+  //
+  // Deleting is 47% of every key this app has ever sent - 99 backspaces and 43
+  // ^U out of 300 - and each one of those backspaces was a separate tap and a
+  // separate round trip to the laptop. ^U already answers "clear the whole
+  // line" in one tap; this answers "take back the last few characters", which
+  // is what the other 99 were.
+  //
+  // 400ms before the first repeat, so a normal tap can never trigger one, then
+  // ten a second. Faster would be closer to a terminal's own key repeat, but
+  // every one of these is an HTTP request over the tailnet rather than a
+  // keystroke on a wire, and ten a second already clears a word per second.
+  const REPEAT_AFTER = 400
+  const REPEAT_EVERY = 100
+
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+  // Whether the hold sent anything. The click that ends a hold has to be
+  // swallowed, or every hold would send one extra on release.
+  const held = useRef(false)
+  // Losing the connection mid-hold puts pointer-events:none on the pad, so the
+  // pointerup that would have ended the hold never arrives. The tick has to be
+  // able to see that for itself, and it cannot read `disabled` - it closes over
+  // the render the hold started in, where the connection was still up.
+  const dead = useRef(disabled)
+  dead.current = disabled
+
+  const stopHold = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = undefined
+  }
+  // A chip can be unmounted mid-hold: switching panes re-filters the grid, and
+  // the pad hides itself the moment the composer takes focus.
+  useEffect(() => stopHold, [])
+
+  const startHold = (key: Chip) => {
+    if (!key.repeat || disabled) return
+    held.current = false
+    const tick = (delay: number) => {
+      timer.current = setTimeout(() => {
+        if (dead.current) return stopHold()
+        held.current = true
+        press(key)
+        tick(REPEAT_EVERY)
+      }, delay)
+    }
+    tick(REPEAT_AFTER)
+  }
+
   // Opening and closing the pad is a jump cut without this: the output above
   // it moves 70-odd pixels in one frame and you have to re-find where you
   // were reading.
@@ -325,7 +373,21 @@ export function KeyPad({
             key={key.id ?? key.k}
             className={`key ${key.wide ? 'wide' : ''} ${key.newrow ? 'newrow' : ''} ${key.danger ? 'danger' : ''}`}
             disabled={disabled}
-            onClick={() => press(key)}
+            // Pointer events start and stop the hold; the click is still what
+            // sends a single press, so a tap behaves exactly as it did and a
+            // keyboard activation - which fires no pointer events at all -
+            // keeps working.
+            onPointerDown={() => startHold(key)}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onPointerCancel={stopHold}
+            onClick={() => {
+              if (held.current) {
+                held.current = false
+                return
+              }
+              press(key)
+            }}
           >
             {key.label}
           </button>

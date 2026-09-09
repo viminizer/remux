@@ -270,6 +270,9 @@ body.offline .output pre{opacity:.62}
      fix for a clipped chip is a shorter label, not a shorter command. */
   overflow:hidden;text-overflow:ellipsis;
 }
+/* A chip is held down now, not only tapped, and a long press on a touch screen
+   is otherwise an invitation to select text or raise a callout. */
+.key{-webkit-touch-callout:none;user-select:none}
 .key:active{transform:scale(.93);background:var(--s1)}
 .key.danger{color:var(--red);border-color:rgba(243,139,168,.3)}
 body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
