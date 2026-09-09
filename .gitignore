@@ -3,6 +3,9 @@
 /web/dist/
 /web/node_modules/
 
+# home-screen icons, drawn by scripts/gen-icons.py at build time
+/web/public/icon-*.png
+
 # go
 *.test
 *.out

@@ -22,6 +22,15 @@ VERSION="${VERSION#v}"
 OUT="bin/remux"
 
 if [ "${SKIP_UI:-0}" != "1" ]; then
+  # Before Vite, which copies web/public verbatim into the bundle.
+  #
+  # The manifest used to name two PNGs that were never generated and were not
+  # committed either, so both 404'd and Android had no maskable icon to build
+  # an adaptive one from. Drawing them here is what keeps the manifest and the
+  # build output from drifting apart again.
+  echo "==> drawing the icons"
+  python3 scripts/gen-icons.py
+
   echo "==> building the UI"
   # Exported so vite.config.ts can bake it into the bundle as
   # __BUILD_VERSION__. The app compares that against the version the server
