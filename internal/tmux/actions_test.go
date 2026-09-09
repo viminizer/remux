@@ -422,7 +422,7 @@ func buildLine(title string) string { return buildLineWith("", title) }
 func buildLineWith(remuxTitle, title string) string {
 	f := []string{
 		"$2", "saas", "1",
-		"@8", "8", "issue168", "1",
+		"@8", "8", "issue168", "1", "1788946490",
 		"%13", "0", "2.1.263",
 		"/Users/mac/dev", "1", "213", "54",
 		"0", "0", "0", "35713",
@@ -451,6 +451,9 @@ func TestParseTreeLine(t *testing.T) {
 	}
 	if p.Width != 213 || p.Height != 54 || p.History != 35713 {
 		t.Errorf("pane geometry: %+v", p)
+	}
+	if p.Activity != 1788946490 {
+		t.Errorf("window activity = %d", p.Activity)
 	}
 }
 

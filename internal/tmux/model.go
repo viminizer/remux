@@ -29,6 +29,13 @@ type Pane struct {
 	Dead       bool   `json:"dead"`
 	History    int    `json:"history"` // history_size
 
+	// Activity is window_activity: a unix second, bumped by tmux whenever
+	// anything is written to any pane in this window. It is the cheap way to
+	// know a screen cannot have changed, and it rides along in the tree so
+	// asking costs nothing extra. Not serialised - it moves every second on a
+	// working pane, and the tree is diffed by hash.
+	Activity int64 `json:"-"`
+
 	// Filled in by the API layer, not by tmux.
 	Status  string `json:"status,omitempty"`  // agent status verdict
 	Preview string `json:"preview,omitempty"` // last N lines, plain text
@@ -111,6 +118,7 @@ const fieldSep = "|~|"
 var treeFormat = strings.Join([]string{
 	"#{session_id}", "#{session_name}", "#{session_attached}",
 	"#{window_id}", "#{window_index}", "#{window_name}", "#{window_active}",
+	"#{window_activity}",
 	"#{pane_id}", "#{pane_index}", "#{pane_current_command}",
 	"#{pane_current_path}", "#{pane_active}", "#{pane_width}", "#{pane_height}",
 	"#{pane_in_mode}", "#{alternate_on}", "#{pane_dead}", "#{history_size}",
@@ -118,7 +126,7 @@ var treeFormat = strings.Join([]string{
 	"#{pane_title}",
 }, fieldSep)
 
-const treeFields = 20
+const treeFields = 21
 
 var sessionFormat = strings.Join([]string{
 	"#{session_id}", "#{session_attached}", "#{session_name}",
@@ -200,19 +208,20 @@ func parseTreeLine(line string) (*Session, *Window, *Pane, bool) {
 	s := &Session{ID: f[0], Name: f[1], Attached: f[2] == "1", Windows: []*Window{}}
 	w := &Window{ID: f[3], Index: atoi(f[4]), Name: f[5], Active: f[6] == "1", Panes: []*Pane{}}
 	p := &Pane{
-		ID:         f[7],
-		Index:      atoi(f[8]),
-		Command:    f[9],
-		Path:       f[10],
-		Active:     f[11] == "1",
-		Width:      atoi(f[12]),
-		Height:     atoi(f[13]),
-		InMode:     f[14] == "1",
-		Alt:        f[15] == "1",
-		Dead:       f[16] == "1",
-		History:    atoi(f[17]),
-		RemuxTitle: f[18],
-		Title:      f[19],
+		ID:         f[8],
+		Index:      atoi(f[9]),
+		Command:    f[10],
+		Path:       f[11],
+		Active:     f[12] == "1",
+		Width:      atoi(f[13]),
+		Height:     atoi(f[14]),
+		InMode:     f[15] == "1",
+		Alt:        f[16] == "1",
+		Dead:       f[17] == "1",
+		History:    atoi(f[18]),
+		RemuxTitle: f[19],
+		Title:      f[20],
+		Activity:   int64(atoi(f[7])),
 	}
 	return s, w, p, true
 }
@@ -322,6 +331,13 @@ func (pc *previewCache) put(id, text string) {
 	defer pc.mu.Unlock()
 	pc.m[id] = previewEntry{text: text, at: time.Now()}
 }
+
+// PreviewLines is how much of a screen a status verdict needs. The classifier
+// reads the last 30 lines (agent.tailLines) after trailing blanks are trimmed,
+// so 40 leaves headroom. Every caller uses it: the cache is keyed by pane id
+// alone, so a caller that asked for fewer lines would poison the entry for one
+// that needs more.
+const PreviewLines = 40
 
 // Previews captures the last n lines of many panes concurrently.
 //

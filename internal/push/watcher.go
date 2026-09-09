@@ -32,6 +32,8 @@ type Watcher struct {
 	// NotifyWaiting gates the primary signal.
 	NotifyWaiting func() bool
 
+	gate *tmux.ActivityGate
+
 	mu       sync.Mutex
 	last     map[string]agent.Status
 	lastSent map[string]time.Time
@@ -43,6 +45,7 @@ func NewWatcher(tm *tmux.Client, store *Store) *Watcher {
 		Store:    store,
 		Interval: 5 * time.Second,
 		Cooldown: 5 * time.Minute,
+		gate:     tmux.NewActivityGate(),
 		last:     map[string]agent.Status{},
 		lastSent: map[string]time.Time{},
 	}
@@ -56,7 +59,12 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			// Nothing to send to, or nothing that could be sent: either way
+			// a sweep of the workspace would be pure cost.
 			if w.Store.Count() == 0 {
+				continue
+			}
+			if !enabled(w.NotifyWaiting, true) && !enabled(w.NotifyDone, false) {
 				continue
 			}
 			w.tick(ctx)
@@ -64,25 +72,50 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
-// tick captures every pane in parallel (~40 ms for 26 panes) and compares each
+// tick re-reads only the panes that can have changed, and compares each
 // verdict with the previous one.
+//
+// Two panes never need capturing. A shell is classified from its command
+// alone - agent.Classify short-circuits before it looks at the screen - so its
+// capture was always discarded. And a pane whose window has had no output
+// since the last tick still has the screen we already classified, which is
+// what the gate is for. On a quiet workspace this leaves nothing to capture at
+// all, which is the whole point: a notifier that is ready costs nothing until
+// something moves.
 func (w *Watcher) tick(ctx context.Context) {
 	tree, err := w.Tmux.Tree(ctx)
 	if err != nil {
 		return
 	}
 	panes := tree.Panes()
-	ids := make([]string, 0, len(panes))
-	for _, p := range panes {
-		ids = append(ids, p.ID)
-	}
-	screens := w.Tmux.Previews(ctx, ids, 15)
 
+	watched := make([]*tmux.Pane, 0, len(panes))
 	seen := map[string]bool{}
 	for _, p := range panes {
 		seen[p.ID] = true
-		status := agent.Classify(p.Command, p.Title, screens[p.ID])
-		w.transition(p, status)
+		if !agent.IsShell(p.Command) {
+			watched = append(watched, p)
+		}
+	}
+
+	stale := map[string]bool{}
+	for _, id := range w.gate.Changed(watched) {
+		stale[id] = true
+	}
+	ids := make([]string, 0, len(stale))
+	for _, p := range watched {
+		if stale[p.ID] {
+			ids = append(ids, p.ID)
+		}
+	}
+
+	screens := w.Tmux.Previews(ctx, ids, tmux.PreviewLines)
+
+	for _, p := range watched {
+		if !stale[p.ID] {
+			continue
+		}
+		w.transition(p, agent.Classify(p.Command, p.Title, screens[p.ID]))
 	}
 
 	// Forget panes that no longer exist, so a recycled pane id does not

@@ -154,7 +154,7 @@ func (s *Server) annotate(r *http.Request, tree *tmux.Tree, withPreview bool) {
 	for _, p := range panes {
 		ids = append(ids, p.ID)
 	}
-	screens := s.Tmux.Previews(r.Context(), ids, 40)
+	screens := s.Tmux.Previews(r.Context(), ids, tmux.PreviewLines)
 	for _, p := range panes {
 		screen := screens[p.ID]
 		p.Status = string(agent.Classify(p.Command, p.Title, screen))

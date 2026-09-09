@@ -72,7 +72,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	c := &conn{ws: ws}
-	p := &poller{srv: s, conn: c, lines: s.Cfg.Lines}
+	p := &poller{
+		srv:    s,
+		conn:   c,
+		lines:  s.Cfg.Lines,
+		gate:   tmux.NewActivityGate(),
+		status: map[string]string{},
+	}
 
 	go p.loop(ctx)
 
@@ -121,6 +127,9 @@ type poller struct {
 	treeHash [32]byte
 	hasPane  bool
 	hasTree  bool
+
+	gate   *tmux.ActivityGate
+	status map[string]string // last verdict per pane, for the ones not recaptured
 }
 
 func (p *poller) subscribe(pane string, lines int) {
@@ -138,8 +147,12 @@ func (p *poller) subscribe(pane string, lines int) {
 
 func (p *poller) forceNext() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.force, p.hasPane, p.hasTree = true, false, false
+	p.mu.Unlock()
+	// "resume" means the phone was away and does not trust what it has. The
+	// gate would otherwise skip every quiet window and hand back verdicts from
+	// before the screen went off.
+	p.gate.Forget()
 }
 
 func (p *poller) setFocus(pane string) {
@@ -241,6 +254,13 @@ func (p *poller) pollPane(ctx context.Context) {
 
 // pollTree keeps the drawer live without the phone polling for it. Same
 // hash-and-diff rule: an unchanged workspace sends nothing.
+//
+// Sending nothing used to cost as much as sending everything, because the
+// status dots meant capturing all 27 panes every two seconds to find out. Most
+// of those captures could not tell us anything new: a shell's verdict comes
+// from its command, and a pane whose window has produced no output still has
+// the verdict we gave it last time. So only the rest are captured, and the
+// statuses we already knew are carried forward.
 func (p *poller) pollTree(ctx context.Context) {
 	tree, err := p.srv.Tmux.Tree(ctx)
 	if err != nil {
@@ -248,14 +268,39 @@ func (p *poller) pollTree(ctx context.Context) {
 	}
 
 	panes := tree.Panes()
-	ids := make([]string, 0, len(panes))
+	live := make([]*tmux.Pane, 0, len(panes))
 	for _, pn := range panes {
-		ids = append(ids, pn.ID)
+		if !agent.IsShell(pn.Command) {
+			live = append(live, pn)
+		}
 	}
-	screens := p.srv.Tmux.Previews(ctx, ids, 40)
+	stale := map[string]bool{}
+	for _, id := range p.gate.Changed(live) {
+		stale[id] = true
+	}
+	ids := make([]string, 0, len(stale))
+	for _, pn := range live {
+		if stale[pn.ID] {
+			ids = append(ids, pn.ID)
+		}
+	}
+	screens := p.srv.Tmux.Previews(ctx, ids, tmux.PreviewLines)
+
+	p.mu.Lock()
 	for _, pn := range panes {
-		pn.Status = string(agent.Classify(pn.Command, pn.Title, screens[pn.ID]))
+		if agent.IsShell(pn.Command) || stale[pn.ID] {
+			pn.Status = string(agent.Classify(pn.Command, pn.Title, screens[pn.ID]))
+			p.status[pn.ID] = pn.Status
+			continue
+		}
+		pn.Status = p.status[pn.ID]
 	}
+	for id := range p.status {
+		if tree.Pane(id) == nil {
+			delete(p.status, id)
+		}
+	}
+	p.mu.Unlock()
 
 	b, err := json.Marshal(tree)
 	if err != nil {

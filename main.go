@@ -115,7 +115,13 @@ func run(cfg *config.Config, local bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if srv.Push != nil {
+	// Not in local mode. The push store is a single directory in ~/.config,
+	// so a development server opens the very subscriptions the installed
+	// service is already watching: two sweeps of the real workspace, and the
+	// phone notified twice about the same pane. AGENTS.md tells anyone
+	// building this to run --local against the live tmux, so this is the
+	// normal case, not a corner.
+	if srv.Push != nil && !local {
 		w := push.NewWatcher(tm, srv.Push)
 		w.NotifyWaiting = func() bool { return cfg.NotifyWaiting }
 		w.NotifyDone = func() bool { return cfg.NotifyDone }
