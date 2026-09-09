@@ -590,7 +590,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    padding and only take the inset. */
 .drawer-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 .sheet-body{padding-bottom:calc(22px + env(safe-area-inset-bottom))}
-@media (min-width:900px){
+/* Width alone does not mean desktop - see the note on the pinned-drawer block
+   at the end of this file. A phone held sideways is wide and still has a
+   gesture pill under the composer, so dropping the insets on width alone took
+   that clearance away on exactly the devices that need it. */
+@media (min-width:900px) and (min-height:600px){
   .topbar{padding-top:14px}
   .composer{padding-bottom:14px}
   .drawer-foot{padding-bottom:10px}
@@ -622,7 +626,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 /* The kebab menu is anchored to the pane column, not the page, and the top
    bar grows by the notch inset - so the menu has to move with it. */
 .menu{top:calc(60px + env(safe-area-inset-top));max-width:calc(100vw - 20px)}
-@media (min-width:900px){.menu{top:60px}}
+@media (min-width:900px) and (min-height:600px){.menu{top:60px}}
 
 .sheet .cancel{
   width:100%;margin-top:8px;padding:11px;border:0;border-radius:12px;cursor:pointer;
@@ -700,8 +704,17 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    at the symptom rather than the cause.
 
    Two rules, then: this block stays last, and .iconbtn.burger carries two
-   classes so it wins on specificity even if it is ever moved back. */
-@media (min-width:900px){
+   classes so it wins on specificity even if it is ever moved back.
+
+   The height term is not decoration. Width alone said "desktop", and landscape
+   phones straddle 900px: a 932x430 phone got the pinned drawer and lost its
+   burger, while an 844x390 one did not. Same app, same orientation, two
+   layouts, decided by which handset you own. 600px is the gap between a
+   landscape phone (430px at the tallest) and a landscape tablet or a desktop
+   window. `(pointer:fine)` was the other candidate and is rejected: it would
+   hand every tablet the phone layout, and this is a question about how much
+   room there is, not about what is pointing at it. */
+@media (min-width:900px) and (min-height:600px){
   .phone{flex-direction:row}
   .drawer{position:relative;transform:none!important;flex:0 0 308px;width:308px}
   .scrim{display:none}
