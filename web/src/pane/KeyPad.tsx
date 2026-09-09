@@ -46,21 +46,23 @@ type Chip = {
 }
 
 /**
- * The grid is six wide, and the collapsed row is its first row - the same six
- * chips in the same places, so expanding adds to what you were looking at
- * instead of rearranging it.
+ * The grid is eight wide, and the collapsed row is its first row - the same
+ * eight chips in the same places, so expanding adds to what you were looking
+ * at instead of rearranging it.
  */
-const COLUMNS = 6
+const COLUMNS = 8
 
 /**
  * One flat list in grid order. The first COLUMNS entries are the collapsed
- * row, and they are the six that are worth a permanent slot: the four keys a
- * TUI answers to, plus $ and / because both sit one modifier layer deep on the
- * iOS and Android keyboards, which is the cost these chips exist to remove.
+ * row, and they are the eight worth a permanent slot: the four keys a TUI
+ * answers to; $ and / because both sit one modifier layer deep on the iOS and
+ * Android keyboards, which is the cost these chips exist to remove; and ↑ ↓,
+ * which with ⏎ are a whole answer to an agent's numbered prompt without ever
+ * expanding the pad.
  *
- * The slash commands are two columns wide - `/compact` does not fit a sixth of
- * a phone - so 20 chips fill 22 cells and the first three rows come out
- * exactly full. Reordering this changes the layout.
+ * The slash commands are two columns wide - `/compact` does not fit an eighth
+ * of a phone - so 20 chips fill 22 cells and it comes out 8 / 6 / 6 with no
+ * ragged row but the last. Reordering this changes the layout.
  */
 const CHIPS: Chip[] = [
   { k: 'Escape', label: 'esc' },
@@ -69,10 +71,10 @@ const CHIPS: Chip[] = [
   { k: 'BSpace', label: '⌫', repeat: true },
   { k: '$', label: '$', text: true },
   { k: '/', label: '/', text: true },
-  { k: '/clear', label: '/clear', command: true },
-  { k: '/compact', label: '/compact', command: true },
   { k: 'Up', label: '↑', repeat: true },
   { k: 'Down', label: '↓', repeat: true },
+  { k: '/clear', label: '/clear', command: true },
+  { k: '/compact', label: '/compact', command: true },
   { k: 'Left', label: '←', repeat: true },
   { k: 'Right', label: '→', repeat: true },
   { k: 'y', label: 'y' },
@@ -114,8 +116,8 @@ export function KeyPad({
   }
 
   return (
-    // The chevron is a sibling of .keypad, never a child: it is positioned
-    // against the pad's top edge and overhangs it, which a grid item cannot do.
+    // The chevron is a sibling of .keypad, never a child: it floats above the
+    // pad's top edge, which a grid item cannot do.
     <div className="keypad-wrap">
       <div className={`keypad ${expanded ? 'open' : ''}`}>
         {shown.map((key) => (
@@ -138,7 +140,23 @@ export function KeyPad({
         aria-expanded={expanded}
         aria-label={expanded ? 'Collapse the key pad' : 'Show all keys'}
       >
-        <span aria-hidden="true">⌃</span>
+        {/* Two chevrons, not one: a single one reads as "scroll up". Drawn
+            rather than typed because ⌃ is the only caret with usable metrics
+            and there is no double of it. */}
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 11 12 5l7 6" />
+          <path d="M5 19 12 13l7 6" />
+        </svg>
       </button>
     </div>
   )

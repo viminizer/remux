@@ -152,47 +152,51 @@ body.offline .output pre{opacity:.62}
 
 /* ── key pad ──────────────────────────────────────────────── */
 /* The wrap exists only to give the chevron something to position against: the
-   chevron sits above .keypad's top edge, which a grid item cannot do. */
+   chevron floats above .keypad, which a grid item cannot do. */
 .keypad-wrap{position:relative;flex:0 0 auto}
 /* One grid in both states - collapsed renders the first row of it, expanded
    renders all of it, and neither scrolls. Equal columns rather than chips
    sized to their labels, because a chip that is always in the same place is
    the thing that makes it findable by thumb.
 
-   Six columns is as many as fits: at 320px that is a 44px cell, which `⇧tab`
-   needs all of. The slash commands take two cells each. */
+   Eight columns is as many as fits: at 320px, the narrowest phone still worth
+   supporting, that is a 33px cell and `⇧tab` - the widest single-cell label -
+   needs 32 of it. The slash commands take two cells each. */
 .keypad{
-  display:grid;grid-template-columns:repeat(6,1fr);gap:6px;align-items:center;
+  display:grid;grid-template-columns:repeat(8,1fr);gap:5px;align-items:center;
   padding:8px 12px;background:var(--mantle);border-top:1px solid var(--s0);
 }
 .key.cmd{grid-column:span 2}
 
-/* The chevron: a tab sitting on the key pad's top edge.
-   - Its own height above the edge, so it clears the chips entirely rather than
-     covering the corner of the top-right one. The missing bottom border lets
-     the pad's top border close it, which is what makes it read as a grip
-     rather than a floating button.
-   - Up and not sideways because .keypad carries env(safe-area-inset-right), so
-     on a notched phone in landscape the right edge is safe-area territory.
+/* The chevron: a button floating clear above the key pad, in the same skin as
+   a chip - it is one of the pad's controls, not part of its frame.
+   - Detached, so it needs the shadow to sit on the output rather than look
+     dropped on it. .jump does the same thing a few pixels away and this
+     borrows its treatment.
+   - Above and not beside because .keypad carries env(safe-area-inset-right),
+     so on a notched phone in landscape the right edge is safe-area territory.
    - The glyph is small; the target is not. ::before does that below, so the
      drawing stays light while the hit box meets 44px. */
 .kp-toggle{
-  position:absolute;right:10px;top:-30px;z-index:2;
+  position:absolute;right:10px;top:-38px;z-index:2;
   display:grid;place-items:center;width:34px;height:30px;padding:0;
-  border:1px solid var(--s0);border-bottom:0;border-radius:9px 9px 0 0;
-  background:var(--mantle);color:var(--sub1);
-  font-size:13px;line-height:1;cursor:pointer;
+  border:1px solid var(--s1);border-radius:10px;
+  background:var(--s0);color:var(--sub1);
+  line-height:0;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);
   transition:background .15s,color .15s;
 }
-.kp-toggle span{display:block;transition:transform .18s}
-.kp-toggle.open span{transform:rotate(180deg)}
-.kp-toggle:active{background:var(--s0);color:var(--text)}
-@media (hover:hover){.kp-toggle:hover{background:var(--s0);color:var(--text)}}
-@media (prefers-reduced-motion:reduce){.kp-toggle span{transition:none}}
+.kp-toggle svg{display:block;transition:transform .18s}
+.kp-toggle.open svg{transform:rotate(180deg)}
+.kp-toggle:active{background:var(--s1);color:var(--text)}
+@media (hover:hover){.kp-toggle:hover{background:var(--s1);color:var(--text)}}
+@media (prefers-reduced-motion:reduce){.kp-toggle svg{transition:none}}
+/* The grid sets the width, so the padding is only there to stop a label
+   touching the border on the narrowest phone - hence 2px, not the 11px this
+   needed back when a chip sized itself to its own label. */
 .key{
-  flex:0 0 auto;min-width:38px;height:34px;padding:0 11px;
-  background:var(--s0);border:1px solid var(--s1);border-radius:9px;
-  color:var(--sub1);font-family:var(--mono);font-size:12.5px;font-weight:500;
+  min-width:0;height:30px;padding:0 2px;
+  background:var(--s0);border:1px solid var(--s1);border-radius:8px;
+  color:var(--sub1);font-family:var(--mono);font-size:11.5px;font-weight:500;
   white-space:nowrap;cursor:pointer;transition:transform .08s,background .15s;
 }
 .key:active{transform:scale(.93);background:var(--s1)}
@@ -547,12 +551,13 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   .field select{font-size:16px}
 
   /* Thumb targets. The key pad is the main way to answer an agent, so it is
-     the one that matters most. */
-  .key{height:40px;min-width:42px}
+     the one that matters most. Height only - the grid owns the width, and a
+     min-width here would push the row wider than the screen. */
+  .key{height:36px}
   /* 44px of touch target without a 44px drawing. The button stays 34x30 so it
      still reads as a small handle; ::before extends the hit box to 52x48.
-     Mostly upward: the pad below it is chips now, and a transparent hit box
-     reaching down over the top-right one would quietly eat taps on it. */
+     Mostly upward, into the output: downward it would cross the gap and land
+     on the top-right chip, quietly eating taps on it. */
   .kp-toggle::before{content:'';position:absolute;inset:-14px -9px -4px}
   .iconbtn{width:40px;height:40px;flex:0 0 40px}
   .send{width:36px;height:36px;flex:0 0 36px}
