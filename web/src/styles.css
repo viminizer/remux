@@ -168,19 +168,19 @@ body.offline .output pre{opacity:.62}
 }
 .key.cmd{grid-column:span 2}
 
-/* The chevron: a button floating clear above the key pad, in the same skin as
-   a chip - it is one of the pad's controls, not part of its frame.
-   - Detached, so it needs the shadow to sit on the output rather than look
-     dropped on it. .jump does the same thing a few pixels away and this
-     borrows its treatment.
+/* The chevron: a button floating clear above the key pad.
+   - It is the second thing that floats there, and .jump is the first, so it
+     takes .jump's whole treatment - fill, border, pill radius, shadow - and
+     sits on .jump's line. Both are 12px above the pad: -42px is that 12 plus
+     this button's own 30. Change .jump's bottom and this has to follow.
    - Above and not beside because .keypad carries env(safe-area-inset-right),
      so on a notched phone in landscape the right edge is safe-area territory.
    - The glyph is small; the target is not. ::before does that below, so the
      drawing stays light while the hit box meets 44px. */
 .kp-toggle{
-  position:absolute;right:10px;top:-38px;z-index:2;
+  position:absolute;right:10px;top:-42px;z-index:3;
   display:grid;place-items:center;width:34px;height:30px;padding:0;
-  border:1px solid var(--s1);border-radius:10px;
+  border:1px solid var(--s1);border-radius:20px;
   background:var(--s0);color:var(--sub1);
   line-height:0;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);
   transition:background .15s,color .15s;
@@ -558,7 +558,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
      still reads as a small handle; ::before extends the hit box to 52x48.
      Mostly upward, into the output: downward it would cross the gap and land
      on the top-right chip, quietly eating taps on it. */
-  .kp-toggle::before{content:'';position:absolute;inset:-14px -9px -4px}
+  .kp-toggle::before{content:'';position:absolute;inset:-10px -9px -8px}
   .iconbtn{width:40px;height:40px;flex:0 0 40px}
   .send{width:36px;height:36px;flex:0 0 36px}
   .stepper button{width:32px;height:32px}
