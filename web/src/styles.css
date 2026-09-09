@@ -696,18 +696,29 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 /* Safe areas for a home-screen install on a notched phone.
 
-   The app is `standalone`, not `fullscreen`, so the phone draws its own status
-   bar above the web view and its nav bar below it - which means both insets are
-   usually 0 on Android and the 20px is doing all the work. iOS keeps them: the
-   status bar there is translucent and the top bar has to clear the notch.
+   The screen's own top and bottom edges are the inset and nothing else. These
+   were `calc(14px + inset)` and `calc(20px + inset)`, which was padding the
+   padding: `viewport-fit=cover` in index.html puts the viewport under the
+   status bar and under the gesture pill, so the inset already is the distance
+   to the first pixel that can be drawn on safely, with the pill's own
+   clearance inside it. Adding a constant on top only moved the bar further in
+   than the phone asked for - 34px of the two edges on a typical Android inset,
+   which is a line and a half of output.
 
-   20px at the bottom rather than the top bar's 14px because that edge is where
-   the thumb rests and where Android's gesture pill lives. */
-.topbar{padding-top:calc(14px + env(safe-area-inset-top))}
-.composer{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+   The horizontal edges have always worked this way, a few rules down. This is
+   the vertical axis catching up.
+
+   Where an inset is 0 there is genuinely nothing to clear, and a bar sits on
+   the edge of the viewport. That is the honest reading of an inset of 0 rather
+   than a bug, but it is also the case to look at first if this reads tight -
+   `max(12px, env(...))` is the fallback, and it keeps the two axes matching. */
+.topbar{padding-top:env(safe-area-inset-top)}
+.composer{padding-bottom:env(safe-area-inset-bottom)}
 /* The other two things that can sit on that edge: the drawer footer when the
-   drawer is a full-height overlay, and an open sheet. They keep their own
-   padding and only take the inset. */
+   drawer is a full-height overlay, and an open sheet. Both keep a constant on
+   top of the inset, unlike the two above: they are surfaces that open over the
+   app, and their bottom padding is the gap between their last control and the
+   edge rather than the app's own margin. */
 .drawer-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 .sheet-body{padding-bottom:calc(22px + env(safe-area-inset-bottom))}
 /* Width alone does not mean desktop - see the note on the pinned-drawer block
