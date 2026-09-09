@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { displayCommand, isShell } from '../types'
 
 /**
@@ -7,21 +7,32 @@ import { displayCommand, isShell } from '../types'
  *
  * "Submit with Enter" is a setting rather than a constant, because some agents
  * want the text staged first and answered with a key afterwards.
+ *
+ * The text lives in App, not here. One Composer is reused for every pane, so
+ * state held here followed you between them: half a prompt typed to an agent
+ * turned up in the box under a shell, aimed at the wrong process and one tap
+ * from being sent there. App keys the drafts by pane; this stays a controlled
+ * field.
  */
 export function Composer({
   target,
   disabled,
   submitOnEnter,
+  text,
+  onChange,
   onSend,
 }: {
   target: string
   disabled: boolean
   submitOnEnter: boolean
+  text: string
+  onChange: (text: string) => void
   onSend: (text: string, submit: boolean) => void
 }) {
-  const [text, setText] = useState('')
   const ta = useRef<HTMLTextAreaElement>(null)
 
+  // Also the thing that resizes the box back down when the draft changes
+  // under it on a pane switch, since the height is written inline.
   useEffect(() => {
     const el = ta.current
     if (!el) return
@@ -33,7 +44,7 @@ export function Composer({
     const t = text.trim()
     if (!t || disabled) return
     onSend(t, submitOnEnter)
-    setText('')
+    onChange('')
   }
 
   const name = displayCommand(target)
@@ -58,7 +69,7 @@ export function Composer({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             // Shift+Enter always means "new line", on every platform.
             if (e.key === 'Enter' && !e.shiftKey && submitOnEnter && !isTouch()) {

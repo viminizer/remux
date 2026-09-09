@@ -363,6 +363,34 @@ export default function App() {
     return () => document.body.classList.remove('offline')
   }, [stale])
 
+  // An unsent draft belongs to the pane it was written for.
+  //
+  // The composer used to keep its own text, and one composer is reused for
+  // every pane, so the text came with you: type half a prompt to an agent,
+  // tap another pane to check on it, and the half prompt is sitting in the
+  // box under a shell, aimed at the wrong process.
+  //
+  // `key={currentId}` on the Composer was the one-line version of this, and it
+  // fixes the bleed by throwing the draft away on every switch - which trades
+  // one surprise for another, since checking another pane mid-sentence is
+  // exactly what this app is for. Keyed drafts cost a few lines more and lose
+  // nothing.
+  //
+  // In memory, not localStorage. A draft is worth the trip to another pane and
+  // back, not a reload - and unlike the snapshot cache, which exists so a dead
+  // connection still shows something, there is nothing to show here. Nothing
+  // prunes the map: tmux never reuses a pane id, so a dead pane's entry is one
+  // short string that goes away with the next reload.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const draft = currentId ? (drafts[currentId] ?? '') : ''
+  const setDraft = useCallback(
+    (text: string) => {
+      if (!currentId) return
+      setDrafts((d) => ({ ...d, [currentId]: text }))
+    },
+    [currentId],
+  )
+
   const sendText = (text: string, submit: boolean) => {
     if (!currentId) return
     guard('send', () => api.text(currentId, text, submit))
@@ -602,6 +630,8 @@ export default function App() {
                 target={meta?.cmd ?? current?.command ?? 'shell'}
                 disabled={inputDisabled}
                 submitOnEnter={settings.submitOnEnter}
+                text={draft}
+                onChange={setDraft}
                 onSend={sendText}
               />
             </div>
