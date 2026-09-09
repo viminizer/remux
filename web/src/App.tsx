@@ -180,6 +180,13 @@ export default function App() {
     go({ name: 'pane', pane: wanted.id })
   }, [route.name, panes, currentId, go])
 
+  // Stable identity on purpose. PaneMenu's outside-click effect lists its
+  // onClose in the dependency array, so an inline arrow re-ran that effect on
+  // every render of this component - which is every poll - tearing the
+  // document listener down and re-arming it behind a setTimeout(0). A tap
+  // landing in that gap hit no listener and the menu stayed open.
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
   // Closing the topmost overlay: the menu, then any sheet, then the drawer.
   // Held in a ref so the popstate listener below can stay mounted once instead
   // of re-subscribing whenever one of them changes.
@@ -459,7 +466,10 @@ export default function App() {
               sub={sub}
               status={meta?.status ?? current?.status}
               stale={stale}
-              onBurger={() => setDrawerOpen(true)}
+              onBurger={() => {
+                setMenuOpen(false)
+                setDrawerOpen(true)
+              }}
               onKebab={() => setMenuOpen((v) => !v)}
             />
 
@@ -502,7 +512,7 @@ export default function App() {
                 wrap={settings.wrap}
                 fontSize={settings.fontSize}
                 starred={settings.starred.includes(current.id)}
-                onClose={() => setMenuOpen(false)}
+                onClose={closeMenu}
                 onStar={() => {
                   toggleStar(current)
                   setMenuOpen(false)
