@@ -224,21 +224,38 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;
   padding:10px 12px 14px;background:var(--mantle);border-top:1px solid var(--s0);
 }
+/* The pill is sized against the chips above it, which are 36px on a touch
+   screen: 4px of padding here and 4px on the textarea puts a one-line composer
+   at 41px instead of 49px, and the whole bar at 72px instead of 80px.
+   Padding is symmetric now. It was 14px left against 6px right, from when the
+   send button lived inside the pill; the button is a sibling, so a full line
+   sat 8px off-centre. `display:flex` is not leftover in the same way - the
+   textarea's `flex:1` is what makes it fill the width - but the `gap` was,
+   with one child left to space. */
 .composer .wrap{
-  flex:1;min-width:0;display:flex;align-items:flex-end;gap:6px;
-  background:var(--base);border:1px solid var(--s1);border-radius:20px;padding:6px 6px 6px 14px;
+  flex:1;min-width:0;display:flex;align-items:flex-end;
+  background:var(--base);border:1px solid var(--s1);border-radius:18px;padding:4px 12px;
   transition:border-color .15s;
 }
 .composer .wrap:focus-within{border-color:var(--blue)}
 .composer textarea{
   flex:1;border:0;outline:0;resize:none;background:transparent;color:var(--text);
-  font-family:var(--ui);font-size:14.5px;line-height:1.45;max-height:110px;padding:6px 0;
+  font-family:var(--ui);font-size:14.5px;line-height:1.45;max-height:110px;padding:4px 0;
 }
 .composer textarea::placeholder{color:var(--ov0)}
+/* margin-bottom is what aligns the button with the text rather than with the
+   box. `.composer` is align-items:flex-end so that a composer grown to five
+   lines keeps the button at the bottom, where it belongs - centring it would
+   float it halfway up a tall pill - but flex-end lines the button up with the
+   bottom of the pill, and the last line of text sits above that by the pill's
+   padding and border. Lifting the button by that constant puts its centre on
+   the last line's centre and keeps it there at every height: measured, the
+   offset is -0.4px on a touch screen and +0.5px on a desktop pointer, from
+   one line through to overflow. It was 6.6px low before. */
 .send{
   width:32px;height:32px;flex:0 0 32px;border:0;border-radius:50%;
   background:var(--blue);color:var(--crust);font-size:14px;cursor:pointer;
-  display:grid;place-items:center;transition:opacity .15s;
+  display:grid;place-items:center;transition:opacity .15s;margin-bottom:3px;
 }
 .send:disabled{opacity:.3;cursor:default}
 
