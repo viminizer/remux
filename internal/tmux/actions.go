@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -256,18 +257,53 @@ func (c *Client) KillSession(ctx context.Context, sessionID string) error {
 
 // Focus moves the laptop's own cursor to a pane.
 //
-// This is the only call in remux that runs select-window and select-pane, and
-// it exists because the user explicitly asked for it from the pane menu
-// ("Focus on laptop"). It bypasses the forbidden-command guard on purpose.
-// Nothing else may call exec with these verbs.
+// This is the only call in remux that runs select-window, select-pane and
+// switch-client, and it exists because the user explicitly asked for it from
+// the pane menu ("Focus on laptop"). It bypasses the forbidden-command guard
+// on purpose. Nothing else may call exec with these verbs.
+//
+// switch-client is the one that was missing, and without it the button did
+// nothing most of the time. select-window and select-pane move the cursor
+// within the pane's own session and say nothing about which session the
+// terminal is looking at, so focusing a pane in any other session rearranged
+// a session nobody could see and then reported success. On this machine that
+// was two sessions out of three.
+//
+// It goes last so the client arrives already on the right window instead of
+// landing on the old one and jumping.
+//
+// No -c, so tmux picks its most recently used client. That is exactly right
+// for one laptop and the only defensible guess for two.
+//
+// Deliberately not covered by a live test. Every other action here is proved
+// against the remux-test scratch session, but switch-client has no scratch
+// equivalent: its whole effect is on the one real client, and a test would
+// yank a working terminal into the test session.
 func (c *Client) Focus(ctx context.Context, paneID string) error {
 	if err := CheckPaneID(paneID); err != nil {
 		return err
 	}
+	session, err := c.SessionOf(ctx, paneID)
+	if err != nil {
+		return err
+	}
+	// Asked before switching rather than after failing. tmux's own words for
+	// this are "no current client", which reaches the phone as a toast and
+	// says nothing about the laptop simply not having a terminal open.
+	clients, err := c.run(ctx, "list-clients", "-F", "#{client_name}")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(clients) == "" {
+		return errors.New("no terminal is attached to tmux on the laptop")
+	}
 	if _, err := c.exec(ctx, "select-window", "-t", paneID); err != nil {
 		return err
 	}
-	_, err := c.exec(ctx, "select-pane", "-t", paneID)
+	if _, err := c.exec(ctx, "select-pane", "-t", paneID); err != nil {
+		return err
+	}
+	_, err = c.exec(ctx, "switch-client", "-t", session)
 	return err
 }
 

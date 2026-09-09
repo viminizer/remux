@@ -272,7 +272,7 @@ func (s *Server) handleFocus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.audit(r, "focus", id, "select-window + select-pane")
+	s.audit(r, "focus", id, "select-window + select-pane + switch-client")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
