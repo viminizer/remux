@@ -239,3 +239,108 @@ func TestUnsubStopsPolling(t *testing.T) {
 		t.Errorf("got %d snaps after unsub, want 0", len(got))
 	}
 }
+
+// The tree poller no longer captures every pane on every tick: a window tmux
+// says has produced no output keeps the verdict it already had. The failure
+// that would cause is a pane arriving with an empty status - a drawer full of
+// blank dots after the workspace goes quiet - so every frame is checked, not
+// just the first.
+func TestTreeStatusSurvivesTheActivityGate(t *testing.T) {
+	tm, pane := scratchPane(t)
+
+	cfg := config.Default()
+	cfg.PollMS = 5000 // pane frames are not what this is about
+	cfg.TreeMS = 300  // several tree polls inside the window below
+	srv := NewServer(cfg, tm, nil)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	ws, ctx := dial(t, ts)
+	r := newTreeReader(t, ws, ctx)
+
+	// The first frame is a complete sweep: the gate has seen nothing yet.
+	check(t, "initial", r.take(3*time.Second), pane)
+
+	// Enough output to push lines into the scrollback, because history_size
+	// is what the tree carries - a short echo changes the screen without
+	// changing the tree, and the frame is diffed by hash. The frame that
+	// follows has every other window quiet, carrying a verdict forward rather
+	// than being captured, which is the path under test.
+	if err := tm.SendText(context.Background(), pane, "seq 1 300", true); err != nil {
+		t.Fatal(err)
+	}
+	check(t, "after a change", r.take(3*time.Second), pane)
+}
+
+func check(t *testing.T, phase string, frames []treeFrame, pane string) {
+	t.Helper()
+	if len(frames) == 0 {
+		t.Fatalf("%s: no tree frames", phase)
+	}
+	for i, f := range frames {
+		found := false
+		for _, p := range f.panes() {
+			if p.Status == "" {
+				t.Errorf("%s frame %d: pane %s has no status", phase, i, p.ID)
+			}
+			if p.ID == pane {
+				found = true
+				if p.Status != "shell" {
+					t.Errorf("%s frame %d: scratch pane is %q, want shell", phase, i, p.Status)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s frame %d does not list the scratch pane", phase, i)
+		}
+	}
+}
+
+type treeFrame struct {
+	T        string          `json:"t"`
+	Sessions []*tmux.Session `json:"sessions"`
+}
+
+func (f treeFrame) panes() []*tmux.Pane {
+	return (&tmux.Tree{Sessions: f.Sessions}).Panes()
+}
+
+type treeReader struct{ ch chan treeFrame }
+
+func newTreeReader(t *testing.T, ws *websocket.Conn, ctx context.Context) *treeReader {
+	t.Helper()
+	r := &treeReader{ch: make(chan treeFrame, 64)}
+	go func() {
+		defer close(r.ch)
+		for {
+			_, data, err := ws.Read(ctx)
+			if err != nil {
+				return
+			}
+			var f treeFrame
+			if json.Unmarshal(data, &f) == nil && f.T == "tree" {
+				select {
+				case r.ch <- f:
+				default:
+				}
+			}
+		}
+	}()
+	return r
+}
+
+func (r *treeReader) take(d time.Duration) []treeFrame {
+	deadline := time.After(d)
+	var got []treeFrame
+	for {
+		select {
+		case f, ok := <-r.ch:
+			if !ok {
+				return got
+			}
+			got = append(got, f)
+		case <-deadline:
+			return got
+		}
+	}
+}
