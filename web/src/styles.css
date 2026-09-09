@@ -176,8 +176,9 @@ body.offline .output pre{opacity:.62}
 
 /* The chevron: a handle overhanging the key pad's top edge.
    - It overhangs upward, not rightward, because .keypad already carries
-     env(safe-area-inset-right) and the app is fullscreen, so the right edge is
-     safe-area territory. Overhanging up is also what makes it read as a grip.
+     env(safe-area-inset-right), so on a notched phone in landscape the right
+     edge is safe-area territory. Overhanging up is also what makes it read as
+     a grip.
    - The --mantle backing is not decoration: chips scroll underneath, and
      without it they show through the glyph and read as a rendering bug.
    - The glyph is small; the target is not. Padding does that, so the drawing
@@ -479,12 +480,26 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 /* ── additions the mock did not need ──────────────────────── */
 
-/* Safe areas for a home-screen install on a notched phone. */
-.composer{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+/* Safe areas for a home-screen install on a notched phone.
+
+   The app is `standalone`, not `fullscreen`, so the phone draws its own status
+   bar above the web view and its nav bar below it - which means both insets are
+   usually 0 on Android and the 20px is doing all the work. iOS keeps them: the
+   status bar there is translucent and the top bar has to clear the notch.
+
+   20px at the bottom rather than the top bar's 14px because that edge is where
+   the thumb rests and where Android's gesture pill lives. */
 .topbar{padding-top:calc(14px + env(safe-area-inset-top))}
+.composer{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+/* The other two things that can sit on that edge: the drawer footer when the
+   drawer is a full-height overlay, and an open sheet. They keep their own
+   padding and only take the inset. */
+.drawer-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.sheet-body{padding-bottom:calc(22px + env(safe-area-inset-bottom))}
 @media (min-width:900px){
   .topbar{padding-top:14px}
   .composer{padding-bottom:14px}
+  .drawer-foot{padding-bottom:10px}
 }
 
 /* Real output is rendered from ANSI, so spans carry inline colour. Links come
@@ -544,7 +559,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   /* 44px of touch target without a 44px drawing. The button stays 34x30 so it
      still reads as a small handle; ::before extends the hit box below and to
      the sides, which matters because it sits in the bottom-right corner -
-     after the app went fullscreen, that is where Android's gesture area is. */
+     which is the corner nearest Android's gesture pill. */
   .kp-toggle::before{content:'';position:absolute;inset:-9px -9px -18px}
   .iconbtn{width:40px;height:40px;flex:0 0 40px}
   .send{width:36px;height:36px;flex:0 0 36px}
@@ -569,9 +584,6 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   padding-left:max(8px,env(safe-area-inset-left));
   padding-right:max(8px,env(safe-area-inset-right));
 }
-/* Only the composer sits on the bottom edge. */
-.composer{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
-
 /* A scroll container drops its end padding in Safari; a spacer restores it so
    the last key is not flush against the edge. */
 .kp-row::after{content:'';flex:0 0 6px}
