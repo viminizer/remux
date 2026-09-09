@@ -56,14 +56,34 @@ export function PaneActionsSheet({
             <button className="mi" onClick={onRename}>
               Rename pane
             </button>
-            {/* A split halves the pane it targets, so an agent's screen would
-                reflow under it. The server refuses that outright; saying so
-                here is better than offering an action that fails. */}
+            {/* A split halves the pane it targets, so an agent's screen
+                reflows under it. This used to be refused outright. #23 scored
+                that rule against the live workspace and found 13 of 17 windows
+                with no splittable pane at all - a window is usually opened to
+                run one agent, so its only pane is an agent pane - which made
+                the rule a removal of the feature rather than a guard on it.
+
+                So it is offered, behind a hold, with the caption saying what it
+                costs. The hold is the same gesture Kill pane uses and needs no
+                new pattern, but not the same colour: this reflows a TUI that
+                redraws on SIGWINCH, and closing the new pane puts it back. */}
             {isAgent(pane.command) ? (
-              <div className="mi muted" style={{ cursor: 'default' }}>
-                Split pane
-                <small>not while {displayCommand(pane.command)} is running</small>
-              </div>
+              <>
+                <div className="mi muted" style={{ cursor: 'default' }}>
+                  Split pane
+                  <small>reflows {displayCommand(pane.command)}</small>
+                </div>
+                <HoldButton
+                  label="Split right"
+                  danger={false}
+                  onConfirm={() => onSplit('right')}
+                />
+                <HoldButton
+                  label="Split below"
+                  danger={false}
+                  onConfirm={() => onSplit('below')}
+                />
+              </>
             ) : (
               <>
                 <button className="mi" onClick={() => onSplit('right')}>

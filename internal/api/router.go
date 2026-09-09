@@ -310,16 +310,15 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 
 // handleNewPane splits an existing pane in two.
 //
-// A pane running an agent is refused. Splitting halves the pane it targets,
-// which reflows that program's TUI, and remux's whole posture is that the
-// laptop's geometry is not the phone's to change - resize-pane and
-// resize-window are forbidden outright for the same reason. Refusing here
-// rather than in the tmux client keeps the check where the pane's current
-// command is already a question the API knows how to ask.
+// Splitting halves the pane it targets, which reflows that program's TUI if
+// one is running there. That used to be refused outright; see the note in the
+// body for what #23 measured and why the deliberateness moved to a hold on the
+// phone instead.
 //
-// Only the target pane is affected, so this is narrower than "no splitting in
-// a window that holds an agent": a shell beside a running Claude Code can
-// still be split, because the agent's pane does not move.
+// Only the target pane is affected: a shell beside a running Claude Code is
+// split without the agent's pane moving at all. That is why splitting is
+// allowed to exist beside the forbidden resize commands - it changes one
+// pane's geometry, the one that was named, and nothing else in the window.
 func (s *Server) handleNewPane(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Pane      string `json:"pane"`
@@ -333,23 +332,32 @@ func (s *Server) handleNewPane(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	cmd, err := s.Tmux.CommandOf(r.Context(), body.Pane)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if agent.IsAgent(cmd) {
-		writeErr(w, http.StatusConflict,
-			"refusing to split a pane running "+agent.DisplayCommand(cmd)+
-				": it would resize the agent's screen")
-		return
-	}
+	// An agent pane used to be refused here with a 409. #23 measured what that
+	// cost: applying the same rule to the live workspace, 13 of 17 windows had
+	// no splittable pane at all, because a window is usually opened to run one
+	// agent and that pane is then the only one in it. A safety rule that blocks
+	// 76% of windows is not preventing a mistake, it is removing the feature.
+	//
+	// So the refusal is gone and the deliberateness moved to the phone, where
+	// splitting an agent pane is behind a press-and-hold. That is the same
+	// place Kill pane draws the line, and for a much smaller consequence: both
+	// Codex and Claude Code handle SIGWINCH and redraw, so the cost is a
+	// narrower screen, not a lost task.
+	//
+	// The command is still read, but only to record what was reflowed. A pane
+	// that vanishes between the lookup and the split is the split's problem to
+	// report, not the audit line's, so a failure here does not block it.
+	cmd, _ := s.Tmux.CommandOf(r.Context(), body.Pane)
 	id, err := s.Tmux.SplitPane(r.Context(), body.Pane, body.Direction == "right")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.audit(r, "new-pane", id, "split "+body.Pane+" "+body.Direction)
+	note := "split " + body.Pane + " " + body.Direction
+	if agent.IsAgent(cmd) {
+		note += " (reflowed " + agent.DisplayCommand(cmd) + ")"
+	}
+	s.audit(r, "new-pane", id, note)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
 }
 

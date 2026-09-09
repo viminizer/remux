@@ -363,6 +363,10 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   transform-origin:left;transform:scaleX(0);pointer-events:none;
 }
 .mi.hold.holding .fill{transform:scaleX(1);transition:transform .8s linear}
+/* A hold that is deliberate but not destructive - splitting an agent's pane.
+   Same gesture and same timing as Kill, in blue rather than red, so the red
+   bar keeps meaning "this does not come back". */
+.mi.hold.calm .fill{background:rgba(137,180,250,.20)}
 
 /* ── full-screen overlays ─────────────────────────────────── */
 .screen{

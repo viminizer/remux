@@ -71,7 +71,8 @@ export const api = {
   killPane: (pane: string) =>
     call(`/api/panes/${encodeURIComponent(pane)}`, { method: 'DELETE' }),
 
-  /** Splits an existing pane. The server refuses if that pane runs an agent. */
+  /** Splits an existing pane, agent or not. Halving an agent's pane reflows
+      it, so the sheet puts that case behind a hold. */
   newPane: (pane: string, direction: 'right' | 'below') =>
     call<{ id: string }>('/api/panes', {
       method: 'POST',

@@ -146,10 +146,15 @@ func (c *Client) NewWindow(ctx context.Context, sessionID, name, path string) (s
 // resize-pane and resize-window are forbidden here precisely because changing
 // the laptop's geometry is what remux must not do. The difference is that a
 // split only touches its target: the other panes in the window keep their
-// size. So the rule this enforces is narrow and checkable, and it lives in the
-// API layer where the pane's current command is already known: a pane running
-// an agent is never split, because reflowing a live Codex or Claude Code TUI
-// from the phone is exactly the surprise the forbidden list exists to prevent.
+// size. The forbidden list exists to stop remux resizing panes as a side
+// effect, by attaching as a client and renegotiating terminal dimensions. A
+// split is neither a side effect nor a surprise - it is one named pane,
+// changed because someone asked for it.
+//
+// An agent's pane was exempt from that until #23, which measured the exemption
+// at 13 of 17 windows with nothing in them that could be split. It is now
+// allowed, behind a press-and-hold on the phone; both Codex and Claude Code
+// handle SIGWINCH and redraw.
 //
 // right splits side by side (tmux -h), otherwise the new pane goes below (-v).
 func (c *Client) SplitPane(ctx context.Context, paneID string, right bool) (string, error) {

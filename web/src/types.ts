@@ -122,9 +122,10 @@ export function displayCommand(cmd: string): string {
 /**
  * Whether a pane is running a coding agent.
  *
- * Mirrors agent.IsAgent on the server, which is the actual authority - this
- * copy only decides whether to offer the split action, and the server still
- * refuses one it should not have been offered. displayCommand does the work
+ * Mirrors agent.IsAgent on the server. It decides how an action is offered,
+ * not whether it is allowed: since #23 the server splits an agent's pane like
+ * any other, and this only chooses between a plain button and a hold. Being
+ * wrong here costs a gesture, never a refusal. displayCommand does the work
  * for Claude Code, whose pane command is its version number.
  */
 export function isAgent(cmd: string): boolean {
