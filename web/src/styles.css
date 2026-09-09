@@ -202,6 +202,12 @@ body.offline .output pre{opacity:.62}
    longhand the two are independent: the start says which column, the end says
    how many. */
 .key.newrow{grid-column-start:1}
+/* A pad with no chips in it is 0px, not a 17px strip of padding and a border.
+   The height comes out of the same measurement as every other state - this only
+   takes away what would still be there once the chips are gone. The side
+   padding is left alone: it carries env(safe-area-inset-*) from the block near
+   the end of this file, and zeroing it here would be zeroing that. */
+.keypad.empty{padding-top:0;padding-bottom:0;border-top-width:0}
 
 /* The chevron: a button floating clear above the key pad.
    - It is the second thing that floats there, and .jump is the first, so it

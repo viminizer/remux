@@ -21,6 +21,7 @@ export function Composer({
   text,
   onChange,
   onSend,
+  onTyping,
 }: {
   target: string
   disabled: boolean
@@ -28,6 +29,14 @@ export function Composer({
   text: string
   onChange: (text: string) => void
   onSend: (text: string, submit: boolean) => void
+  /**
+   * Focus in and out. This is the app's only reading of whether the software
+   * keyboard is up: it is the only field on the pane screen, and no browser
+   * reports the keyboard directly - visualViewport shrinks for it on iOS but
+   * not on Android, and the layout viewport does the opposite, so focus is both
+   * simpler and the thing actually being asked about.
+   */
+  onTyping: (typing: boolean) => void
 }) {
   const ta = useRef<HTMLTextAreaElement>(null)
 
@@ -69,6 +78,8 @@ export function Composer({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
+          onFocus={() => onTyping(true)}
+          onBlur={() => onTyping(false)}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             // Shift+Enter always means "new line", on every platform.

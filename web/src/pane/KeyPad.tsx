@@ -7,11 +7,11 @@
  * anything is out there. There are 18 built-ins now, plus whatever has been
  * added on the key pad screen.
  *
- * So it is one eight-column grid, and the two states differ only in how much
- * of it is rendered: collapsed is the first row, expanded is all of it. Nothing
- * scrolls in either. Expanded pushes the output up rather than covering it,
- * because covering the screen you are reading while you decide what to send is
- * the wrong trade.
+ * So it is one eight-column grid, and the states differ only in how much of it
+ * is rendered: collapsed is the first row, expanded is all of it, and while the
+ * keyboard is up it is none of it. Nothing scrolls in any of them. Expanded
+ * pushes the output up rather than covering it, because covering the screen you
+ * are reading while you decide what to send is the wrong trade.
  *
  * A chip is one of three things. A key name goes through the keys endpoint,
  * which is allowlisted server-side, so this list and KeyAllowlist in
@@ -180,6 +180,7 @@ export function KeyPad({
   expanded,
   onToggle,
   disabled,
+  typing,
   custom,
   hidden,
   command,
@@ -190,6 +191,8 @@ export function KeyPad({
   expanded: boolean
   onToggle: () => void
   disabled: boolean
+  /** Whether the composer has focus - on a phone, whether the keyboard is up. */
+  typing: boolean
   custom: CustomChip[]
   /** `k` of every built-in turned off on the key pad screen. */
   hidden: string[]
@@ -240,9 +243,28 @@ export function KeyPad({
   const mine = extra.filter(visible)
   if (mine.length) mine[0] = { ...mine[0], newrow: true }
 
-  const shown = expanded
-    ? [...first, ...CHIPS.slice(COLLAPSED).filter(on).filter(visible), ...mine]
-    : first
+  // While the software keyboard is up, the pad is the chevron and nothing else.
+  //
+  // The keyboard already takes about a third of the screen, and the collapsed
+  // row costs another 53px of what is left - three lines of the output you are
+  // writing about. It is also the part worth least at that moment: four of its
+  // six chips are tab, backspace, $ and /, all of which the keyboard covering
+  // the screen has too, and the other two are one tap on the chevron away.
+  //
+  // `expanded` is left alone rather than cleared, so dismissing the keyboard
+  // puts back the pad you had rather than a collapsed one. The rule is the same
+  // sentence in both directions: the keyboard and the pad do not share the
+  // screen.
+  const shown = typing
+    ? []
+    : expanded
+      ? [...first, ...CHIPS.slice(COLLAPSED).filter(on).filter(visible), ...mine]
+      : first
+
+  // What the chevron says has to be what is on the screen and not what is
+  // saved. Hidden behind the keyboard, the pad is closed as far as anyone
+  // looking at it is concerned.
+  const open = expanded && !typing
 
   const press = (key: Chip) => {
     if (key.command) onCommand(key.k)
@@ -293,7 +315,11 @@ export function KeyPad({
     // The chevron is a sibling of .keypad, never a child: it floats above the
     // pad's top edge, which a grid item cannot do.
     <div className="keypad-wrap">
-      <div ref={pad} className={`keypad ${expanded ? 'open' : ''}`}>
+      {/* `empty` takes away the padding and the top border, so a pad with no
+          chips in it is 0px rather than a 17px strip of nothing. It is not only
+          the typing case: turn every built-in off on the key pad screen and the
+          collapsed row is empty too. */}
+      <div ref={pad} className={`keypad ${shown.length ? '' : 'empty'} ${open ? 'open' : ''}`}>
         {shown.map((key) => (
           <button
             key={key.id ?? key.k}
@@ -309,10 +335,10 @@ export function KeyPad({
           there is no reason a stale connection should stop you looking at what
           you could send once it comes back. */}
       <button
-        className={`kp-toggle ${expanded ? 'open' : ''}`}
+        className={`kp-toggle ${open ? 'open' : ''}`}
         onClick={onToggle}
-        aria-expanded={expanded}
-        aria-label={expanded ? 'Collapse the key pad' : 'Show all keys'}
+        aria-expanded={open}
+        aria-label={open ? 'Collapse the key pad' : 'Show all keys'}
       >
         {/* Two chevrons, not one: a single one reads as "scroll up". Drawn
             rather than typed because ⌃ is the only caret with usable metrics

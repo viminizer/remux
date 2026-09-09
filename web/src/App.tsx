@@ -49,6 +49,9 @@ export default function App() {
   const [notifState, setNotifState] = useState(notificationState())
 
   const sock = useRef<Socket | null>(null)
+  // Composer focus, which on a phone is the software keyboard being up. The
+  // key pad hides itself while it is - see the note in KeyPad.
+  const [typing, setTyping] = useState(false)
   const [inputbar, setInputbar] = useState<HTMLDivElement | null>(null)
 
   // The toast floats above the key pad and composer, and the composer grows
@@ -424,16 +427,25 @@ export default function App() {
     if (await guard('key', () => api.keys(currentId, ['C-u']))) sendText(text, false)
   }
 
-  // Expanding dismisses the software keyboard.
+  // The chevron dismisses the software keyboard rather than toggling, when the
+  // keyboard is what is hiding the pad.
   //
-  // viewport.ts shrinks --app-h while the keyboard is up, and the expanded pad
-  // takes another ~140px, which between them would leave almost no output
-  // visible. The key pad exists so the keyboard is not needed to answer an
-  // agent, so when you ask for the full grid, the keyboard is what should go.
+  // viewport.ts shrinks --app-h while the keyboard is up, and the pad takes
+  // another 53 to 190px, which between them would leave almost no output
+  // visible - so KeyPad renders nothing at all while typing. That makes the
+  // chevron's job there unambiguous: put the pad back. Toggling instead would
+  // flip a preference nobody can see the effect of, and on a pad that was
+  // already open it would be a tap that changed nothing on the screen.
+  //
+  // `keypadOpen` is deliberately not touched, so the pad you get back is the
+  // one you had. The key pad exists so the keyboard is not needed to answer an
+  // agent; asking for the pad is asking for the keyboard to go.
   const toggleKeypad = () => {
-    const next = !settings.keypadOpen
-    if (next && document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    patch({ keypadOpen: next })
+    if (typing) {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      return
+    }
+    patch({ keypadOpen: !settings.keypadOpen })
   }
 
   const checkNow = async () => {
@@ -630,6 +642,7 @@ export default function App() {
                 expanded={settings.keypadOpen}
                 onToggle={toggleKeypad}
                 disabled={inputDisabled}
+                typing={typing}
                 custom={settings.chips}
                 hidden={settings.hiddenKeys}
                 command={meta?.cmd ?? current?.command ?? 'shell'}
@@ -642,6 +655,7 @@ export default function App() {
                 text={draft}
                 onChange={setDraft}
                 onSend={sendText}
+                onTyping={setTyping}
               />
             </div>
           </>
