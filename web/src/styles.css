@@ -126,12 +126,25 @@ body.optin-on .optin{display:flex}
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   padding:16px 8px 8px;background:var(--base);
 }
+/* overflow-wrap, not word-break: a rename, not a fix. `word-break:break-word`
+   is a deprecated non-standard alias for `word-break:normal` plus
+   `overflow-wrap:anywhere`, so the standard property says the same thing.
+   It is worth writing down that this changes no layout, because it looks like
+   it should. `anywhere` and `break-word` differ only in whether a mid-word
+   break counts toward min-content intrinsic size; neither breaks a word that
+   could have fitted whole on the next line. Measured at 390px over a real
+   pane, both give 316 rows and the same 80 mid-token breaks, and an isolated
+   68-character path splits at the same character under each.
+   So mid-token splits here are only ever tokens longer than the viewport,
+   which no wrap rule can rescue - mirror mode or a smaller font can.
+   Mirror mode does not wrap at all, so `white-space:pre` already settles it
+   there; the reset is spelled out to keep the two rules readable together. */
 .output pre{
   margin:0;font-family:var(--mono);font-size:var(--fs);line-height:1.65;
-  white-space:pre-wrap;word-break:break-word;color:var(--text);
+  white-space:pre-wrap;overflow-wrap:break-word;color:var(--text);
 }
 body.mirror .output{overflow-x:auto}
-body.mirror .output pre{white-space:pre;word-break:normal}
+body.mirror .output pre{white-space:pre;overflow-wrap:normal}
 body.offline .output pre{opacity:.62}
 .output::-webkit-scrollbar,.list::-webkit-scrollbar,.sheet-body::-webkit-scrollbar{width:6px}
 .output::-webkit-scrollbar-thumb,.list::-webkit-scrollbar-thumb,.sheet-body::-webkit-scrollbar-thumb{background:var(--s1);border-radius:3px}

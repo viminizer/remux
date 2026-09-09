@@ -250,6 +250,29 @@ func atoi(s string) int {
 //
 // escapes=true keeps the SGR sequences (-e) so the phone can render the real
 // colours; the preview path strips them because it only needs text.
+//
+// Deliberately no -J. It looks like the fix for ragged output on the phone -
+// join the lines tmux wrapped, let the narrow screen reflow them once - and
+// it does work on output tmux itself wrapped: a 450-character line printed
+// into a 195-column scratch pane comes back as three rows plain and one row
+// with -J. It just almost never applies here. Scored read-only over the 27
+// live panes on this machine, -J changed the line count of 21 of them by
+// zero. Agents wrap their own text to the pane width and end each row with a
+// real newline, so tmux never sets the wrapped flag and there is nothing for
+// -J to join. The breaks the phone re-wraps were made by the agent, not by
+// tmux, and no capture flag can undo those.
+//
+// Where it did fire it was mostly harm: on the panes that changed, the joins
+// were overwhelmingly blank rows being absorbed into the previous line as
+// trailing spaces (one Claude Code pane: 74 joins, nearly all of them blank
+// lines), which deletes the paragraph breaks that make the output readable.
+// -J also preserves trailing spaces everywhere, up to 220 lines of them on a
+// single pane, which paints as blocks once -e carries a background colour.
+//
+// The classifier is the other reason to leave this alone: ws.go reuses this
+// same capture for agent.Classify, whose idle patterns are anchored
+// (`^\s*❯\s*$`), so joining rows would quietly change pane verdicts on the
+// WebSocket path but not the tree path.
 func (c *Client) Capture(ctx context.Context, paneID string, lines int, escapes bool) (string, error) {
 	if err := CheckPaneID(paneID); err != nil {
 		return "", err
