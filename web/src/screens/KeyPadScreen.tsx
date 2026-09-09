@@ -78,20 +78,23 @@ function BuiltIns({
             </small>
           </div>
         </div>
-        <div className="crow chip-grid-row">
+        {/* A heading and the grid it describes are one row, not two. Split
+            across two .crow siblings they got a border between them and the
+            grid sat flush against it. */}
+        <div className="crow chip-group">
           <div className="lbl">
             Always shown
             <small>the row above the composer</small>
           </div>
+          {grid(CHIPS.slice(0, COLLAPSED))}
         </div>
-        <div className="crow chip-grid-row">{grid(CHIPS.slice(0, COLLAPSED))}</div>
-        <div className="crow chip-grid-row">
+        <div className="crow chip-group">
           <div className="lbl">
             Behind the chevron
             <small>some of these hide themselves on panes they are useless on</small>
           </div>
+          {grid(CHIPS.slice(COLLAPSED))}
         </div>
-        <div className="crow chip-grid-row">{grid(CHIPS.slice(COLLAPSED))}</div>
       </div>
     </div>
   )

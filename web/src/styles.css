@@ -522,8 +522,12 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    padding against the pad's 12px - so a label sits one pixel tighter here than
    it will in use. `.key` truncates either way. */
 .chipgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;width:100%}
-.chip-grid-row{padding-top:9px;padding-bottom:9px}
-.chip-grid-row + .chip-grid-row{padding-top:0;border-top:0}
+/* A heading stacked over its grid, so .crow's own padding surrounds both.
+   These were two .crow siblings and the grid was the second one: it inherited
+   a border above it and, once the run-on padding rule zeroed its top, the
+   chips sat flush against that border. */
+.chip-group{display:block}
+.chip-group .chipgrid{margin-top:11px}
 /* Off is dimmed rather than crossed out or hollow: it is still the same chip,
    and dimming is the one treatment that survives `danger` keeping its red. */
 .key.off{opacity:.3}
