@@ -197,3 +197,23 @@ func TestPayloadCarriesNoPaneContent(t *testing.T) {
 		t.Errorf("payload has %d fields, want 4: %v", len(got), got)
 	}
 }
+
+// Every agent the watcher follows has to be called by its own name. The old
+// label() here recognised five agents and named three, so opencode and crush
+// were announced as "claude" - wrong on the one surface Kevin cannot check
+// against the screen.
+func TestNotificationNamesTheRightAgent(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"codex":    "codex needs an answer",
+		"claude":   "claude needs an answer",
+		"aider":    "aider needs an answer",
+		"opencode": "opencode needs an answer",
+		"crush":    "crush needs an answer",
+		"2.1.263":  "claude needs an answer", // Claude Code reports its version
+		"zsh":      "zsh needs an answer",
+	} {
+		if got := body(cmd, "needs an answer"); got != want {
+			t.Errorf("%s: got %q, want %q", cmd, got, want)
+		}
+	}
+}

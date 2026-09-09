@@ -110,10 +110,23 @@ func (w *Watcher) transition(p *tmux.Pane, now agent.Status) {
 
 	switch {
 	case now == agent.Waiting && enabled(w.NotifyWaiting, true):
-		w.fire(p, fmt.Sprintf("%s needs an answer", label(p.Command)), "waiting")
+		w.fire(p, body(p.Command, "needs an answer"), "waiting")
 	case now == agent.Idle && prev == agent.Busy && enabled(w.NotifyDone, false):
-		w.fire(p, fmt.Sprintf("%s finished", label(p.Command)), "done")
+		w.fire(p, body(p.Command, "finished"), "done")
 	}
+}
+
+// body is the single line a lock screen shows.
+//
+// The name comes from agent.DisplayCommand, which holds the one rule that
+// matters here: Claude Code reports its version number as
+// pane_current_command, so the raw value is "2.1.265". This file used to carry
+// its own copy of that rule, and the copy had drifted - it named codex, claude
+// and aider, then fell everything else through to "claude", so an opencode or
+// crush pane announced itself as claude on the one surface where you cannot
+// check.
+func body(cmd, what string) string {
+	return agent.DisplayCommand(cmd) + " " + what
 }
 
 func (w *Watcher) fire(p *tmux.Pane, body, kind string) {
@@ -141,20 +154,6 @@ func (w *Watcher) fire(p *tmux.Pane, body, kind string) {
 	if err != nil {
 		log.Printf("push: %v", err)
 	}
-}
-
-// label turns pane_current_command into something readable. Claude Code
-// reports its version number as the command, which is not a useful word on a
-// lock screen.
-func label(cmd string) string {
-	if agent.IsAgent(cmd) && !agent.IsShell(cmd) {
-		switch cmd {
-		case "codex", "claude", "aider":
-			return cmd
-		}
-		return "claude"
-	}
-	return cmd
 }
 
 func enabled(f func() bool, def bool) bool {
