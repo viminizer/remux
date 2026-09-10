@@ -107,6 +107,7 @@ type frame struct {
 	T     string   `json:"t"`
 	Pane  string   `json:"pane"`
 	Lines []string `json:"lines"`
+	Meta  snapMeta `json:"meta"`
 }
 
 // reader pumps frames into a channel on a long-lived context.
@@ -342,5 +343,37 @@ func (r *treeReader) take(d time.Duration) []treeFrame {
 		case <-deadline:
 			return got
 		}
+	}
+}
+
+// TestSnapMetaSurvivesAPaneTheTreeHasNotSeen guards the fallback in paneMeta.
+//
+// pollPane reads the subscribed pane's metadata out of the tree pollTree
+// already fetched instead of asking tmux for a second one every 400 ms. The
+// saving would not be worth much if the price were a blank top bar on a pane
+// you just opened, so a cache miss still fetches.
+//
+// The test server sets TreeMS to 60 s and the poller takes its one tree when
+// the socket connects. The pane below is created after that, so nothing can
+// refresh the cache inside the test window: if the fallback is gone, meta
+// comes back empty.
+func TestSnapMetaSurvivesAPaneTheTreeHasNotSeen(t *testing.T) {
+	tm, _ := scratchPane(t)
+	ts := testServer(t, tm)
+	ws, ctx := dial(t, ts)
+	rd := newReader(t, ws, ctx)
+
+	// Connected, so the poller has taken its only tree. Now make a pane that
+	// tree cannot contain.
+	_, fresh := scratchPane(t)
+
+	send(t, ws, ctx, map[string]any{"t": "sub", "pane": fresh, "lines": 100})
+
+	snaps := rd.take("snap", 3*time.Second)
+	if len(snaps) == 0 {
+		t.Fatal("no snap for a pane created after the tree poll")
+	}
+	if snaps[0].Meta.Cmd == "" {
+		t.Errorf("meta.cmd is empty for %s: paneMeta did not fall back to a fetch", fresh)
 	}
 }

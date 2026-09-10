@@ -130,6 +130,10 @@ type poller struct {
 
 	gate   *tmux.ActivityGate
 	status map[string]string // last verdict per pane, for the ones not recaptured
+
+	// tree is the last workspace tree pollTree fetched, reused by pollPane
+	// for the subscribed pane's metadata. See paneMeta.
+	tree *tmux.Tree
 }
 
 func (p *poller) subscribe(pane string, lines int) {
@@ -153,6 +157,45 @@ func (p *poller) forceNext() {
 	// gate would otherwise skip every quiet window and hand back verdicts from
 	// before the screen went off.
 	p.gate.Forget()
+}
+
+// paneMeta returns the tree entry for one pane, reusing the tree pollTree
+// already fetched instead of asking tmux for a second one.
+//
+// pollPane runs every 400 ms while a pane is changing, and it used to call
+// Tree() on every one of those ticks. Measured on this laptop that call is
+// 9.2 ms against 27 panes - 2.3% of a core on its own, next to the 2.8% the
+// capture costs - so roughly 40% of what remux burns while you watch a working
+// agent went on re-reading a command name and a width that had not changed.
+//
+// The trade is that Title can now be up to one tree poll (2 s) old, and Title
+// is the one field here that is not slow-moving: Claude Code rewrites
+// pane_title every render. Two things make that acceptable. The drawer already
+// shows titles from this very tree, so the top bar now agrees with it instead
+// of running ahead; and agent.Classify ignores its title argument entirely, so
+// no verdict depends on the fresher value.
+//
+// A pane the cached tree has never seen is still fetched, so a pane created
+// since the last tree poll is never blank. That is the only case that pays.
+func (p *poller) paneMeta(ctx context.Context, id string) *tmux.Pane {
+	p.mu.Lock()
+	cached := p.tree
+	p.mu.Unlock()
+
+	if cached != nil {
+		if pn := cached.Pane(id); pn != nil {
+			return pn
+		}
+	}
+
+	tree, err := p.srv.Tmux.Tree(ctx)
+	if err != nil {
+		return nil
+	}
+	p.mu.Lock()
+	p.tree = tree
+	p.mu.Unlock()
+	return tree.Pane(id)
 }
 
 func (p *poller) setFocus(pane string) {
@@ -232,14 +275,12 @@ func (p *poller) pollPane(ctx context.Context) {
 	}
 
 	meta := snapMeta{}
-	if tree, err := p.srv.Tmux.Tree(ctx); err == nil {
-		if pn := tree.Pane(pane); pn != nil {
-			meta = snapMeta{
-				Cmd: pn.Command, Title: pn.Title,
-				W: pn.Width, H: pn.Height,
-				InMode: pn.InMode, Alt: pn.Alt,
-				Status: string(agent.Classify(pn.Command, pn.Title, text)),
-			}
+	if pn := p.paneMeta(ctx, pane); pn != nil {
+		meta = snapMeta{
+			Cmd: pn.Command, Title: pn.Title,
+			W: pn.Width, H: pn.Height,
+			InMode: pn.InMode, Alt: pn.Alt,
+			Status: string(agent.Classify(pn.Command, pn.Title, text)),
 		}
 	}
 
@@ -266,6 +307,9 @@ func (p *poller) pollTree(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	p.mu.Lock()
+	p.tree = tree
+	p.mu.Unlock()
 
 	panes := tree.Panes()
 	live := make([]*tmux.Pane, 0, len(panes))
