@@ -41,11 +41,12 @@ export function RepoScreen({
   onOpenPR: (n: number) => void
   onOpenPane: (p: Pane) => void
   onSendToPane: () => void
-  onUnwatch: () => void
+  onUnwatch: () => Promise<void>
 }) {
   const [owner, name] = repo.split('/')
   const open = (meta?.panes ?? []).map((id) => panes.get(id)).filter((p): p is Pane => !!p)
   const [menu, setMenu] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   return (
     <div className="screen on gh-screen">
@@ -77,14 +78,23 @@ export function RepoScreen({
           >
             Open in GitHub ↗
           </button>
+          {/* The menu stays open and the item goes dim until the server has
+              answered, rather than snapping shut on a tap whose result only
+              shows up seconds later. */}
           <button
             className="danger"
-            onClick={() => {
-              setMenu(false)
-              onUnwatch()
+            disabled={leaving}
+            onClick={async () => {
+              setLeaving(true)
+              try {
+                await onUnwatch()
+                setMenu(false)
+              } finally {
+                setLeaving(false)
+              }
             }}
           >
-            Stop watching this repo
+            {leaving ? 'Stopping…' : 'Stop watching this repo'}
           </button>
         </div>
       )}

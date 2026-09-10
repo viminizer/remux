@@ -358,5 +358,11 @@ func (s *Server) setWatchlist(list []string) ([]string, error) {
 	if _, err := config.Update(func(c *config.Config) { c.Repos = list }); err != nil {
 		return nil, err
 	}
+	// A removal is answerable without the network, so answer it now. Waiting
+	// for the kicked poll would leave the repo on screen for seconds after the
+	// tap that removed it.
+	if s.GH != nil {
+		s.GH.Retain(list)
+	}
 	return list, nil
 }

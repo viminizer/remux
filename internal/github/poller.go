@@ -316,3 +316,27 @@ func NormalizeWatchlist(in []string) []string {
 	}
 	return out
 }
+
+// Retain drops cached repos that are no longer on the watchlist.
+//
+// Removing a repo needs no network - the answer is already known - but the
+// snapshot is only rebuilt by a poll, which takes seconds against GitHub.
+// Without this the repo stays on the screen for the whole of that, so the tap
+// reads as if it did nothing. Adding a repo still has to wait: there is no
+// data for it yet.
+func (p *Poller) Retain(list []string) {
+	keep := make(map[string]bool, len(list))
+	for _, r := range list {
+		keep[strings.ToLower(r)] = true
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]Repo, 0, len(p.snap.Repos))
+	for _, r := range p.snap.Repos {
+		if keep[strings.ToLower(r.Full)] {
+			out = append(out, r)
+		}
+	}
+	p.snap.Repos = out
+}

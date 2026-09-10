@@ -1069,6 +1069,7 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   font-family:var(--ui);font-size:13px;font-weight:600;
 }
 .repo-menu button.danger{color:var(--red)}
+.repo-menu button:disabled{opacity:.45;cursor:default}
 
 /* ── detail screen ────────────────────────────────────────── */
 .det-head{padding:18px 16px 14px;border-bottom:1px solid var(--s0)}
@@ -1150,6 +1151,16 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .pick .sub .dot{flex:0 0 8px}
 .pick .add{flex:0 0 auto;font-size:18px;color:var(--ov0)}
 .pick.added .add{color:var(--green)}
+
+/* A row with a watch or unwatch in flight. Dim enough to read as "not yours
+   to touch yet", and dead to a second tap. */
+.pick.busy{opacity:.45;pointer-events:none}
+.pick .add .wait{
+  display:inline-block;width:13px;height:13px;border-radius:50%;
+  border:1.5px solid var(--ov0);border-right-color:transparent;
+  animation:spin .8s linear infinite;
+}
+@media (prefers-reduced-motion:reduce){.pick .add .wait{animation:none;opacity:.5}}
 
 .cmdbox{
   padding:12px 13px;border-radius:11px;margin-bottom:12px;
