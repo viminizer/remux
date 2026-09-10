@@ -5,6 +5,7 @@ import { displayCommand, dotClass, statusLabel } from '../types'
 import type { Checks, Issue, PR } from './types'
 import { age } from './types'
 import { ChecksChip, LabelChip, ReviewChip } from './rows'
+import { SkeletonItem } from './Skeleton'
 
 type Item = { kind: 'issue'; issue: Issue } | { kind: 'pr'; pr: PR }
 
@@ -83,44 +84,52 @@ export function ItemScreen({
       </div>
 
       <div className="screen-body">
-        <div className="det-head">
-          <div className="repo">{repo}</div>
-          <h3>
-            {title} <span className="num">#{number}</span>
-          </h3>
-          <div className="meta">
-            {err ? (
-              <span className="chip red">{err}</span>
-            ) : !item ? (
-              <span className="chip">loading…</span>
-            ) : item.kind === 'pr' ? (
-              <>
-                <span className="chip green">open</span>
-                {item.pr.draft && <span className="chip">draft</span>}
-                <ChecksChip checks={item.pr.checks} />
-                <ReviewChip review={item.pr.review} />
-                {item.pr.conflicts && <span className="chip red">conflicts</span>}
-                <span className="chip">
-                  +{item.pr.additions} −{item.pr.deletions}
-                </span>
-                <span className="chip">
-                  {item.pr.head} → {item.pr.base}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="chip green">open</span>
-                {(item.issue.labels ?? []).map((l) => (
-                  <LabelChip key={l.name} label={l} />
-                ))}
-                {viewer && (item.issue.assignees ?? []).includes(viewer) && (
-                  <span className="chip peach">assigned to you</span>
-                )}
-                {item.issue.comments > 0 && <span className="chip">💬 {item.issue.comments}</span>}
-              </>
-            )}
+        {/* Until the fetch lands there is no title, no body and no thread, and
+            drawing the frame around all three made a loading item look like a
+            blank one somebody had filed. The head comes back the moment there
+            is something to put in it. */}
+        {!item && !err && <SkeletonItem />}
+
+        {(item || err) && (
+          <div className="det-head">
+            <div className="repo">{repo}</div>
+            <h3>
+              {title} <span className="num">#{number}</span>
+            </h3>
+            <div className="meta">
+              {err ? (
+                <span className="chip red">{err}</span>
+              ) : item?.kind === 'pr' ? (
+                <>
+                  <span className="chip green">open</span>
+                  {item.pr.draft && <span className="chip">draft</span>}
+                  <ChecksChip checks={item.pr.checks} />
+                  <ReviewChip review={item.pr.review} />
+                  {item.pr.conflicts && <span className="chip red">conflicts</span>}
+                  <span className="chip">
+                    +{item.pr.additions} −{item.pr.deletions}
+                  </span>
+                  <span className="chip">
+                    {item.pr.head} → {item.pr.base}
+                  </span>
+                </>
+              ) : item ? (
+                <>
+                  <span className="chip green">open</span>
+                  {(item.issue.labels ?? []).map((l) => (
+                    <LabelChip key={l.name} label={l} />
+                  ))}
+                  {viewer && (item.issue.assignees ?? []).includes(viewer) && (
+                    <span className="chip peach">assigned to you</span>
+                  )}
+                  {item.issue.comments > 0 && (
+                    <span className="chip">💬 {item.issue.comments}</span>
+                  )}
+                </>
+              ) : null}
+            </div>
           </div>
-        </div>
+        )}
 
         {panes.length > 0 && <LiveInTmux panes={panes} onOpen={onOpenPane} />}
 

@@ -2,8 +2,9 @@ import { useState } from 'react'
 import type { Pane } from '../types'
 import { dotClass } from '../types'
 import type { GitHubSnapshot, Inbox, InboxItem, Repo } from './types'
-import { age } from './types'
+import { age, loaded } from './types'
 import { EndNote, GhGroup, InboxRow } from './rows'
+import { SkeletonCards, SkeletonRows } from './Skeleton'
 
 /**
  * The GitHub screen: an overlay at #/gh, exactly like Settings.
@@ -40,6 +41,9 @@ export function GitHubScreen({
   // the whole app down.
   const inbox = snap.inbox ?? { needsYou: [], assigned: [], yourPRs: [], replies: 0 }
   const repos = snap.repos ?? []
+  // Nothing has been fetched yet - not even from the cache. Every count and
+  // every empty state below would be a claim about data that does not exist.
+  const cold = !loaded(snap)
 
   // gh being logged out is the one failure the phone cannot do anything
   // about, so it gets a screen of its own instead of a banner.
@@ -58,7 +62,8 @@ export function GitHubScreen({
         <h2>
           GitHub
           <small>
-            {snap.viewer ?? '…'} · {repos.length} repo{repos.length === 1 ? '' : 's'} watched
+            {snap.viewer ?? '…'} ·{' '}
+            {cold ? 'reading…' : `${repos.length} repo${repos.length === 1 ? '' : 's'} watched`}
           </small>
         </h2>
         <button className={`iconbtn ${loading ? 'spin' : ''}`} onClick={onRefresh} aria-label="Refresh">
@@ -66,7 +71,7 @@ export function GitHubScreen({
         </button>
       </div>
 
-      {snap.at && snap.errorKind && (
+      {loaded(snap) && snap.errorKind && (
         <div className="stale-bar">
           <span className="dot stale" />
           <span className="grow">
@@ -84,19 +89,25 @@ export function GitHubScreen({
 
       <div className="gh-seg">
         <button className={tab === 'inbox' ? 'on' : ''} onClick={() => setTab('inbox')}>
-          Inbox <span className="n">{total}</span>
+          Inbox <span className="n">{cold ? '·' : total}</span>
         </button>
         <button className={tab === 'repos' ? 'on' : ''} onClick={() => setTab('repos')}>
-          Repos <span className="n">{repos.length}</span>
+          Repos <span className="n">{cold ? '·' : repos.length}</span>
         </button>
       </div>
 
       {snap.panesBlocked && <PanesBlockedNote />}
 
       {tab === 'inbox' ? (
-        <InboxTab inbox={inbox} panes={panes} onOpenItem={onOpenItem} onOpenPane={onOpenPane} />
+        <InboxTab
+          inbox={inbox}
+          cold={cold}
+          panes={panes}
+          onOpenItem={onOpenItem}
+          onOpenPane={onOpenPane}
+        />
       ) : (
-        <ReposTab repos={repos} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
+        <ReposTab repos={repos} cold={cold} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
       )}
     </div>
   )
@@ -121,17 +132,27 @@ function PanesBlockedNote() {
 
 function InboxTab({
   inbox,
+  cold,
   panes,
   onOpenItem,
   onOpenPane,
 }: {
   inbox: Inbox
+  cold: boolean
   panes: Map<string, Pane>
   onOpenItem: (item: InboxItem) => void
   onOpenPane: (p: Pane) => void
 }) {
   const { needsYou, assigned, yourPRs, replies } = inbox
   const empty = !needsYou.length && !assigned.length && !yourPRs.length
+
+  if (cold) {
+    return (
+      <div className="screen-body">
+        <SkeletonRows n={5} />
+      </div>
+    )
+  }
 
   const section = (title: string, items: InboxItem[], hot = false) =>
     items.length > 0 && (
@@ -191,22 +212,26 @@ function InboxTab({
 
 function ReposTab({
   repos,
+  cold,
   panes,
   onOpenRepo,
   onAdd,
 }: {
   repos: Repo[]
+  cold: boolean
   panes: Map<string, Pane>
   onOpenRepo: (repo: string) => void
   onAdd: () => void
 }) {
   return (
     <div className="screen-body">
+      {cold && <SkeletonCards n={4} />}
+
       {repos.map((r) => (
         <RepoCard key={r.full} repo={r} panes={panes} onOpen={() => onOpenRepo(r.full)} />
       ))}
 
-      {!repos.length && (
+      {!cold && !repos.length && (
         <div className="msg" style={{ paddingBottom: 8 }}>
           <div className="glyph">◈</div>
           <h2>No repos yet</h2>

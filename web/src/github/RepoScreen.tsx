@@ -3,6 +3,7 @@ import { api } from '../api'
 import type { Pane } from '../types'
 import type { Issue, PR, Repo } from './types'
 import { EndNote, IssueRow, PRRow, ScopeNote } from './rows'
+import { SkeletonRows } from './Skeleton'
 
 type Tab = 'issues' | 'prs'
 type IssueFilter = 'mine' | 'all'
@@ -216,7 +217,7 @@ function IssuesTab({
         )}
 
         {err && <div className="loaderr">{err}</div>}
-        {issues === null && !err && <div className="loading">Loading…</div>}
+        {issues === null && !err && <SkeletonRows n={5} />}
 
         {issues?.map((i) => (
           <IssueRow key={i.number} issue={i} viewer={viewer} onOpen={() => onOpen(i.number)} />
@@ -316,9 +317,12 @@ function PRsTab({
     }
   }, [prs, filter, viewer])
 
+  // Every count is 0 until the list lands, and "Needs your review 0" is a
+  // statement, not a placeholder. A dot says the same thing the repo header's
+  // counts say while they wait.
   const chip = (key: PRFilter, label: string, n: number) => (
     <button className={`f ${filter === key ? 'on' : ''}`} onClick={() => setFilter(key)}>
-      {label} <span className="n">{n}</span>
+      {label} <span className="n">{prs === null ? '·' : n}</span>
     </button>
   )
 
@@ -338,7 +342,7 @@ function PRsTab({
         </ScopeNote>
 
         {err && <div className="loaderr">{err}</div>}
-        {prs === null && !err && <div className="loading">Loading…</div>}
+        {prs === null && !err && <SkeletonRows n={4} />}
 
         {shown.map((p) => (
           <PRRow key={p.number} pr={p} viewer={viewer} onOpen={() => onOpen(p.number)} />

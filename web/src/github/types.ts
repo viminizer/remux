@@ -139,6 +139,18 @@ export const emptySnapshot: GitHubSnapshot = {
   at: '',
 }
 
+/**
+ * Whether this snapshot has ever been filled in.
+ *
+ * "Nothing waiting" and "no repos yet" are true statements about an empty
+ * result and lies about one nobody has fetched, so the screens ask this before
+ * they draw either. Go's zero time marshals to year 1 rather than to an empty
+ * string, so a truthiness check on `at` alone is not enough.
+ */
+export function loaded(s: GitHubSnapshot): boolean {
+  return !!s.at && !s.at.startsWith('0001-')
+}
+
 /** Short relative age, the way every row in the mock stamps it: 3h, 4d, 5w. */
 export function age(iso: string): string {
   const then = Date.parse(iso)

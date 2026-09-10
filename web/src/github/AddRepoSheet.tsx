@@ -4,6 +4,7 @@ import type { Pane } from '../types'
 import type { PickerRepo } from './types'
 import { age } from './types'
 import { GhGroup } from './rows'
+import { SkeletonPicks } from './Skeleton'
 
 /**
  * Add a repo.
@@ -41,6 +42,10 @@ export function AddRepoSheet({
   const on = stated ?? watched
   // Bumped by Try again, to re-run the fetch without changing the query.
   const [nonce, setNonce] = useState(0)
+  // A search re-runs against the whole of GitHub, which is slower than the
+  // local list it replaces. Without this the old results just sat there
+  // looking like the answer to the query being typed.
+  const [fetching, setFetching] = useState(false)
 
   // Debounced, because the search half of this runs on GitHub's search quota
   // - 30 requests a minute - and a keystroke is not a query.
@@ -49,10 +54,12 @@ export function AddRepoSheet({
     let cancelled = false
     const t = setTimeout(() => {
       setErr(null)
+      setFetching(true)
       api
         .githubPicker(q.trim())
         .then((r) => !cancelled && setRepos(r.repos))
         .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : String(e)))
+        .finally(() => !cancelled && setFetching(false))
     }, q ? 350 : 0)
     return () => {
       cancelled = true
@@ -157,25 +164,30 @@ export function AddRepoSheet({
             </button>
           </div>
         )}
-        {repos === null && !err && <div className="loading">Loading…</div>}
+        {repos === null && !err && <SkeletonPicks n={6} />}
 
-        {withPane.length > 0 && (
-          <>
-            <GhGroup title="Open in a pane right now" n={withPane.length} />
-            {withPane.map(row)}
-          </>
-        )}
-        {rest.length > 0 && (
-          <>
-            <GhGroup title={q ? 'Search results' : 'Yours and your orgs'} n={rest.length} />
-            {rest.map(row)}
-          </>
-        )}
-        {repos?.length === 0 && (
-          <div className="loading">
-            {q ? `Nothing on GitHub matches "${q}".` : 'gh returned no repositories.'}
-          </div>
-        )}
+        {/* Results already on screen stay readable while the next search runs,
+            dimmed so they cannot be mistaken for the answer to what is being
+            typed right now. */}
+        <div className={fetching && repos !== null ? 'sk-dim' : undefined}>
+          {withPane.length > 0 && (
+            <>
+              <GhGroup title="Open in a pane right now" n={withPane.length} />
+              {withPane.map(row)}
+            </>
+          )}
+          {rest.length > 0 && (
+            <>
+              <GhGroup title={q ? 'Search results' : 'Yours and your orgs'} n={rest.length} />
+              {rest.map(row)}
+            </>
+          )}
+          {repos?.length === 0 && !fetching && (
+            <div className="loading">
+              {q ? `Nothing on GitHub matches "${q}".` : 'gh returned no repositories.'}
+            </div>
+          )}
+        </div>
 
         <button className="go" onClick={onClose}>
           Done
