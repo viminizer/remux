@@ -31,6 +31,8 @@ export function AddRepoSheet({
   const [repos, setRepos] = useState<PickerRepo[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [pending, setPending] = useState<string | null>(null)
+  // Bumped by Try again, to re-run the fetch without changing the query.
+  const [nonce, setNonce] = useState(0)
 
   // Debounced, because the search half of this runs on GitHub's search quota
   // - 30 requests a minute - and a keystroke is not a query.
@@ -48,7 +50,7 @@ export function AddRepoSheet({
       cancelled = true
       clearTimeout(t)
     }
-  }, [q, open])
+  }, [q, open, nonce])
 
   // Which repos have a pane open in them right now. The server matched each
   // pane's working directory to a repo, so this costs nothing extra here.
@@ -119,7 +121,16 @@ export function AddRepoSheet({
           />
         </div>
 
-        {err && <div className="loaderr">{err}</div>}
+        {/* A failure and an empty result used to look the same here - both
+            just stopped showing rows - so the sheet says which it is. */}
+        {err && (
+          <div className="loaderr">
+            {err}
+            <button className="retry" onClick={() => setNonce((n) => n + 1)}>
+              Try again
+            </button>
+          </div>
+        )}
         {repos === null && !err && <div className="loading">Loading…</div>}
 
         {withPane.length > 0 && (
@@ -134,7 +145,11 @@ export function AddRepoSheet({
             {rest.map(row)}
           </>
         )}
-        {repos?.length === 0 && <div className="loading">Nothing found.</div>}
+        {repos?.length === 0 && (
+          <div className="loading">
+            {q ? `Nothing on GitHub matches "${q}".` : 'gh returned no repositories.'}
+          </div>
+        )}
 
         <button className="go" onClick={onClose}>
           Done

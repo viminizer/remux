@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,7 +35,11 @@ func ghStatus(err error) int {
 	return http.StatusBadGateway
 }
 
-func writeGHErr(w http.ResponseWriter, err error) {
+func writeGHErr(w http.ResponseWriter, r *http.Request, err error) {
+	// Logged as well as returned. Without this a failed screen leaves no
+	// trace anywhere on the Mac, so the only evidence of what went wrong is
+	// whatever the person holding the phone can describe.
+	log.Printf("github %s: %v", r.URL.Path, err)
 	writeJSON(w, ghStatus(err), map[string]string{
 		"error": err.Error(),
 		"kind":  gh.ErrorKind(err),
@@ -143,7 +148,7 @@ func (s *Server) handleGitHubIssues(w http.ResponseWriter, r *http.Request) {
 	page, err := s.GHClient.Issues(r.Context(), full, filter,
 		s.GH.Snapshot().Viewer, r.URL.Query().Get("after"))
 	if err != nil {
-		writeGHErr(w, err)
+		writeGHErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, page)
@@ -157,7 +162,7 @@ func (s *Server) handleGitHubPRs(w http.ResponseWriter, r *http.Request) {
 	}
 	prs, err := s.GHClient.PRs(r.Context(), full, 100)
 	if err != nil {
-		writeGHErr(w, err)
+		writeGHErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"prs": prs})
@@ -172,7 +177,7 @@ func (s *Server) handleGitHubIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	issue, err := s.GHClient.Issue(r.Context(), full, num)
 	if err != nil {
-		writeGHErr(w, err)
+		writeGHErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, issue)
@@ -187,7 +192,7 @@ func (s *Server) handleGitHubPR(w http.ResponseWriter, r *http.Request) {
 	}
 	pr, err := s.GHClient.PR(r.Context(), full, num)
 	if err != nil {
-		writeGHErr(w, err)
+		writeGHErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pr)
@@ -214,8 +219,12 @@ func (s *Server) handleGitHubPicker(w http.ResponseWriter, r *http.Request) {
 		repos, err = s.GHClient.SearchRepos(r.Context(), q, 20)
 	}
 	if err != nil {
-		writeGHErr(w, err)
+		writeGHErr(w, r, err)
 		return
+	}
+
+	if len(repos) == 0 {
+		log.Printf("github picker: q=%q returned no repos", q)
 	}
 
 	watched := map[string]bool{}

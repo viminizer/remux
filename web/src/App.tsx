@@ -572,16 +572,22 @@ export default function App() {
   if (sessions === null) return <BootSkeleton />
 
   const title = current ? paneTitle(current) : gone ? gone : 'Remux'
+  // Anything the scrim should dim and close on a tap outside.
+  const scrimUp = drawerOpen || sheet !== 'none' || ghSheet !== 'none'
+
   const sub = current
     ? `${current.sessionName} · ${displayCommand(meta?.cmd ?? current.command)}`
     : ''
 
   return (
     <div className="phone" ref={rootRef}>
-      <div className={`scrim ${drag !== null ? 'dragging' : ''}`}
-           onClick={() => { setDrawerOpen(false); setSheet('none') }}
-           style={{ opacity: drag ?? (drawerOpen || sheet !== 'none' ? 1 : 0),
-                    pointerEvents: drawerOpen || sheet !== 'none' ? 'auto' : 'none' }} />
+      {/* The scrim has to know about every sheet, not just the pane ones.
+          The GitHub sheets were left out when they were added, so tapping
+          beside one did nothing and Done or back were the only ways out. */}
+      <div className={`scrim ${drag !== null ? 'dragging' : ''} ${ghSheet !== 'none' ? 'over-screen' : ''}`}
+           onClick={() => { setDrawerOpen(false); setSheet('none'); setGhSheet('none') }}
+           style={{ opacity: drag ?? (scrimUp ? 1 : 0),
+                    pointerEvents: scrimUp ? 'auto' : 'none' }} />
 
       <Drawer
         open={drawerOpen}

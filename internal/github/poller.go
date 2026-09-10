@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"errors"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -137,7 +138,14 @@ func (p *Poller) Run(ctx context.Context) {
 
 // poll does one read and returns how long to wait before the next one.
 func (p *Poller) poll(ctx context.Context) time.Duration {
-	next := p.read(ctx, p.Snapshot())
+	prev := p.Snapshot()
+	prevKind := prev.ErrorKind
+	if prev.At.IsZero() {
+		// Nothing has ever succeeded, so the first result is worth a line
+		// whichever way it goes.
+		prevKind = "\x00"
+	}
+	next := p.read(ctx, prev)
 
 	p.mu.Lock()
 	p.snap = next
@@ -145,6 +153,20 @@ func (p *Poller) poll(ctx context.Context) time.Duration {
 
 	if p.OnSnapshot != nil {
 		p.OnSnapshot(next)
+	}
+
+	// A poller that fails silently is a screen with no explanation on it.
+	// This logs the first failure and every change of kind, not every tick,
+	// so a long outage is one line rather than one a minute - and logs the
+	// recovery too, which is the line that says when the data got good
+	// again.
+	if next.ErrorKind != prevKind {
+		if next.ErrorKind == "" {
+			log.Printf("github: recovered - %d repos, %d needing you",
+				len(next.Repos), next.Inbox.Count())
+		} else {
+			log.Printf("github: %s: %s", next.ErrorKind, next.Error)
+		}
 	}
 
 	// Backing off is the only useful response to a rate limit, and polling

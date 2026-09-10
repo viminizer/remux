@@ -1048,6 +1048,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .endnote b{color:var(--sub0)}
 .loading{padding:26px 16px;text-align:center;font-size:12.5px;color:var(--ov0);font-family:var(--mono)}
 .loaderr{padding:14px 16px;font-size:12.5px;color:var(--red);line-height:1.5}
+.loaderr .retry{
+  display:block;margin-top:10px;padding:8px 14px;border-radius:9px;cursor:pointer;
+  background:var(--s0);border:1px solid var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:12.5px;font-weight:600;
+}
 
 /* the ⋮ menu on a repo screen */
 .repo-menu{
@@ -1156,3 +1161,9 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 /* The "gh is not logged in" screen. Its glyph is a warning, not a state. */
 .msg .glyph.warn{color:var(--peach);background:rgba(250,179,135,.10);border-color:rgba(250,179,135,.28)}
+
+/* A sheet opened over a full-screen overlay needs the scrim between the two.
+   The scrim sits at 8, under the drawer at 9 - which is right for the drawer,
+   and wrong here: a .screen is at 20, so the scrim was behind it, invisible
+   and untappable, and Done or back were the only ways to close the sheet. */
+.scrim.over-screen{z-index:25}
