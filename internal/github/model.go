@@ -1,6 +1,8 @@
 package github
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -52,6 +54,7 @@ type Issue struct {
 	Assignees []string  `json:"assignees,omitempty"`
 	Labels    []Label   `json:"labels,omitempty"`
 	Comments  int       `json:"comments"`
+	Thread    []Comment `json:"threadComments,omitempty"` // detail screen only
 	Created   time.Time `json:"created"`
 	Updated   time.Time `json:"updated"`
 	URL       string    `json:"url"`
@@ -97,6 +100,29 @@ type PR struct {
 	Updated   time.Time `json:"updated"`
 	URL       string    `json:"url"`
 	Body      string    `json:"body,omitempty"` // detail screen only
+	// Runs is the individual checks, filled in only by PR(). A list never
+	// carries them: apache/shardingsphere runs 76 checks per pull request
+	// and 22 open ones, which is 1600 rows of detail to render 22 words.
+	Runs []CheckRun `json:"runs,omitempty"`
+	// Comments is the tail of the thread, newest last, filled in only by
+	// PR() and Issue().
+	Comments []Comment `json:"threadComments,omitempty"`
+}
+
+// CheckRun is one line of the Checks section on the detail screen.
+type CheckRun struct {
+	Name  string `json:"name"`
+	State Checks `json:"state"`
+	Took  string `json:"took,omitempty"` // "4m 12s", or "running"
+	URL   string `json:"url,omitempty"`
+}
+
+// Comment is one message in a thread, trimmed for a phone.
+type Comment struct {
+	Author  string    `json:"author"`
+	Body    string    `json:"body"`
+	At      time.Time `json:"at"`
+	Trimmed bool      `json:"trimmed,omitempty"`
 }
 
 // ── decoding ──────────────────────────────────────────────────────────────
@@ -125,11 +151,69 @@ type ghPR struct {
 		Login string `json:"login"` // empty for a team request
 		Name  string `json:"name"`  // team slug lands here
 	} `json:"reviewRequests"`
-	StatusCheckRollup []struct {
-		Status     string `json:"status"`     // CheckRun: QUEUED/IN_PROGRESS/COMPLETED
-		Conclusion string `json:"conclusion"` // CheckRun
-		State      string `json:"state"`      // StatusContext: SUCCESS/FAILURE/PENDING/ERROR
-	} `json:"statusCheckRollup"`
+	StatusCheckRollup []rollupNode `json:"statusCheckRollup"`
+	Comments          []struct {
+		Author    struct{ Login string } `json:"author"`
+		Body      string                 `json:"body"`
+		CreatedAt time.Time              `json:"createdAt"`
+	} `json:"comments"`
+}
+
+type rollupNode struct {
+	Name        string    `json:"name"`
+	Context     string    `json:"context"`    // StatusContext has context, not name
+	Status      string    `json:"status"`     // CheckRun: QUEUED/IN_PROGRESS/COMPLETED
+	Conclusion  string    `json:"conclusion"` // CheckRun
+	State       string    `json:"state"`      // StatusContext: SUCCESS/FAILURE/PENDING
+	StartedAt   time.Time `json:"startedAt"`
+	CompletedAt time.Time `json:"completedAt"`
+	DetailsURL  string    `json:"detailsUrl"`
+	TargetURL   string    `json:"targetUrl"`
+}
+
+// verdict is the one word this node contributes to the rollup.
+func (n rollupNode) verdict() Checks {
+	v := n.Conclusion
+	if v == "" {
+		v = n.State
+	}
+	switch strings.ToUpper(v) {
+	case "FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE", "ERROR", "CANCELLED":
+		return ChecksFail
+	case "SUCCESS", "NEUTRAL", "SKIPPED":
+		if n.Status != "" && strings.ToUpper(n.Status) != "COMPLETED" {
+			return ChecksPending
+		}
+		return ChecksPass
+	}
+	return ChecksPending
+}
+
+func (n rollupNode) run() CheckRun {
+	name := n.Name
+	if name == "" {
+		name = n.Context
+	}
+	url := n.DetailsURL
+	if url == "" {
+		url = n.TargetURL
+	}
+	return CheckRun{Name: name, State: n.verdict(), Took: n.took(), URL: url}
+}
+
+// took is how long the check ran, or "running" while it still is.
+func (n rollupNode) took() string {
+	if n.StartedAt.IsZero() {
+		return ""
+	}
+	if n.CompletedAt.IsZero() {
+		return "running"
+	}
+	d := n.CompletedAt.Sub(n.StartedAt).Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
 func (g ghPR) pr() PR {
@@ -181,22 +265,10 @@ func (g ghPR) reviewers() []string {
 func (g ghPR) checks() Checks {
 	pending := false
 	for _, c := range g.StatusCheckRollup {
-		verdict := c.Conclusion
-		if verdict == "" {
-			verdict = c.State
-		}
-		switch strings.ToUpper(verdict) {
-		case "FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE", "ERROR":
+		switch c.verdict() {
+		case ChecksFail:
 			return ChecksFail
-		case "CANCELLED":
-			return ChecksFail
-		case "SUCCESS", "NEUTRAL", "SKIPPED":
-		default:
-			// QUEUED, IN_PROGRESS, PENDING, WAITING, REQUESTED, or a
-			// CheckRun that has not concluded yet.
-			pending = true
-		}
-		if c.Status != "" && strings.ToUpper(c.Status) != "COMPLETED" {
+		case ChecksPending:
 			pending = true
 		}
 	}
@@ -207,4 +279,61 @@ func (g ghPR) checks() Checks {
 		return ChecksPass
 	}
 	return ChecksNone
+}
+
+// detail adds what only the single-item screen shows: every check by name,
+// and the tail of the conversation.
+func (g ghPR) detail() PR {
+	p := g.pr()
+	for _, n := range g.StatusCheckRollup {
+		p.Runs = append(p.Runs, n.run())
+	}
+	// Failures first. On a 76-check pull request the two that are red are
+	// the entire reason the screen was opened, and scrolling past 74 green
+	// lines to find them is not a phone interaction.
+	sort.SliceStable(p.Runs, func(i, j int) bool {
+		return checkRank(p.Runs[i].State) < checkRank(p.Runs[j].State)
+	})
+	for _, c := range g.Comments {
+		p.Comments = append(p.Comments, trimComment(c.Author.Login, c.Body, c.CreatedAt))
+	}
+	p.Comments = lastComments(p.Comments)
+	return p
+}
+
+func checkRank(c Checks) int {
+	switch c {
+	case ChecksFail:
+		return 0
+	case ChecksPending:
+		return 1
+	}
+	return 2
+}
+
+// commentBudget is how much of one comment body survives to the phone.
+//
+// A review comment in Kevin's repos can be three kilobytes of markdown. The
+// detail screen shows the last few messages so he can tell what happened, not
+// so he can read a full review on a 390px screen - GitHub itself is one tap
+// away for that.
+const commentBudget = 600
+
+func trimComment(author, body string, at time.Time) Comment {
+	c := Comment{Author: author, Body: strings.TrimSpace(body), At: at}
+	if len(c.Body) > commentBudget {
+		c.Body = strings.TrimSpace(c.Body[:commentBudget])
+		c.Trimmed = true
+	}
+	return c
+}
+
+// lastComments keeps the newest few. The tail is what tells you where a
+// thread stands; the head is history.
+func lastComments(all []Comment) []Comment {
+	const keep = 4
+	if len(all) <= keep {
+		return all
+	}
+	return all[len(all)-keep:]
 }

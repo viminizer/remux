@@ -1,10 +1,12 @@
-import type { Conn, Session, SnapMeta } from './types'
+import type { Conn, GhBadge, Session, SnapMeta } from './types'
 
 type Handlers = {
   onTree: (sessions: Session[]) => void
   onSnap: (pane: string, lines: string[], meta: SnapMeta) => void
   onGone: (pane: string) => void
   onConn: (state: Conn) => void
+  /** The GitHub drawer badge, sent only when its numbers change. */
+  onGh: (badge: GhBadge) => void
 }
 
 /**
@@ -70,6 +72,9 @@ export class Socket {
           break
         case 'gone':
           this.h.onGone(msg.pane as string)
+          break
+        case 'gh':
+          this.h.onGh(msg as unknown as GhBadge)
           break
       }
     }

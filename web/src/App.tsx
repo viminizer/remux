@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import { Socket } from './ws'
-import { useRoute } from './router'
+import { isGitHub, useRoute } from './router'
+import type { Route } from './router'
 import { useSettings, saveSnapshot, loadSnapshot } from './store'
-import type { Conn, Health, Pane, Session, SnapMeta } from './types'
+import type { Conn, GhBadge, Health, Pane, Session, SnapMeta } from './types'
 import { displayCommand, flatten, paneTitle } from './types'
 
 import { Drawer } from './shell/Drawer'
@@ -17,6 +18,12 @@ import { NewSheet } from './sheets/NewSheet'
 import { RenameSheet } from './sheets/RenameSheet'
 import { PaneActionsSheet } from './sheets/PaneActionsSheet'
 import { SettingsScreen } from './screens/Settings'
+import { GitHubScreen } from './github/GitHubScreen'
+import { RepoScreen } from './github/RepoScreen'
+import { ItemScreen } from './github/ItemScreen'
+import { AddRepoSheet } from './github/AddRepoSheet'
+import { SendToPaneSheet } from './github/SendToPaneSheet'
+import { useGitHub } from './github/useGitHub'
 import { KeyPadScreen } from './screens/KeyPadScreen'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
@@ -47,6 +54,14 @@ export default function App() {
   // the sheet has to follow this one.
   const [actionTarget, setActionTarget] = useState<Pane | null>(null)
   const [staleWhy, setStaleWhy] = useState(false)
+
+  // GitHub. The badge arrives on the tree tick; the snapshot is only fetched
+  // while the screen is open. ghStack is the back stack for the screens
+  // reached from it - see the closeTop tier below.
+  const [ghBadge, setGhBadge] = useState<GhBadge | null>(null)
+  const [ghStack, setGhStack] = useState<Route[]>([])
+  const [ghSheet, setGhSheet] = useState<'none' | 'add' | 'topane'>('none')
+  const [ghCommand, setGhCommand] = useState('')
   const [optIn, setOptIn] = useState(false)
   const [notifState, setNotifState] = useState(notificationState())
 
@@ -82,6 +97,51 @@ export default function App() {
     [panes, currentId],
   )
 
+  // ── GitHub ──────────────────────────────────────────────────────────────
+
+  const ghOpen = isGitHub(route)
+  const { snap: gh, loading: ghLoading, load: ghLoad, refresh: ghRefresh } =
+    useGitHub(ghOpen, ghBadge?.at ?? 0)
+
+  const paneById = useMemo(() => new Map(panes.map((p) => [p.id, p])), [panes])
+
+  const panesInRepo = useCallback(
+    (repo: string): Pane[] =>
+      (gh.panes?.[repo] ?? []).map((id) => paneById.get(id)).filter((p): p is Pane => !!p),
+    [gh.panes, paneById],
+  )
+
+  // Navigating deeper pushes the current route onto a stack, so back inside
+  // the GitHub screens walks back through them and only then leaves for the
+  // pane. Without this, back from an issue would drop straight out of GitHub.
+  const ghGo = useCallback(
+    (next: Route) => {
+      setGhStack((st) => [...st, route])
+      go(next)
+    },
+    [route, go],
+  )
+
+  const ghBack = useCallback(() => {
+    setGhStack((st) => {
+      const prev = st[st.length - 1]
+      go(prev ?? { name: 'pane', pane: lastPane.current })
+      return st.slice(0, -1)
+    })
+  }, [go])
+
+  // Which repo the GitHub sheets act on, whichever GitHub screen is showing.
+  const ghRepo = route.name === 'ghRepo' || route.name === 'ghItem' ? route.repo : null
+
+  const openPaneFromGitHub = useCallback(
+    (p: Pane) => {
+      setGhStack([])
+      setGhSheet('none')
+      go({ name: 'pane', pane: p.id })
+    },
+    [go],
+  )
+
   // ── socket ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -99,6 +159,7 @@ export default function App() {
         setLastReached(Date.now())
       },
       onGone: (pane) => setGone(pane),
+      onGh: (badge) => setGhBadge(badge),
       onConn: (state) => {
         setConn(state)
         if (state !== 'live') setLive(false)
@@ -234,7 +295,16 @@ export default function App() {
     }
     if (sheet !== 'none') {
       setSheet('none')
-      return settings.keypadOpen || drawerOpen
+      return ghStack.length > 0 || settings.keypadOpen || drawerOpen
+    }
+    if (ghSheet !== 'none') {
+      setGhSheet('none')
+      return ghStack.length > 0 || settings.keypadOpen || drawerOpen
+    }
+    // Inside GitHub, back walks up its own stack before it leaves.
+    if (ghStack.length > 0) {
+      ghBack()
+      return ghStack.length > 1 || settings.keypadOpen || drawerOpen
     }
     if (settings.keypadOpen) {
       patch({ keypadOpen: false })
@@ -277,7 +347,13 @@ export default function App() {
   // instead of popped - which is deliberate, and is the only way a pane gets
   // a history entry at all. Popping there would have reverted the navigation
   // the moment the drawer closed.
-  const overlayOpen = menuOpen || sheet !== 'none' || settings.keypadOpen || drawerOpen
+  const overlayOpen =
+    menuOpen ||
+    sheet !== 'none' ||
+    ghSheet !== 'none' ||
+    ghStack.length > 0 ||
+    settings.keypadOpen ||
+    drawerOpen
   const marked = useRef(false)
 
   useEffect(() => {
@@ -356,10 +432,14 @@ export default function App() {
   // Notification toggles must reach the server or they do nothing.
   const patchNotify = (p: Partial<typeof settings>) => {
     patch(p)
-    if ('notifyWaiting' in p || 'notifyDone' in p) {
+    if ('notifyWaiting' in p || 'notifyDone' in p || 'notifyCi' in p) {
       const next = { ...settings, ...p }
       guard('save settings', () =>
-        api.saveSettings({ notifyWaiting: next.notifyWaiting, notifyDone: next.notifyDone }),
+        api.saveSettings({
+          notifyWaiting: next.notifyWaiting,
+          notifyDone: next.notifyDone,
+          notifyCi: next.notifyCi,
+        }),
       )
     }
   }
@@ -528,10 +608,85 @@ export default function App() {
           setDrawerOpen(false)
           go({ name: 'settings' })
         }}
+        gh={ghBadge}
+        onGitHub={() => {
+          setDrawerOpen(false)
+          setGhStack([])
+          go({ name: 'gh' })
+        }}
       />
 
       <div className="pane-col">
-        {route.name === 'settings' ? (
+        {route.name === 'gh' ? (
+          <GitHubScreen
+            snap={gh}
+            loading={ghLoading}
+            panes={paneById}
+            onBack={ghBack}
+            onRefresh={() => void ghRefresh()}
+            onOpenRepo={(repo) => ghGo({ name: 'ghRepo', repo, tab: 'issues' })}
+            onOpenItem={(it) =>
+              ghGo({
+                name: 'ghItem',
+                repo: it.repo,
+                number: it.number,
+                kind: it.kind === 'pr' ? 'pr' : 'issue',
+              })
+            }
+            onOpenPane={openPaneFromGitHub}
+            onAdd={() => setGhSheet('add')}
+          />
+        ) : route.name === 'ghRepo' ? (
+          <RepoScreen
+            repo={route.repo}
+            meta={gh.repos.find((r) => r.full === route.repo)}
+            viewer={gh.viewer}
+            tab={route.tab}
+            panes={paneById}
+            onTab={(tab) => go({ name: 'ghRepo', repo: route.repo, tab })}
+            onBack={ghBack}
+            onOpenIssue={(n) =>
+              ghGo({ name: 'ghItem', repo: route.repo, number: n, kind: 'issue' })
+            }
+            onOpenPR={(n) => ghGo({ name: 'ghItem', repo: route.repo, number: n, kind: 'pr' })}
+            onOpenPane={openPaneFromGitHub}
+            onSendToPane={() => {
+              setGhCommand(`gh repo view ${route.repo} --web`)
+              setGhSheet('topane')
+            }}
+            onUnwatch={async () => {
+              try {
+                await api.githubUnwatch(route.repo)
+                await ghLoad()
+                ghBack()
+                toast('stopped watching ' + route.repo)
+              } catch (e) {
+                toast(e instanceof Error ? e.message : String(e))
+              }
+            }}
+          />
+        ) : route.name === 'ghItem' ? (
+          <ItemScreen
+            repo={route.repo}
+            number={route.number}
+            kind={route.kind}
+            panes={panesInRepo(route.repo)}
+            viewer={gh.viewer}
+            onBack={ghBack}
+            onOpenPane={openPaneFromGitHub}
+            onSendToPane={() => {
+              // gh issue develop creates a branch and checks it out; gh pr
+              // checkout switches to one. Both are typed, never submitted, so
+              // the decision to run them stays Kevin's.
+              setGhCommand(
+                route.kind === 'pr'
+                  ? `gh pr checkout ${route.number} -R ${route.repo}`
+                  : `gh issue develop ${route.number} -R ${route.repo} --checkout`,
+              )
+              setGhSheet('topane')
+            }}
+          />
+        ) : route.name === 'settings' ? (
           <SettingsScreen
             health={health}
             conn={conn}
@@ -760,6 +915,29 @@ export default function App() {
             sock.current?.resume()
           }
         }}
+      />
+
+      <AddRepoSheet
+        open={ghSheet === 'add'}
+        panes={paneById}
+        watched={new Set(gh.repos.map((r) => r.full.toLowerCase()))}
+        onClose={() => setGhSheet('none')}
+        onChanged={() => void ghLoad()}
+      />
+
+      <SendToPaneSheet
+        open={ghSheet === 'topane'}
+        command={ghCommand}
+        repoPanes={ghRepo ? panesInRepo(ghRepo) : []}
+        sessions={sessions}
+        path={ghRepo ? panesInRepo(ghRepo)[0]?.path : undefined}
+        onClose={() => setGhSheet('none')}
+        onSent={(pane, where) => {
+          setGhSheet('none')
+          toast(`typed into ${where} · press ⏎ there`)
+          if (pane) openPaneFromGitHub(pane)
+        }}
+        onError={(msg) => toast(msg)}
       />
 
       <Toaster />

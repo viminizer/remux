@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import type { Conn, Pane } from '../types'
+import type { Conn, GhBadge, Pane } from '../types'
 import { PaneList } from './PaneList'
 
 const CONN_DOT: Record<Conn, string> = {
@@ -17,6 +17,19 @@ const CONN_TEXT: Record<Conn, string> = {
   denied: 'Not authorized',
 }
 
+/** The one line under "GitHub", which has to say the most useful true thing. */
+function ghSub(gh: GhBadge): string {
+  if (gh.errorKind === 'auth' || gh.errorKind === 'nogh') return 'gh is not logged in'
+  if (!gh.at) return 'reading…'
+
+  const bits: string[] = []
+  if (gh.assigned) bits.push(`${gh.assigned} assigned`)
+  if (gh.red) bits.push(`${gh.red} check${gh.red === 1 ? '' : 's'} red`)
+  if (!bits.length) bits.push(`${gh.repos} repo${gh.repos === 1 ? '' : 's'} · all clear`)
+  if (gh.errorKind) bits.push('cached')
+  return bits.join(' · ')
+}
+
 export function Drawer({
   open,
   panelRef,
@@ -30,6 +43,8 @@ export function Drawer({
   onStar,
   onNew,
   onSettings,
+  gh,
+  onGitHub,
 }: {
   open: boolean
   panelRef: RefObject<HTMLElement>
@@ -44,6 +59,9 @@ export function Drawer({
   onStar: (p: Pane) => void
   onNew: () => void
   onSettings: () => void
+  /** Null until the first tick, or when the GitHub screen is switched off. */
+  gh: GhBadge | null
+  onGitHub: () => void
 }) {
   const [q, setQ] = useState('')
 
@@ -72,6 +90,27 @@ export function Drawer({
           ✚ New
         </button>
       </div>
+
+      {/* The whole GitHub integration is this one row.
+          A bottom tab bar would have cost about 56px of vertical space on
+          every screen in the app, and pane output is the reason remux exists.
+          A third icon in the top bar would have been cramped next to the
+          burger and the kebab. A pinned row at the head of the drawer costs
+          nothing anywhere else and is one tap from wherever you are. */}
+      {gh && (
+        <div className="pinned">
+          <button className="pin-row" onClick={onGitHub}>
+            <span className="glyph">◈</span>
+            <span className="pin-mid">
+              GitHub
+              <span className="sub">{ghSub(gh)}</span>
+            </span>
+            {gh.count > 0 && (
+              <span className={`badge ${gh.red > 0 ? 'red' : ''}`}>{gh.count}</span>
+            )}
+          </button>
+        </div>
+      )}
 
       <PaneList
         panes={panes}

@@ -71,8 +71,10 @@ func (c *Client) PR(ctx context.Context, full string, number int) (PR, error) {
 		return PR{}, fmt.Errorf("invalid pr number %d", number)
 	}
 
+	// body and comments are only asked for here. Adding them to the list
+	// query would pull every review on every open pull request.
 	out, err := c.run(ctx, "pr", "view", strconv.Itoa(number),
-		"-R", full, "--json", prFields+",body")
+		"-R", full, "--json", prFields+",body,comments")
 	if err != nil {
 		return PR{}, err
 	}
@@ -80,7 +82,7 @@ func (c *Client) PR(ctx context.Context, full string, number int) (PR, error) {
 	if err := json.Unmarshal(out, &g); err != nil {
 		return PR{}, fmt.Errorf("gh pr view %s#%d: bad json: %w", full, number, err)
 	}
-	return g.pr(), nil
+	return g.detail(), nil
 }
 
 // Mine reports whether this PR is one Kevin has to do something about: he

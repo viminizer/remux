@@ -125,6 +125,17 @@ func run(cfg *config.Config, local bool) error {
 		log.Printf("push unavailable: %v", err)
 	}
 
+	// The GitHub watcher hangs off the poller rather than running a loop of
+	// its own: the read is already happening, so a notification costs
+	// nothing extra. Same local-mode exclusion as the pane watcher, and for
+	// the same reason - a development server shares ~/.config/remux with the
+	// installed service and would double every notification.
+	if srv.Push != nil && !local {
+		ghw := push.NewGitHubWatcher(srv.Push)
+		ghw.Enabled = func() bool { return cfg.NotifyCI }
+		srv.GH.OnSnapshot = ghw.OnSnapshot
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

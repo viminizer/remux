@@ -73,6 +73,26 @@ export interface SnapMeta {
 export interface NotifySettings {
   notifyWaiting: boolean
   notifyDone: boolean
+  /** Fires when one of your pull requests turns red, or a review is asked of you. */
+  notifyCi: boolean
+  /** The watchlist, read-only here: the GitHub screen owns editing it. */
+  repos?: string[]
+}
+
+/**
+ * The GitHub line in the drawer, pushed on the same tick as the tree.
+ *
+ * It is a summary and not the screen: everything here fits on one row, and
+ * the full snapshot is only fetched when somebody actually opens it.
+ */
+export interface GhBadge {
+  t: 'gh'
+  count: number
+  assigned: number
+  red: number
+  repos: number
+  at: number
+  errorKind?: string
 }
 
 /** Connection state shown as a dot in the top bar and the drawer footer. */

@@ -24,6 +24,12 @@ type Snapshot struct {
 	// network should keep showing the last good list, dimmed.
 	Error     string `json:"error,omitempty"`
 	ErrorKind string `json:"errorKind,omitempty"`
+
+	// Panes maps every repo checked out in a tmux pane right now to those
+	// pane ids, filled in by the API layer. It covers repos outside the
+	// watchlist too, because the inbox spans them: an issue assigned to
+	// Kevin in a repo he never added still deserves its pane chip.
+	Panes map[string][]string `json:"panes,omitempty"`
 }
 
 // ErrorKind names a failure in one word the UI can switch on.
@@ -37,6 +43,8 @@ func ErrorKind(err error) string {
 		return "nogh"
 	case errors.Is(err, ErrOffline):
 		return "offline"
+	case errors.Is(err, ErrTimeout):
+		return "timeout"
 	case errors.Is(err, ErrRateLimited):
 		return "ratelimit"
 	case errors.Is(err, ErrNotFound):

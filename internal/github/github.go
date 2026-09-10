@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os/exec"
 	"regexp"
@@ -41,6 +42,11 @@ var (
 	ErrRateLimited = errors.New("github: rate limited")
 	// ErrNoGH means the binary is missing entirely.
 	ErrNoGH = errors.New("github: gh is not installed")
+	// ErrTimeout is a request that never came back in time. It is kept
+	// apart from ErrOffline because they are different facts: the network
+	// is fine and GitHub is slow, and telling Kevin his phone is offline
+	// when it is not sends him looking in the wrong place.
+	ErrTimeout = errors.New("github: timed out waiting for github.com")
 )
 
 // Client runs gh commands.
@@ -49,7 +55,14 @@ type Client struct {
 	Timeout time.Duration // per-command timeout
 }
 
-func New() *Client { return &Client{Bin: "gh", Timeout: 15 * time.Second} }
+// defaultTimeout is generous on purpose. `gh pr list` on
+// apache/shardingsphere - 22 open pull requests carrying 76 status checks
+// each - measures around six seconds on a good day and has been seen well
+// past fifteen. A timeout tight enough to catch a hang would cut off the
+// largest repo Kevin actually watches.
+const defaultTimeout = 45 * time.Second
+
+func New() *Client { return &Client{Bin: "gh", Timeout: defaultTimeout} }
 
 func (c *Client) bin() string {
 	if c.Bin == "" {
@@ -60,7 +73,7 @@ func (c *Client) bin() string {
 
 func (c *Client) timeout() time.Duration {
 	if c.Timeout == 0 {
-		return 15 * time.Second
+		return defaultTimeout
 	}
 	return c.Timeout
 }
@@ -81,12 +94,15 @@ func (c *Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	cmd.Stderr = &errb
 
 	if err := cmd.Run(); err != nil {
+		// exec reports a missing binary two ways: *exec.Error when the
+		// name had to be looked up on PATH, and a plain not-exist error
+		// when it was given as a path. Both mean the same thing here.
 		var ee *exec.Error
-		if errors.As(err, &ee) {
+		if errors.As(err, &ee) || errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrNoGH
 		}
 		if ctx.Err() != nil {
-			return nil, ErrOffline
+			return out.Bytes(), ErrTimeout
 		}
 		return out.Bytes(), classify(errb.String(), args)
 	}
@@ -125,8 +141,24 @@ func classify(stderr string, args []string) error {
 		msg = "unknown failure"
 	}
 	// Only the subcommand is worth naming. Full argv would put a query
-	// string in the log line for no benefit.
-	return fmt.Errorf("gh %s: %s", strings.Join(args[:min(2, len(args))], " "), firstLine(msg))
+	// string, or a whole GraphQL document, in the line for no benefit.
+	return fmt.Errorf("gh %s: %s", subcommand(args), firstLine(msg))
+}
+
+// subcommand is the leading non-flag words of an argv, e.g. "api graphql" or
+// "pr list".
+func subcommand(args []string) string {
+	var out []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			break
+		}
+		out = append(out, a)
+		if len(out) == 2 {
+			break
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 func firstLine(s string) string {

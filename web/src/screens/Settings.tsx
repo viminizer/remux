@@ -160,6 +160,19 @@ export function SettingsScreen({
                 onClick={() => patch({ notifyDone: !settings.notifyDone })}
               />
             </div>
+            <div className="crow">
+              <div className="lbl">
+                GitHub needs you
+                <small>your PR turns red, or a review is asked of you</small>
+              </div>
+              <button
+                className={`sw-toggle ${settings.notifyCi ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.notifyCi}
+                aria-label="GitHub needs you"
+                onClick={() => patch({ notifyCi: !settings.notifyCi })}
+              />
+            </div>
           </div>
         </div>
 

@@ -1,4 +1,11 @@
 import type { Health, NotifySettings, Tree } from './types'
+import type {
+  GitHubSnapshot,
+  Issue,
+  IssuePage,
+  PickerRepo,
+  PR,
+} from './github/types'
 
 /**
  * There is no server URL to configure and no token to send.
@@ -108,6 +115,43 @@ export const api = {
 
   saveSettings: (v: NotifySettings) =>
     call<NotifySettings>('/api/settings', { method: 'PUT', body: JSON.stringify(v) }),
+
+  // ── GitHub ──────────────────────────────────────────────────────────
+  //
+  // The snapshot is served from the server's shared poller, so this call is
+  // a cached read and never waits on GitHub. Everything below it is fetched
+  // on demand, because polling 186 issues nobody has opened would spend the
+  // API budget on nothing.
+
+  github: () => call<GitHubSnapshot>('/api/github'),
+
+  githubRefresh: () => call('/api/github/refresh', { method: 'POST' }),
+
+  githubIssues: (repo: string, filter: 'mine' | 'all', after?: string) =>
+    call<IssuePage>(
+      `/api/github/repos/${repo}/issues?filter=${filter}` +
+        (after ? `&after=${encodeURIComponent(after)}` : ''),
+    ),
+
+  githubPRs: (repo: string) => call<{ prs: PR[] }>(`/api/github/repos/${repo}/prs`),
+
+  githubIssue: (repo: string, number: number) =>
+    call<Issue>(`/api/github/repos/${repo}/issues/${number}`),
+
+  githubPR: (repo: string, number: number) =>
+    call<PR>(`/api/github/repos/${repo}/prs/${number}`),
+
+  githubPicker: (q: string) =>
+    call<{ repos: PickerRepo[] }>(`/api/github/picker${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+
+  githubWatch: (repo: string) =>
+    call<{ repos: string[] }>('/api/github/watch', {
+      method: 'POST',
+      body: JSON.stringify({ repo }),
+    }),
+
+  githubUnwatch: (repo: string) =>
+    call<{ repos: string[] }>(`/api/github/watch/${repo}`, { method: 'DELETE' }),
 
   pushKey: () => call<{ publicKey: string; subscriptions: number }>('/api/push/key'),
 

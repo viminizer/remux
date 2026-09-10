@@ -68,6 +68,16 @@ type gqlIssue struct {
 		Nodes []Label
 	} `json:"labels"`
 	Comments struct{ TotalCount int } `json:"comments"`
+	// Thread is aliased because issueFields already selects comments for
+	// its count, and GraphQL refuses the same field twice with different
+	// arguments.
+	Thread struct {
+		Nodes []struct {
+			Author    *struct{ Login string } `json:"author"`
+			Body      string                  `json:"body"`
+			CreatedAt time.Time               `json:"createdAt"`
+		} `json:"nodes"`
+	} `json:"thread"`
 }
 
 func (g gqlIssue) issue() Issue {
@@ -86,6 +96,13 @@ func (g gqlIssue) issue() Issue {
 	}
 	for _, a := range g.Assignees.Nodes {
 		is.Assignees = append(is.Assignees, a.Login)
+	}
+	for _, c := range g.Thread.Nodes {
+		who := ""
+		if c.Author != nil {
+			who = c.Author.Login
+		}
+		is.Thread = append(is.Thread, trimComment(who, c.Body, c.CreatedAt))
 	}
 	return is
 }
@@ -165,8 +182,16 @@ func (c *Client) Issues(ctx context.Context, full string, f IssueFilter, viewer,
 // the answer is the All tab, not deeper paging through a list whose whole
 // point is being short.
 func (c *Client) issuesMine(ctx context.Context, owner, name, viewer string) (IssuePage, error) {
+	// The caller normally passes the login the poller resolved once at
+	// startup. Before that first poll lands there is none, and answering
+	// "not logged in" would be a lie about a screen that works fine - so
+	// this resolves it itself.
 	if viewer == "" {
-		return IssuePage{}, ErrNoAuth
+		login, err := c.Viewer(ctx)
+		if err != nil {
+			return IssuePage{}, err
+		}
+		viewer = login
 	}
 
 	conn := func(alias, filter string) string {
@@ -228,7 +253,11 @@ func (c *Client) Issue(ctx context.Context, full string, number int) (Issue, err
 	// a positive integer above.
 	query := fmt.Sprintf(`query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
-    issue(number: %d) { ...issueFields body }
+    issue(number: %d) {
+      ...issueFields
+      body
+      thread: comments(last: 4) { nodes { author { login } body createdAt } }
+    }
   }
 }
 `, number) + issueFields

@@ -28,7 +28,7 @@ func ghStatus(err error) int {
 		return http.StatusNotFound
 	case "ratelimit":
 		return http.StatusTooManyRequests
-	case "offline":
+	case "offline", "timeout":
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadGateway
@@ -87,6 +87,7 @@ func (s *Server) githubSnapshot(r *http.Request) gh.Snapshot {
 	if len(byRepo) == 0 {
 		return snap
 	}
+	snap.Panes = byRepo
 
 	repos := make([]gh.Repo, len(snap.Repos))
 	copy(repos, snap.Repos)
@@ -221,12 +222,18 @@ func (s *Server) handleGitHubPicker(w http.ResponseWriter, r *http.Request) {
 	for _, full := range s.Watchlist() {
 		watched[strings.ToLower(full)] = true
 	}
+	// The picker gets pane chips too, and they matter most here: a repo
+	// already open on the laptop is nearly always the one being added, and
+	// showing that is what makes the list right before any typing.
+	byRepo := s.panesByRepo(r)
+
 	type pick struct {
 		gh.Repo
 		Watched bool `json:"watched"`
 	}
 	out := make([]pick, len(repos))
 	for i, rp := range repos {
+		rp.Panes = byRepo[rp.Full]
 		out[i] = pick{Repo: rp, Watched: watched[strings.ToLower(rp.Full)]}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"repos": out})

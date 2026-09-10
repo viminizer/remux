@@ -6,19 +6,71 @@ import { useCallback, useEffect, useState } from 'react'
  * `#/p/%14` is the only real route, plus `#/settings` and the key pad screen
  * hanging off it. Anything deeper would be navigation the drawer already does
  * in one tap.
+ *
+ * The GitHub screen is the one place with depth, because a repo really does
+ * contain issues and an issue really is a thing you open. Those routes carry
+ * the repo as a single escaped `owner/name` so a link can be reloaded, and
+ * their back behaviour is a stack held in App - see the ghStack note there.
  */
 export type Route =
   | { name: 'pane'; pane: string | null }
   | { name: 'settings' }
   | { name: 'keypad' }
+  | { name: 'gh' }
+  | { name: 'ghRepo'; repo: string; tab: 'issues' | 'prs' }
+  | { name: 'ghItem'; repo: string; number: number; kind: 'issue' | 'pr' }
+
+/** True for the GitHub screen and anything reached from it. */
+export function isGitHub(r: Route): boolean {
+  return r.name === 'gh' || r.name === 'ghRepo' || r.name === 'ghItem'
+}
 
 function parse(hash: string): Route {
   const h = hash.replace(/^#/, '')
   if (h === '/settings') return { name: 'settings' }
   if (h === '/keypad') return { name: 'keypad' }
+
+  if (h === '/gh') return { name: 'gh' }
+
+  const repo = /^\/gh\/r\/([^/?]+)(?:\?t=(issues|prs))?$/.exec(h)
+  if (repo) {
+    return {
+      name: 'ghRepo',
+      repo: decodeURIComponent(repo[1]),
+      tab: repo[2] === 'prs' ? 'prs' : 'issues',
+    }
+  }
+
+  const item = /^\/gh\/(i|pr)\/([^/]+)\/(\d+)$/.exec(h)
+  if (item) {
+    return {
+      name: 'ghItem',
+      repo: decodeURIComponent(item[2]),
+      number: Number(item[3]),
+      kind: item[1] === 'pr' ? 'pr' : 'issue',
+    }
+  }
+
   const m = /^\/p\/(.+)$/.exec(h)
   if (m) return { name: 'pane', pane: decodeURIComponent(m[1]) }
   return { name: 'pane', pane: null }
+}
+
+function href(r: Route): string {
+  switch (r.name) {
+    case 'settings':
+      return '#/settings'
+    case 'keypad':
+      return '#/keypad'
+    case 'gh':
+      return '#/gh'
+    case 'ghRepo':
+      return `#/gh/r/${encodeURIComponent(r.repo)}${r.tab === 'prs' ? '?t=prs' : ''}`
+    case 'ghItem':
+      return `#/gh/${r.kind === 'pr' ? 'pr' : 'i'}/${encodeURIComponent(r.repo)}/${r.number}`
+    default:
+      return r.pane ? `#/p/${encodeURIComponent(r.pane)}` : '#/'
+  }
 }
 
 export function useRoute(): [Route, (r: Route) => void] {
@@ -49,14 +101,7 @@ export function useRoute(): [Route, (r: Route) => void] {
   //
   // replaceState fires no hashchange, so the route is set here directly.
   const go = useCallback((r: Route) => {
-    const hash =
-      r.name === 'settings'
-        ? '#/settings'
-        : r.name === 'keypad'
-          ? '#/keypad'
-          : r.pane
-            ? `#/p/${encodeURIComponent(r.pane)}`
-            : '#/'
+    const hash = href(r)
     if (location.hash !== hash) history.replaceState(null, '', hash)
     setRoute(r)
   }, [])

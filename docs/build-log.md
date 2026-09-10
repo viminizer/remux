@@ -485,3 +485,107 @@ for production: those pane counts and status verdicts were all gathered through
 see tmux at all. The claim "verified against your real workspace, not a
 fixture" was true; the unstated assumption that a shell and a LaunchAgent
 behave alike was not.
+
+---
+
+# The GitHub screen (#38)
+
+Built 2026-09-10/11. `docs/gh-mock.html` is the design; this is the port.
+
+## What it does
+
+A GitHub screen at `#/gh`, reached from one pinned row at the top of the
+drawer. Two tabs: an Inbox of what is waiting for you, and a watchlist of
+repos. From a repo you get its issues and pull requests; from a row you get the
+item, its checks, its thread, and the tmux pane already open in that repo.
+
+## The four decisions worth knowing
+
+**gh is the transport.** The server shells out to the `gh` CLI already logged
+in on this Mac, the same way `internal/tmux` shells out to `tmux`. No OAuth
+flow, no token stored by remux, nothing on the phone. Losing the phone leaks
+nothing. The cost is that `gh auth login` is a laptop-only fix, so that failure
+gets a screen of its own rather than a banner.
+
+**GraphQL, not REST, for issues.** The REST issues endpoint returns pull
+requests in the same list. On `apache/shardingsphere` a page of 30 records came
+back as 14 issues and 16 pull requests - half an empty screen. The GraphQL
+issues connection holds issues and nothing else. It also fixes the counts:
+`open_issues_count` counts pull requests as issues, while GraphQL gives the two
+totals separately, and one aliased document covers the whole watchlist for one
+API point instead of a request per repo.
+
+**One poller for the whole server.** Three `gh` calls a minute cover the entire
+screen: repo counts, the inbox searches, notifications. Per-repo pull request
+lists are *not* polled - shardingsphere alone means 22 pull requests carrying
+76 status checks each, six seconds of JSON to render one word - so a repo card's
+"2 of yours, 1 red" is derived from the inbox instead of fetched.
+
+**The inbox is not scoped to the watchlist.** The watchlist answers "what am I
+keeping an eye on"; the inbox answers "what is waiting for me". An issue
+assigned to Kevin in a repo he never added is exactly what he would want to
+find there.
+
+## Verified against the real workspace
+
+| Check | Result |
+|---|---|
+| Repo counts | 8 repos, true numbers (186/22 shardingsphere, 107/2 seoul-wedding-client) |
+| Issue paging | page 1 and 2 both a full 30 rows, 60 distinct, no overlap |
+| PR rows | checks, review decision, conflicts, branch, +/− all present on 22 PRs |
+| PR filters | Yours 2, All 22, Needs your review 0, Drafts 3 - all true |
+| Detail | 77 named checks, failures sorted first, green ones folded away |
+| Pane matching | 22 of 24 real panes into 7 repos; both misses are `~/.config` |
+| Add repo | opens on "Open in a pane right now · 6", watched ones ticked |
+| Send to pane | `gh issue develop 251 … --checkout` **typed and not submitted** |
+| Layout | 390px wide, zero horizontal overflow on every screen |
+| `laptop-invariant.sh` | passed; the only write was one scratch window, killed after |
+
+## Bugs this found in existing code
+
+**A CLI flag was persisting into the config file.** `--port`, `--lines`,
+`--poll` and `--hostname` all overwrite the in-memory `Config`, and every
+settings save wrote that copy back. So running a development server once with
+`--port 7401` moved the installed service to 7401. It was always true; adding a
+repo made it easy to hit, because every add saves. Every runtime write now goes
+through `config.Update`, which reads the file first. Covered by
+`TestSettingsSaveDoesNotPersistFlags`.
+
+**A slow response was reported as "offline".** A command timeout was
+classified as `ErrOffline`, so a slow GitHub told Kevin his phone had no
+network. `ErrTimeout` is now separate, and the budget went from 15s to 45s
+because `gh pr list` on shardingsphere measures six seconds on a good day and
+has been seen past fifteen.
+
+**A missing `gh` given as a path was not detected.** `exec` reports that two
+ways and only one was handled.
+
+## Known gaps
+
+- **Push delivery is untested**, as with phase 8: it needs HTTPS, so it cannot
+  fire under `--local`. The transition rule itself is covered by tests
+  (`internal/push/github_test.go`), including the two that matter - the first
+  snapshot after a restart is a baseline, and a failed poll is never treated as
+  fresh.
+- **State 4c in the mock still has the layout problems Kevin flagged.** The
+  port was built from 4d, which is the properly designed one, so the shipped
+  screen does not inherit them - but the mock file itself is unfixed.
+- **The repo card avatar** is the first two letters of the name, so
+  `shortlist` and `shardingsphere` both read `sh`. The mock had the same
+  collision. Left alone.
+- **Search inside a repo** is not built. The mock showed a `⌕` chip on the
+  filter row; shipping a chip that does nothing is worse than not having it, so
+  the filter rows carry only what works.
+
+## What Kevin has to do
+
+The watchlist is already in `~/.config/remux/config.json` - eight repos, added
+through the API while testing. The installed LaunchAgent is still running the
+old binary, so:
+
+```bash
+./scripts/build.sh && remux restart
+```
+
+Nothing else. `gh` is already logged in, and there is no new permission to
+grant.

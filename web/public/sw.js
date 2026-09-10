@@ -67,7 +67,7 @@ self.addEventListener('push', (event) => {
       renotify: false,
       icon: '/icon.svg',
       badge: '/icon.svg',
-      data: { pane: data.pane || '' },
+      data: { pane: data.pane || '', route: data.route || '' },
     }),
   )
 })
@@ -75,8 +75,11 @@ self.addEventListener('push', (event) => {
 /* One tap from the lock screen to the pane that needs an answer. */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const pane = (event.notification.data && event.notification.data.pane) || ''
-  const target = pane ? `/#/p/${encodeURIComponent(pane)}` : '/'
+  const d = event.notification.data || {}
+  // A GitHub notification carries a route instead of a pane: it is about a
+  // pull request, and landing on the workspace would make the reader hunt for
+  // the thing the notification had already found for them.
+  const target = d.route ? `/${d.route}` : d.pane ? `/#/p/${encodeURIComponent(d.pane)}` : '/'
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {

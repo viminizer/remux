@@ -7,6 +7,8 @@ export interface Settings {
   lines: number
   notifyWaiting: boolean
   notifyDone: boolean
+  /** Push when one of your pull requests turns red, or a review is asked of you. */
+  notifyCi: boolean
   submitOnEnter: boolean
   /** Whether the opt-in bar has been answered. Asked once, never again. */
   askedNotifications: boolean
@@ -109,6 +111,7 @@ const DEFAULTS: Settings = {
   lines: 400,
   notifyWaiting: true,
   notifyDone: false,
+  notifyCi: true,
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],

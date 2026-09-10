@@ -869,3 +869,290 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   .pane-col{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
   .iconbtn.burger{display:none}
 }
+
+/* ══ GitHub ══════════════════════════════════════════════════
+   Ported from docs/gh-mock.html. The one rule to know: these
+   screens are full-bleed lists, so .gh-screen cancels the padding
+   .screen-body normally carries, and every row pays its own. */
+
+.gh-screen .screen-body{padding:0}
+.gh-screen .screen-head h2{
+  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gh-screen .screen-head h2 small{
+  display:block;margin-top:2px;font-family:var(--mono);font-size:11px;
+  color:var(--ov1);font-weight:400;
+}
+/* The refresh button spins while the server is being kicked, so a slow
+   GitHub still looks like something is happening. */
+.iconbtn.spin{animation:spin 1s linear infinite}
+
+/* ── the nav entry: pinned row at the top of the drawer ───── */
+.pinned{padding:6px 10px 8px;border-bottom:1px solid var(--s0);margin-bottom:4px}
+.pin-row{
+  display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;
+  padding:10px 11px;border-radius:11px;border:1px solid var(--s0);
+  background:var(--base);color:var(--text);font-family:var(--ui);
+  font-size:13.5px;font-weight:600;text-align:left;transition:.14s;
+}
+.pin-row:active{border-color:var(--mauve);background:var(--s0)}
+.pin-row .glyph{
+  width:26px;height:26px;flex:0 0 26px;border-radius:8px;display:grid;place-items:center;
+  background:rgba(203,166,247,.14);color:var(--mauve);font-size:13px;
+}
+.pin-mid{flex:1;min-width:0}
+.pin-row .sub{
+  display:block;margin-top:2px;font-family:var(--mono);font-size:10.5px;
+  color:var(--ov1);font-weight:400;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.badge{
+  flex:0 0 auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;
+  background:var(--mauve);color:var(--crust);font-size:11px;font-weight:700;
+  display:grid;place-items:center;font-family:var(--mono);
+}
+.badge.red{background:var(--red)}
+
+/* ── segmented control across the top of a screen ─────────── */
+/* Named apart from .seg because that one is the pill inside a sheet. Same
+   idea, different placement: this sits under a header and carries the
+   divider, so sharing a class would mean one of the two fighting it. */
+.gh-seg{display:flex;gap:4px;background:var(--mantle);border-bottom:1px solid var(--s0);padding:8px 12px;flex:0 0 auto}
+.gh-seg button{
+  flex:1;padding:9px;border:0;border-radius:9px;cursor:pointer;background:transparent;
+  color:var(--ov1);font-family:var(--ui);font-size:13px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.gh-seg button.on{background:var(--s0);color:var(--text)}
+.gh-seg .n{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+.gh-seg button.on .n{color:var(--sub0)}
+
+/* ── rows ─────────────────────────────────────────────────── */
+.ghgroup{
+  display:flex;align-items:center;gap:8px;
+  padding:16px 14px 7px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--ov0);
+}
+.ghgroup.hot{color:var(--peach)}
+.ghgroup .n{margin-left:auto;letter-spacing:0;font-family:var(--mono)}
+.gh{
+  display:flex;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:11px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--text);font-family:var(--ui);transition:background .12s;
+}
+.gh:active{background:var(--mantle)}
+.gh .kind{
+  width:22px;height:22px;flex:0 0 22px;border-radius:7px;display:grid;place-items:center;
+  font-size:11px;margin-top:1px;background:var(--s0);color:var(--ov1);
+}
+.gh .kind.pr{background:rgba(166,227,161,.13);color:var(--green)}
+.gh .kind.pr.red{background:rgba(243,139,168,.13);color:var(--red)}
+.gh .kind.pr.draft{background:var(--s0);color:var(--ov1)}
+.gh .kind.iss{background:rgba(137,180,250,.13);color:var(--blue)}
+.gh .kind.men{background:rgba(203,166,247,.14);color:var(--mauve)}
+.gh .mid{flex:1;min-width:0}
+.gh .repo{
+  display:block;font-family:var(--mono);font-size:11px;color:var(--ov1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gh .repo b{color:var(--sub0);font-weight:500}
+.gh .ttl{
+  display:-webkit-box;margin-top:3px;font-size:13.5px;font-weight:600;line-height:1.35;
+  color:var(--text);-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.gh .meta{display:flex;align-items:center;gap:7px;margin-top:6px;flex-wrap:wrap}
+.gh .meta:empty{display:none}
+.gh .age{flex:0 0 auto;font-family:var(--mono);font-size:10.5px;color:var(--ov0);margin-top:1px}
+
+/* ── chips ────────────────────────────────────────────────── */
+.chip{
+  display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  padding:3px 8px;border-radius:20px;font-size:10.5px;font-weight:600;
+  background:var(--s0);color:var(--sub0);border:1px solid transparent;
+}
+.chip.red{background:rgba(243,139,168,.13);color:var(--red)}
+.chip.green{background:rgba(166,227,161,.13);color:var(--green)}
+.chip.blue{background:rgba(137,180,250,.13);color:var(--blue)}
+.chip.peach{background:rgba(250,179,135,.13);color:var(--peach)}
+.chip.mauve{background:rgba(203,166,247,.14);color:var(--mauve)}
+.chip.pane{
+  background:transparent;border-color:var(--s1);color:var(--sub1);
+  font-family:var(--mono);font-weight:500;cursor:pointer;
+}
+.lbl-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+
+/* the collapsed "14 replies on threads you opened" line */
+.collapse{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:13px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--ov1);font-family:var(--ui);font-size:12.5px;text-align:left;
+}
+
+/* ── repos tab ────────────────────────────────────────────── */
+.repo-card{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:13px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--text);font-family:var(--ui);
+}
+.repo-card:active{background:var(--mantle)}
+.repo-card .av{
+  width:32px;height:32px;flex:0 0 32px;border-radius:9px;display:grid;place-items:center;
+  background:var(--s0);color:var(--sub0);font-size:13px;font-weight:700;font-family:var(--mono);
+}
+.repo-card .mid{flex:1;min-width:0}
+.repo-card .nm{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-card .nm .owner{color:var(--ov1);font-weight:500}
+.repo-card .st{
+  display:flex;align-items:center;gap:6px;margin-top:5px;
+  font-family:var(--mono);font-size:11px;color:var(--ov1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.repo-card .st b{color:var(--sub0);font-weight:500}
+.repo-card .chev{color:var(--ov0);font-size:14px;flex:0 0 auto}
+.addbar{padding:14px}
+.addbtn{
+  width:100%;padding:13px;border-radius:12px;cursor:pointer;
+  background:transparent;border:1px dashed var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:13.5px;font-weight:600;
+}
+
+/* ── filter chips ─────────────────────────────────────────── */
+.filters{
+  display:flex;gap:6px;padding:10px 12px;overflow-x:auto;scrollbar-width:none;
+  background:var(--mantle);border-bottom:1px solid var(--s0);flex:0 0 auto;
+}
+.filters::-webkit-scrollbar{display:none}
+.f{
+  flex:0 0 auto;padding:6px 12px;border-radius:20px;cursor:pointer;
+  background:transparent;border:1px solid var(--s1);color:var(--ov1);
+  font-family:var(--ui);font-size:12px;font-weight:600;white-space:nowrap;
+}
+.f.on{background:var(--s0);border-color:var(--blue);color:var(--text)}
+.f .n{font-family:var(--mono);font-size:11px;opacity:.7;margin-left:5px}
+
+.loadmore{
+  display:block;width:calc(100% - 28px);margin:14px;padding:12px;
+  border-radius:11px;cursor:pointer;background:transparent;
+  border:1px solid var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.loadmore:disabled{opacity:.5}
+.loadmore small{display:block;margin-top:4px;font-family:var(--mono);font-size:10.5px;color:var(--ov0);font-weight:400}
+
+.scopenote{
+  padding:12px 14px;font-size:11.5px;color:var(--ov0);line-height:1.6;
+  border-bottom:1px solid var(--s0);background:rgba(137,180,250,.05);
+}
+.scopenote b{color:var(--sub0);font-weight:600}
+.endnote{padding:24px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7}
+.endnote b{color:var(--sub0)}
+.loading{padding:26px 16px;text-align:center;font-size:12.5px;color:var(--ov0);font-family:var(--mono)}
+.loaderr{padding:14px 16px;font-size:12.5px;color:var(--red);line-height:1.5}
+
+/* the ⋮ menu on a repo screen */
+.repo-menu{
+  position:absolute;top:58px;right:10px;z-index:6;min-width:200px;
+  background:var(--mantle);border:1px solid var(--s1);border-radius:12px;
+  padding:5px;box-shadow:0 12px 34px rgba(0,0,0,.5);
+}
+.repo-menu button{
+  display:block;width:100%;text-align:left;border:0;border-radius:9px;cursor:pointer;
+  padding:11px 12px;background:transparent;color:var(--sub1);
+  font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.repo-menu button.danger{color:var(--red)}
+
+/* ── detail screen ────────────────────────────────────────── */
+.det-head{padding:18px 16px 14px;border-bottom:1px solid var(--s0)}
+.det-head .repo{font-family:var(--mono);font-size:11.5px;color:var(--ov1)}
+.det-head h3{margin:8px 0 0;font-size:17px;font-weight:700;line-height:1.35}
+.det-head .num{color:var(--ov0);font-weight:400}
+.det-head .meta{display:flex;align-items:center;gap:7px;margin-top:12px;flex-wrap:wrap}
+.det-sec{padding:16px;border-bottom:1px solid var(--s0)}
+.det-sec h4{margin:0 0 10px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--ov0)}
+.check{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px;color:var(--sub0)}
+.check .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11.5px}
+.check .t{font-family:var(--mono);font-size:11px;color:var(--ov0);flex:0 0 auto}
+.check-more{
+  display:flex;align-items:center;gap:8px;width:100%;margin-top:6px;
+  border:0;border-radius:9px;cursor:pointer;padding:9px 10px;
+  background:var(--mantle);color:var(--ov1);font-family:var(--ui);font-size:12px;font-weight:600;
+}
+.check-more .arrow{margin-left:auto}
+
+.live-tmux{background:rgba(137,180,250,.06)}
+.live-row{display:flex;align-items:center;gap:10px}
+.live-mid{flex:1;min-width:0}
+.live-t{font-size:13px;font-weight:600}
+.live-s{
+  font-family:var(--mono);font-size:11px;color:var(--ov1);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left;
+}
+.live-more{margin-top:10px;font-size:11.5px;color:var(--ov0)}
+
+.body-md{font-size:13.5px;line-height:1.7;color:var(--sub0);overflow-wrap:anywhere}
+.body-md p{margin:0 0 12px}
+.body-md p:last-child{margin-bottom:0}
+.cmt{display:flex;gap:10px;padding:12px 0;border-top:1px solid var(--s0)}
+.cmt .av{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:var(--s0);color:var(--sub0);display:grid;place-items:center;font-size:11px;font-weight:700}
+.cmt .who{font-size:12px;font-weight:600;color:var(--sub1)}
+.cmt .who span{color:var(--ov0);font-weight:400;font-family:var(--mono);font-size:10.5px;margin-left:6px}
+.cmt .txt{margin-top:4px;font-size:13px;line-height:1.6;color:var(--sub0);white-space:pre-wrap;overflow-wrap:anywhere}
+
+.actions{
+  flex:0 0 auto;display:flex;gap:8px;padding:12px;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom));
+  background:var(--mantle);border-top:1px solid var(--s0);
+}
+.act{
+  flex:1;padding:12px 10px;border-radius:11px;cursor:pointer;border:1px solid var(--s1);
+  background:var(--s0);color:var(--sub1);font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.act.primary{background:var(--blue);border-color:var(--blue);color:var(--crust)}
+
+/* ── the two GitHub sheets ────────────────────────────────── */
+/* Their rows are full-bleed, so the body's side padding is moved onto the
+   pieces that still want it.
+   The modifier is gh-sheet and not gh: .gh is the row above, and a sheet
+   carrying that class inherited its padding, border and transparent
+   background. */
+.sheet.gh-sheet .sheet-body{padding-left:0;padding-right:0}
+.sheet.gh-sheet h3,
+.sheet.gh-sheet .search,
+.sheet.gh-sheet .cmdbox,
+.sheet.gh-sheet .sheet-note,
+.sheet.gh-sheet .loading,
+.sheet.gh-sheet .loaderr{margin-left:18px;margin-right:18px}
+.sheet.gh-sheet .go,
+.sheet.gh-sheet .cancel{width:calc(100% - 36px);margin-left:18px;margin-right:18px}
+
+.pick{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:11px 18px;border:0;background:transparent;color:var(--text);font-family:var(--ui);
+}
+.pick:disabled{opacity:.5}
+.pick .av{width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:var(--s0);display:grid;place-items:center;font-family:var(--mono);font-size:12px;color:var(--sub0)}
+.pick .mid{flex:1;min-width:0}
+.pick .nm{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick .sub{
+  display:flex;align-items:center;gap:6px;margin-top:2px;
+  font-family:var(--mono);font-size:10.5px;color:var(--ov1);
+  white-space:nowrap;overflow:hidden;
+}
+.pick .sub .dot{flex:0 0 8px}
+.pick .add{flex:0 0 auto;font-size:18px;color:var(--ov0)}
+.pick.added .add{color:var(--green)}
+
+.cmdbox{
+  padding:12px 13px;border-radius:11px;margin-bottom:12px;
+  background:var(--base);border:1px solid var(--s1);
+  font-family:var(--mono);font-size:12.5px;color:var(--green);
+  word-break:break-all;line-height:1.55;
+}
+.sheet-note{margin:14px 0 4px;font-size:11.5px;color:var(--ov0);line-height:1.6}
+
+/* .dot.fail is the repo card's "one of your pull requests is red". */
+.dot.fail{background:var(--red);box-shadow:0 0 0 3px rgba(243,139,168,.15)}
+
+/* The "gh is not logged in" screen. Its glyph is a warning, not a state. */
+.msg .glyph.warn{color:var(--peach);background:rgba(250,179,135,.10);border-color:rgba(250,179,135,.28)}

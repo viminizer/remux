@@ -170,6 +170,10 @@ type Payload struct {
 	Body  string `json:"body"`
 	Pane  string `json:"pane"`
 	Tag   string `json:"tag"`
+	// Route is where tapping the notification lands, for the ones that are
+	// not about a pane. A GitHub notification opens the pull request, not
+	// the workspace. Empty keeps the old behaviour: open Pane, or the app.
+	Route string `json:"route,omitempty"`
 }
 
 // Send delivers a payload to every registered subscription.
