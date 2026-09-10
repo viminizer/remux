@@ -183,13 +183,21 @@ func (s *Server) panesByRepo(*http.Request) map[string][]string {
 	return s.paneRepos
 }
 
-// RefreshPaneRepos recomputes the pane/repo mapping until ctx is cancelled.
+// WatchPanes reads the workspace on a timer until ctx is cancelled, and hands
+// the tree to everything that wants the whole workspace regularly.
 //
-// Off the request path on purpose - see panesByRepo. If a probe blocks, this
-// goroutine is the only thing that waits, and the matcher abandons that
-// directory rather than retrying it every tick.
-func (s *Server) RefreshPaneRepos(ctx context.Context, every time.Duration) {
-	if s.Match == nil {
+// This is remux's only unconditional pass over every pane. The per-connection
+// poller stops when the phone disconnects and the push watcher only ticks when
+// a subscription exists, so anything that has to keep working with nobody
+// looking belongs here - and belongs here rather than in a loop of its own,
+// because the tree read is already happening and #32 was exactly the cost of
+// sweeping the same panes twice.
+//
+// It recomputes the pane/repo mapping off the request path on purpose - see
+// panesByRepo. If a probe blocks, this goroutine is the only thing that waits,
+// and the matcher abandons that directory rather than retrying it every tick.
+func (s *Server) WatchPanes(ctx context.Context, every time.Duration) {
+	if s.Match == nil && s.OnTree == nil {
 		return
 	}
 	if every <= 0 {
@@ -198,7 +206,7 @@ func (s *Server) RefreshPaneRepos(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		s.refreshPaneRepos(ctx)
+		s.watchPanes(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -207,20 +215,27 @@ func (s *Server) RefreshPaneRepos(ctx context.Context, every time.Duration) {
 	}
 }
 
-func (s *Server) refreshPaneRepos(ctx context.Context) {
+func (s *Server) watchPanes(ctx context.Context) {
 	tree, err := s.Tmux.Tree(ctx)
 	if err != nil {
 		return
 	}
-	paths := make(map[string]string, len(tree.Panes()))
-	for _, p := range tree.Panes() {
-		paths[p.ID] = p.Path
-	}
-	byRepo := s.Match.Panes(paths)
 
-	s.mu.Lock()
-	s.paneRepos = byRepo
-	s.mu.Unlock()
+	if s.Match != nil {
+		paths := make(map[string]string, len(tree.Panes()))
+		for _, p := range tree.Panes() {
+			paths[p.ID] = p.Path
+		}
+		byRepo := s.Match.Panes(paths)
+
+		s.mu.Lock()
+		s.paneRepos = byRepo
+		s.mu.Unlock()
+	}
+
+	if s.OnTree != nil {
+		s.OnTree(ctx, tree)
+	}
 }
 
 // ── one repo ──────────────────────────────────────────────────────────────

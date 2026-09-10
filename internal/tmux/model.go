@@ -19,6 +19,13 @@ type Pane struct {
 	// belongs to the running program: an agent rewrites it every render, so a
 	// name written there survives less than a second.
 	RemuxTitle string `json:"remuxTitle,omitempty"`
+	// RemuxState is the one-glyph agent verdict remux writes into the
+	// @remux_state pane option, for the laptop's own status bar to render.
+	// It is not the phone's source of truth - Status below is, computed
+	// fresh per connection - and it exists so the status line on the laptop
+	// can show which of twenty panes is blocked without running a classifier
+	// of its own.
+	RemuxState string `json:"remuxState,omitempty"`
 	Command    string `json:"command"` // pane_current_command
 	Path       string `json:"path"`    // pane_current_path
 	Active     bool   `json:"active"`  // active pane in its window
@@ -113,8 +120,9 @@ const fieldSep = "|~|"
 // pane_title is last on purpose. It is the wildest field - agents write
 // arbitrary text into it - so parsing splits at most treeFields-1 times and
 // lets anything in the title, separator included, survive verbatim.
-// @remux_title sits just before it and is safe there because SetPaneTitle is
-// its only writer and refuses a name containing the separator.
+// @remux_title and @remux_state sit just before it and are safe there because
+// SetPaneTitle and SetPaneState are their only writers and both refuse a value
+// containing the separator.
 var treeFormat = strings.Join([]string{
 	"#{session_id}", "#{session_name}", "#{session_attached}",
 	"#{window_id}", "#{window_index}", "#{window_name}", "#{window_active}",
@@ -123,10 +131,11 @@ var treeFormat = strings.Join([]string{
 	"#{pane_current_path}", "#{pane_active}", "#{pane_width}", "#{pane_height}",
 	"#{pane_in_mode}", "#{alternate_on}", "#{pane_dead}", "#{history_size}",
 	"#{@remux_title}",
+	"#{@remux_state}",
 	"#{pane_title}",
 }, fieldSep)
 
-const treeFields = 21
+const treeFields = 22
 
 var sessionFormat = strings.Join([]string{
 	"#{session_id}", "#{session_attached}", "#{session_name}",
@@ -220,7 +229,8 @@ func parseTreeLine(line string) (*Session, *Window, *Pane, bool) {
 		Dead:       f[17] == "1",
 		History:    atoi(f[18]),
 		RemuxTitle: f[19],
-		Title:      f[20],
+		RemuxState: f[20],
+		Title:      f[21],
 		Activity:   int64(atoi(f[7])),
 	}
 	return s, w, p, true

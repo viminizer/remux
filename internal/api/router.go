@@ -31,11 +31,15 @@ type Server struct {
 	Auth     *Auth        // nil under --local
 	Web      http.Handler // embedded UI
 	Audit    *AuditLog
+	// OnTree is called with every tree WatchPanes reads, for work that wants
+	// the whole workspace on a timer and would otherwise start a second loop
+	// over the same panes. Optional; nil when nothing is hooked up.
+	OnTree func(context.Context, *tmux.Tree)
 
 	startedAt time.Time
 	mu        sync.Mutex
 	// paneRepos is the repo each pane is checked out in, kept fresh by
-	// RefreshPaneRepos so no request has to touch the filesystem.
+	// WatchPanes so no request has to touch the filesystem.
 	paneRepos map[string][]string
 }
 

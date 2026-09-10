@@ -21,6 +21,7 @@ import (
 	"github.com/viminizer/remux/internal/config"
 	gh "github.com/viminizer/remux/internal/github"
 	"github.com/viminizer/remux/internal/push"
+	"github.com/viminizer/remux/internal/titler"
 	"github.com/viminizer/remux/internal/tmux"
 	"github.com/viminizer/remux/internal/tsnode"
 	"github.com/viminizer/remux/internal/web"
@@ -155,11 +156,27 @@ func run(cfg *config.Config, local bool) error {
 		go w.Run(ctx)
 	}
 
+	// Naming panes writes to the real workspace on remux's own initiative,
+	// rather than because a phone tapped something - the first thing here
+	// that does. It is a benign write: one user option per pane, no cursor
+	// moved, no geometry touched, and scripts/laptop-invariant.sh checks
+	// exactly that.
+	//
+	// Unlike the two watchers above, this runs under --local as well. Their
+	// exclusion is about a development server doubling a notification, which
+	// is a real annoyance; two processes writing the same glyph derived from
+	// the same screen is not, and the write is skipped when the value already
+	// matches. Excluding it would mean the one feature whose acceptance is
+	// "it works against the panes running right now" could not be tried
+	// against them.
+	srv.OnTree = titler.NewState(tm).OnTree
+
 	go srv.GH.Run(ctx)
-	// Pane/repo matching runs here rather than inside a handler, because it
-	// reads the filesystem and a read under ~/Desktop from a LaunchAgent
-	// macOS has not granted access to blocks rather than failing.
-	go srv.RefreshPaneRepos(ctx, cfg.TreePoll())
+	// The one always-on pass over the workspace. Pane/repo matching runs here
+	// rather than inside a handler, because it reads the filesystem and a read
+	// under ~/Desktop from a LaunchAgent macOS has not granted access to
+	// blocks rather than failing.
+	go srv.WatchPanes(ctx, cfg.TreePoll())
 
 	if local {
 		return serveLocal(ctx, srv, cfg)

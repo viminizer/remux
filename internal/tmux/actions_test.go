@@ -420,6 +420,11 @@ func buildLine(title string) string { return buildLineWith("", title) }
 
 // buildLineWith takes both names: @remux_title, then pane_title last.
 func buildLineWith(remuxTitle, title string) string {
+	return buildLineFull(remuxTitle, "", title)
+}
+
+// buildLineFull adds @remux_state, which sits between the two.
+func buildLineFull(remuxTitle, remuxState, title string) string {
 	f := []string{
 		"$2", "saas", "1",
 		"@8", "8", "issue168", "1", "1788946490",
@@ -427,6 +432,7 @@ func buildLineWith(remuxTitle, title string) string {
 		"/Users/mac/dev", "1", "213", "54",
 		"0", "0", "0", "35713",
 		remuxTitle,
+		remuxState,
 		title,
 	}
 	return strings.Join(f, fieldSep)
@@ -574,6 +580,57 @@ func TestSetPaneTitleRejectsTheFieldSeparator(t *testing.T) {
 	}
 	if err := c.SetPaneTitle(context.Background(), "%1", "two\nlines"); err == nil {
 		t.Fatal("expected a name containing a newline to be refused")
+	}
+}
+
+// TestSetPaneStateRoundTrips proves the state lands in its own option and
+// comes back through the tree without disturbing the name beside it.
+//
+// The two share a record and sit next to each other ahead of pane_title, so
+// the failure this guards against is a silent column shift, not a lost write:
+// a state written into the title's slot would read back as a title and the
+// tree would still parse.
+func TestSetPaneStateRoundTrips(t *testing.T) {
+	c, pane := scratchPane(t)
+	ctx := context.Background()
+
+	if err := c.SetPaneTitle(ctx, pane, "venue filter"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetPaneState(ctx, pane, "!"); err != nil {
+		t.Fatal(err)
+	}
+
+	p := paneByID(t, c, pane)
+	if p.RemuxState != "!" {
+		t.Errorf("@remux_state = %q, want %q", p.RemuxState, "!")
+	}
+	if p.RemuxTitle != "venue filter" {
+		t.Errorf("@remux_title = %q, want %q - the two options collided",
+			p.RemuxTitle, "venue filter")
+	}
+
+	// Clearing is how a shell, and a pane nothing matched, get their state
+	// back. A glyph left behind would be a confident lie.
+	if err := c.SetPaneState(ctx, pane, ""); err != nil {
+		t.Fatal(err)
+	}
+	p = paneByID(t, c, pane)
+	if p.RemuxState != "" {
+		t.Errorf("after clearing, @remux_state = %q, want empty", p.RemuxState)
+	}
+	if p.RemuxTitle != "venue filter" {
+		t.Errorf("clearing the state cleared the title too: %q", p.RemuxTitle)
+	}
+}
+
+func TestSetPaneStateRejectsTheFieldSeparator(t *testing.T) {
+	c := New()
+	if err := c.SetPaneState(context.Background(), "%1", "a"+fieldSep+"b"); err == nil {
+		t.Fatal("expected a state containing the field separator to be refused")
+	}
+	if err := c.SetPaneState(context.Background(), "%1", "two\nlines"); err == nil {
+		t.Fatal("expected a state containing a newline to be refused")
 	}
 }
 

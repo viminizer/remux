@@ -199,20 +199,45 @@ func (c *Client) RenameSession(ctx context.Context, sessionID, name string) erro
 //
 // An empty name clears the option and hands the pane back to its own title.
 func (c *Client) SetPaneTitle(ctx context.Context, paneID, name string) error {
+	return c.setPaneOption(ctx, paneID, "@remux_title", name)
+}
+
+// SetPaneState writes the agent verdict for one pane into @remux_state, so the
+// laptop's own tmux status line can show which panes are blocked.
+//
+// Same channel and same reasoning as SetPaneTitle: a user option is the only
+// place a running agent cannot clobber. It is a separate option rather than a
+// prefix on the title because the two move at different speeds - the state
+// changes whenever the agent does, the title only when the work does - and
+// packing them into one string would mean rewriting the title to change a
+// glyph, plus a delimiter for someone to parse back out later.
+//
+// An empty state clears the option. That is the honest value for a shell and
+// for a pane nothing matched: a stale glyph left behind reads as confident and
+// is worse than none.
+func (c *Client) SetPaneState(ctx context.Context, paneID, state string) error {
+	return c.setPaneOption(ctx, paneID, "@remux_state", state)
+}
+
+// setPaneOption is the shared write. Both options sit ahead of pane_title in
+// treeFormat, so a value carrying the field separator would shift every column
+// of the record that reads them back - hence the guard, not just sanitizing
+// for tmux's sake.
+func (c *Client) setPaneOption(ctx context.Context, paneID, option, value string) error {
 	if err := CheckPaneID(paneID); err != nil {
 		return err
 	}
-	if strings.Contains(name, fieldSep) {
-		return fmt.Errorf("name may not contain %q", fieldSep)
+	if strings.Contains(value, fieldSep) {
+		return fmt.Errorf("%s may not contain %q", option, fieldSep)
 	}
-	if strings.ContainsAny(name, "\n\r\x00") {
-		return fmt.Errorf("name may not contain control characters")
+	if strings.ContainsAny(value, "\n\r\x00") {
+		return fmt.Errorf("%s may not contain control characters", option)
 	}
-	if name == "" {
-		_, err := c.run(ctx, "set-option", "-p", "-u", "-t", paneID, "@remux_title")
+	if value == "" {
+		_, err := c.run(ctx, "set-option", "-p", "-u", "-t", paneID, option)
 		return err
 	}
-	_, err := c.run(ctx, "set-option", "-p", "-t", paneID, "--", "@remux_title", name)
+	_, err := c.run(ctx, "set-option", "-p", "-t", paneID, "--", option, value)
 	return err
 }
 
