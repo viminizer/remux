@@ -12,18 +12,25 @@ import (
 
 	"github.com/viminizer/remux/internal/agent"
 	"github.com/viminizer/remux/internal/config"
+	gh "github.com/viminizer/remux/internal/github"
 	"github.com/viminizer/remux/internal/push"
 	"github.com/viminizer/remux/internal/tmux"
 )
 
 // Server carries everything the handlers need.
 type Server struct {
-	Cfg   *config.Config
-	Tmux  *tmux.Client
-	Push  *push.Store
-	Auth  *Auth        // nil under --local
-	Web   http.Handler // embedded UI
-	Audit *AuditLog
+	Cfg  *config.Config
+	Tmux *tmux.Client
+	Push *push.Store
+	// GH is the shared GitHub poller, GHClient the on-demand reads, and
+	// Match the pane/repo link. All three are nil when the GitHub screen is
+	// switched off, and every handler checks.
+	GH       *gh.Poller
+	GHClient *gh.Client
+	Match    *gh.Matcher
+	Auth     *Auth        // nil under --local
+	Web      http.Handler // embedded UI
+	Audit    *AuditLog
 
 	startedAt time.Time
 	mu        sync.Mutex
@@ -59,6 +66,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/windows", s.handleNewWindow)
 	mux.HandleFunc("PATCH /api/windows/{id}", s.handleRenameWindow)
 	mux.HandleFunc("DELETE /api/windows/{id}", s.handleKillWindow)
+
+	if s.GH != nil {
+		mux.HandleFunc("GET /api/github", s.handleGitHub)
+		mux.HandleFunc("POST /api/github/refresh", s.handleGitHubRefresh)
+		mux.HandleFunc("GET /api/github/picker", s.handleGitHubPicker)
+		mux.HandleFunc("POST /api/github/watch", s.handleGitHubWatch)
+		mux.HandleFunc("DELETE /api/github/watch/{owner}/{name}", s.handleGitHubUnwatch)
+		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/issues", s.handleGitHubIssues)
+		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/issues/{number}", s.handleGitHubIssue)
+		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/prs", s.handleGitHubPRs)
+		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/prs/{number}", s.handleGitHubPR)
+	}
 
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)

@@ -17,6 +17,12 @@ type Repo struct {
 	PRs         int       `json:"prs"`    // open pull requests
 	Pushed      time.Time `json:"pushed,omitempty"`
 
+	// MyPRs and RedPRs summarise the pull requests in this repo that Kevin
+	// is personally on the hook for, and how many of those are blocked.
+	// They come from the inbox, not from a per-repo list.
+	MyPRs  int `json:"myPrs,omitempty"`
+	RedPRs int `json:"redPrs,omitempty"`
+
 	// Missing is set when GitHub has no such repository any more: renamed,
 	// deleted, or turned private. The watchlist keeps the row and marks it
 	// rather than dropping it silently, because only Kevin can decide

@@ -19,6 +19,7 @@ import (
 
 	"github.com/viminizer/remux/internal/api"
 	"github.com/viminizer/remux/internal/config"
+	gh "github.com/viminizer/remux/internal/github"
 	"github.com/viminizer/remux/internal/push"
 	"github.com/viminizer/remux/internal/tmux"
 	"github.com/viminizer/remux/internal/tsnode"
@@ -106,6 +107,18 @@ func run(cfg *config.Config, local bool) error {
 		log.Printf("audit log unavailable: %v", err)
 	}
 
+	// The GitHub screen. gh being absent or logged out is not a startup
+	// failure - the screen says so and everything else keeps working - so
+	// the poller starts either way and reports what it finds.
+	ghClient := gh.New()
+	srv.GHClient = ghClient
+	srv.Match = gh.NewMatcher()
+	srv.GH = &gh.Poller{
+		Client:    ghClient,
+		Interval:  cfg.GitHubPoll(),
+		Watchlist: func() []string { return srv.Watchlist() },
+	}
+
 	if store, err := push.Open(); err == nil {
 		srv.Push = store
 	} else {
@@ -127,6 +140,8 @@ func run(cfg *config.Config, local bool) error {
 		w.NotifyDone = func() bool { return cfg.NotifyDone }
 		go w.Run(ctx)
 	}
+
+	go srv.GH.Run(ctx)
 
 	if local {
 		return serveLocal(ctx, srv, cfg)

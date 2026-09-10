@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,18 @@ type Config struct {
 	// NotifyDone fires a push when a long task finishes (busy -> idle).
 	// Off by default: it is the chattier of the two.
 	NotifyDone bool `json:"notifyDone"`
+
+	// Repos is the GitHub watchlist, as "owner/name", in the order Kevin
+	// added them. Empty is a normal state: the GitHub screen opens on its
+	// empty Repos tab with the Add button.
+	Repos []string `json:"repos"`
+	// GitHubMS is how often the shared GitHub poller runs. A minute is
+	// slow enough to be invisible against the 5000/hour limit and fast
+	// enough that a red CI run reaches the phone while he still cares.
+	GitHubMS int `json:"githubMs"`
+	// NotifyCI fires a push when one of your pull requests turns red or
+	// somebody asks you for a review.
+	NotifyCI bool `json:"notifyCi"`
 }
 
 func Default() *Config {
@@ -39,12 +52,26 @@ func Default() *Config {
 		TreeMS:        2000,
 		NotifyWaiting: true,
 		NotifyDone:    false,
+		GitHubMS:      60000,
+		NotifyCI:      true,
 	}
 }
 
 func (c *Config) Poll() time.Duration { return time.Duration(c.PollMS) * time.Millisecond }
 func (c *Config) TreePoll() time.Duration {
 	return time.Duration(c.TreeMS) * time.Millisecond
+}
+
+// GitHubPoll is clamped: a value under 15 seconds would spend the hourly API
+// budget on a screen nobody is looking at, and a zero means an old config file
+// written before the GitHub screen existed.
+func (c *Config) GitHubPoll() time.Duration {
+	const floor = 15 * time.Second
+	d := time.Duration(c.GitHubMS) * time.Millisecond
+	if d < floor {
+		return time.Minute
+	}
+	return d
 }
 
 // Dir is ~/.config/remux, where node keys, VAPID keys, subscriptions and the
@@ -99,8 +126,41 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
-// Save writes the config file.
+// saveMu serialises the read-modify-write in Update.
+var saveMu sync.Mutex
+
+// Update applies fn to what is on disk and writes it back.
+//
+// This is what every runtime settings change goes through, and the reason is
+// that command line flags overwrite the in-memory Config: --port, --lines,
+// --poll and --hostname all do. Saving the in-memory copy would bake whichever
+// flags this process happened to start with into the file, so a development
+// server run once on another port would move the installed service to it.
+// Reading the file first means only the fields fn touches ever change.
+func Update(fn func(*Config)) (*Config, error) {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
+	c, err := Load()
+	if err != nil {
+		return nil, err
+	}
+	fn(c)
+	if err := save(c); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// Save writes the config file. Prefer Update for anything the running process
+// changes; this is for the install path, which owns the whole file.
 func Save(c *Config) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	return save(c)
+}
+
+func save(c *Config) error {
 	if _, err := EnsureDir(); err != nil {
 		return err
 	}

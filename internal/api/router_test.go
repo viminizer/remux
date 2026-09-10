@@ -318,8 +318,8 @@ func TestSettingsRoundTrip(t *testing.T) {
 	ts := testServer(t, tm)
 
 	for _, want := range []notifySettings{
-		{NotifyWaiting: false, NotifyDone: true},
-		{NotifyWaiting: true, NotifyDone: false},
+		{NotifyWaiting: false, NotifyDone: true, NotifyCI: true},
+		{NotifyWaiting: true, NotifyDone: false, NotifyCI: false},
 	} {
 		code, body := do(t, ts, "PUT", "/api/settings", want)
 		if code != http.StatusOK {
@@ -333,7 +333,11 @@ func TestSettingsRoundTrip(t *testing.T) {
 		if err := json.Unmarshal(body, &got); err != nil {
 			t.Fatalf("get json: %v", err)
 		}
-		if got != want {
+		// Repos is not part of the round trip: the settings screen shows
+		// the watchlist but the GitHub screen owns editing it.
+		if got.NotifyWaiting != want.NotifyWaiting ||
+			got.NotifyDone != want.NotifyDone ||
+			got.NotifyCI != want.NotifyCI {
 			t.Errorf("round trip: got %+v, want %+v", got, want)
 		}
 	}
@@ -353,8 +357,8 @@ func TestSettingsRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(after, &got); err != nil {
 		t.Fatal(err)
 	}
-	if want := (notifySettings{NotifyWaiting: true, NotifyDone: false}); got != want {
-		t.Errorf("a rejected put changed the settings: got %+v, want %+v", got, want)
+	if !got.NotifyWaiting || got.NotifyDone {
+		t.Errorf("a rejected put changed the settings: got %+v", got)
 	}
 }
 

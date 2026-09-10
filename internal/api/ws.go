@@ -131,6 +131,11 @@ type poller struct {
 	gate   *tmux.ActivityGate
 	status map[string]string // last verdict per pane, for the ones not recaptured
 
+	// ghSummary is the last GitHub badge line sent, so an unchanged one
+	// costs nothing.
+	ghSummary ghSummary
+	hasGH     bool
+
 	// tree is the last workspace tree pollTree fetched, reused by pollPane
 	// for the subscribed pane's metadata. See paneMeta.
 	tree *tmux.Tree
@@ -211,6 +216,7 @@ func (p *poller) loop(ctx context.Context) {
 	defer treeTick.Stop()
 
 	p.pollTree(ctx)
+	p.pollGitHub(ctx)
 
 	for {
 		select {
@@ -220,6 +226,7 @@ func (p *poller) loop(ctx context.Context) {
 			p.pollPane(ctx)
 		case <-treeTick.C:
 			p.pollTree(ctx)
+			p.pollGitHub(ctx)
 		}
 	}
 }
@@ -302,6 +309,54 @@ func (p *poller) pollPane(ctx context.Context) {
 // from its command, and a pane whose window has produced no output still has
 // the verdict we gave it last time. So only the rest are captured, and the
 // statuses we already knew are carried forward.
+// ghSummary is the drawer badge: small enough to ride the tree tick, and all
+// the phone needs until somebody actually opens the GitHub screen.
+type ghSummary struct {
+	T         string `json:"t"`
+	Count     int    `json:"count"`    // things that need a person
+	Assigned  int    `json:"assigned"` // issues with your name on them
+	Red       int    `json:"red"`      // your pull requests that are blocked
+	Repos     int    `json:"repos"`    // how many are watched
+	At        int64  `json:"at"`       // when GitHub was last read, unix ms
+	ErrorKind string `json:"errorKind,omitempty"`
+}
+
+// pollGitHub piggybacks on the tree tick.
+//
+// It reads the shared poller's cached snapshot, so this is a struct copy and
+// never a request - the badge stays live without any connection adding load to
+// the GitHub API. Nothing is sent unless the numbers actually changed.
+func (p *poller) pollGitHub(ctx context.Context) {
+	if p.srv.GH == nil {
+		return
+	}
+	snap := p.srv.GH.Snapshot()
+	next := ghSummary{
+		T:         "gh",
+		Count:     snap.Inbox.Count(),
+		Assigned:  len(snap.Inbox.Assigned),
+		Repos:     len(snap.Repos),
+		ErrorKind: snap.ErrorKind,
+	}
+	for _, it := range snap.Inbox.NeedsYou {
+		if it.Checks == "fail" {
+			next.Red++
+		}
+	}
+	if !snap.At.IsZero() {
+		next.At = snap.At.UnixMilli()
+	}
+
+	p.mu.Lock()
+	same := p.hasGH && p.ghSummary == next
+	p.ghSummary, p.hasGH = next, true
+	p.mu.Unlock()
+	if same {
+		return
+	}
+	_ = p.conn.send(ctx, next)
+}
+
 func (p *poller) pollTree(ctx context.Context) {
 	tree, err := p.srv.Tmux.Tree(ctx)
 	if err != nil {

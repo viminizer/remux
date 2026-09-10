@@ -1,0 +1,304 @@
+package api
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/viminizer/remux/internal/config"
+	gh "github.com/viminizer/remux/internal/github"
+)
+
+// The GitHub screen is served from one shared poller plus a few on-demand
+// reads. What the poller holds - repo counts and the inbox - is the same for
+// everybody, so it is polled once and every request reads the snapshot. What
+// depends on which screen is open - a repo's issue list, a PR's checks - is
+// fetched when it is asked for, because polling 186 issues nobody is looking
+// at would spend the API budget on nothing.
+
+// ghStatus is the HTTP code for one of the package's typed errors.
+//
+// The important one is 401: the phone cannot fix it, only Kevin at the laptop
+// can, and that is a different screen from a generic failure.
+func ghStatus(err error) int {
+	switch gh.ErrorKind(err) {
+	case "auth", "nogh":
+		return http.StatusUnauthorized
+	case "notfound":
+		return http.StatusNotFound
+	case "ratelimit":
+		return http.StatusTooManyRequests
+	case "offline":
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusBadGateway
+}
+
+func writeGHErr(w http.ResponseWriter, err error) {
+	writeJSON(w, ghStatus(err), map[string]string{
+		"error": err.Error(),
+		"kind":  gh.ErrorKind(err),
+	})
+}
+
+// repoParam rebuilds "owner/name" from the two path segments and validates it
+// before it can reach a URL or a GraphQL document.
+func repoParam(r *http.Request) (string, bool) {
+	full := r.PathValue("owner") + "/" + r.PathValue("name")
+	return full, gh.ValidRepo(full)
+}
+
+func numberParam(r *http.Request) (int, bool) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	return n, err == nil && n > 0
+}
+
+// ── the snapshot ──────────────────────────────────────────────────────────
+
+// handleGitHub returns everything the GitHub screen opens with.
+//
+// It never waits on the network: the poller already has an answer, and an
+// empty one on the very first request is the same "loading" state a failed
+// poll produces.
+func (s *Server) handleGitHub(w http.ResponseWriter, r *http.Request) {
+	if s.GH == nil {
+		writeErr(w, http.StatusServiceUnavailable, "github is not configured")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.githubSnapshot(r))
+}
+
+func (s *Server) handleGitHubRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.GH == nil {
+		writeErr(w, http.StatusServiceUnavailable, "github is not configured")
+		return
+	}
+	s.GH.Kick()
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// githubSnapshot is the poller's snapshot with the tmux link filled in.
+//
+// The matching happens here rather than in the poller because it depends on
+// where the panes are right now, which changes far faster than GitHub does.
+func (s *Server) githubSnapshot(r *http.Request) gh.Snapshot {
+	snap := s.GH.Snapshot()
+	byRepo := s.panesByRepo(r)
+	if len(byRepo) == 0 {
+		return snap
+	}
+
+	repos := make([]gh.Repo, len(snap.Repos))
+	copy(repos, snap.Repos)
+	for i := range repos {
+		repos[i].Panes = byRepo[repos[i].Full]
+	}
+	snap.Repos = repos
+
+	snap.Inbox.NeedsYou = withPanes(snap.Inbox.NeedsYou, byRepo)
+	snap.Inbox.Assigned = withPanes(snap.Inbox.Assigned, byRepo)
+	snap.Inbox.YourPRs = withPanes(snap.Inbox.YourPRs, byRepo)
+	return snap
+}
+
+func withPanes(items []gh.InboxItem, byRepo map[string][]string) []gh.InboxItem {
+	out := make([]gh.InboxItem, len(items))
+	copy(out, items)
+	for i := range out {
+		out[i].Panes = byRepo[out[i].Repo]
+	}
+	return out
+}
+
+// panesByRepo maps every pane's working directory to the repo checked out
+// there. A tmux failure is not fatal here - it just means no pane chips.
+func (s *Server) panesByRepo(r *http.Request) map[string][]string {
+	if s.Match == nil {
+		return nil
+	}
+	tree, err := s.Tmux.Tree(r.Context())
+	if err != nil {
+		return nil
+	}
+	paths := map[string]string{}
+	for _, p := range tree.Panes() {
+		paths[p.ID] = p.Path
+	}
+	return s.Match.Panes(paths)
+}
+
+// ── one repo ──────────────────────────────────────────────────────────────
+
+func (s *Server) handleGitHubIssues(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid repo")
+		return
+	}
+	filter := gh.IssuesMine
+	if r.URL.Query().Get("filter") == "all" {
+		filter = gh.IssuesAll
+	}
+	page, err := s.GHClient.Issues(r.Context(), full, filter,
+		s.GH.Snapshot().Viewer, r.URL.Query().Get("after"))
+	if err != nil {
+		writeGHErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (s *Server) handleGitHubPRs(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid repo")
+		return
+	}
+	prs, err := s.GHClient.PRs(r.Context(), full, 100)
+	if err != nil {
+		writeGHErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"prs": prs})
+}
+
+func (s *Server) handleGitHubIssue(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	num, numOK := numberParam(r)
+	if !ok || !numOK {
+		writeErr(w, http.StatusBadRequest, "invalid repo or number")
+		return
+	}
+	issue, err := s.GHClient.Issue(r.Context(), full, num)
+	if err != nil {
+		writeGHErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
+}
+
+func (s *Server) handleGitHubPR(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	num, numOK := numberParam(r)
+	if !ok || !numOK {
+		writeErr(w, http.StatusBadRequest, "invalid repo or number")
+		return
+	}
+	pr, err := s.GHClient.PR(r.Context(), full, num)
+	if err != nil {
+		writeGHErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pr)
+}
+
+// ── the watchlist ─────────────────────────────────────────────────────────
+
+// handleGitHubPicker backs the Add repo sheet.
+//
+// With no query it lists what Kevin can already see, most recently pushed
+// first, which is the right answer without him typing anything. With a query
+// it searches all of GitHub, because the repos he watches without belonging to
+// - apache/shardingsphere - can only be found that way.
+func (s *Server) handleGitHubPicker(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	var (
+		repos []gh.Repo
+		err   error
+	)
+	if q == "" {
+		repos, err = s.GHClient.Mine(r.Context(), 30)
+	} else {
+		repos, err = s.GHClient.SearchRepos(r.Context(), q, 20)
+	}
+	if err != nil {
+		writeGHErr(w, err)
+		return
+	}
+
+	watched := map[string]bool{}
+	for _, full := range s.Watchlist() {
+		watched[strings.ToLower(full)] = true
+	}
+	type pick struct {
+		gh.Repo
+		Watched bool `json:"watched"`
+	}
+	out := make([]pick, len(repos))
+	for i, rp := range repos {
+		out[i] = pick{Repo: rp, Watched: watched[strings.ToLower(rp.Full)]}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"repos": out})
+}
+
+func (s *Server) handleGitHubWatch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Repo string `json:"repo"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !gh.ValidRepo(body.Repo) {
+		writeErr(w, http.StatusBadRequest, "invalid repo")
+		return
+	}
+	list, err := s.setWatchlist(append(s.Watchlist(), body.Repo))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.audit(r, "github", body.Repo, "watched")
+	s.GH.Kick()
+	writeJSON(w, http.StatusOK, map[string]any{"repos": list})
+}
+
+func (s *Server) handleGitHubUnwatch(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid repo")
+		return
+	}
+	var kept []string
+	for _, x := range s.Watchlist() {
+		if !strings.EqualFold(x, full) {
+			kept = append(kept, x)
+		}
+	}
+	list, err := s.setWatchlist(kept)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.audit(r, "github", full, "unwatched")
+	s.GH.Kick()
+	writeJSON(w, http.StatusOK, map[string]any{"repos": list})
+}
+
+// Watchlist is the repos the GitHub poller should read. It is exported
+// because the poller reads it fresh on every tick, so adding a repo takes
+// effect without a restart.
+func (s *Server) Watchlist() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.Cfg.Repos))
+	copy(out, s.Cfg.Repos)
+	return out
+}
+
+// setWatchlist normalises, stores and persists. The normalise step is what
+// keeps a duplicate or a malformed name out of the config file rather than
+// having every reader defend against one.
+func (s *Server) setWatchlist(list []string) ([]string, error) {
+	list = gh.NormalizeWatchlist(list)
+
+	s.mu.Lock()
+	s.Cfg.Repos = list
+	s.mu.Unlock()
+
+	if _, err := config.Update(func(c *config.Config) { c.Repos = list }); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
