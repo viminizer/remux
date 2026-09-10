@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>remux — GitHub screen mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ── Catppuccin Mocha — identical to ui-mock.html ──────────── */
+:root{
+  --crust:#11111b; --mantle:#181825; --base:#1e1e2e;
+  --s0:#313244; --s1:#45475a; --s2:#585b70;
+  --ov0:#6c7086; --ov1:#7f849c;
+  --sub0:#a6adc8; --sub1:#bac2de; --text:#cdd6f4;
+  --blue:#89b4fa; --green:#a6e3a1; --yellow:#f9e2af; --peach:#fab387;
+  --red:#f38ba8; --mauve:#cba6f7; --teal:#94e2d5; --maroon:#eba0ac;
+  --ui:'Plus Jakarta Sans',system-ui,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--ui);background:#0b0b12;color:var(--text);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:16px 0;
+  background-image:radial-gradient(ellipse at 50% -10%,rgba(203,166,247,.10) 0%,transparent 60%);
+}
+.switcher{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:660px;padding:0 10px}
+.sw{
+  padding:6px 12px;border-radius:8px;cursor:pointer;
+  background:var(--mantle);border:1px solid var(--s0);color:var(--ov1);
+  font-family:var(--ui);font-size:12px;font-weight:600;transition:.15s;
+}
+.sw:hover{color:var(--sub1);border-color:var(--s1)}
+.sw.on{background:var(--s0);color:var(--text);border-color:var(--mauve)}
+.hint{font-size:11.5px;color:var(--ov0);letter-spacing:.2px;text-align:center;padding:0 12px}
+.phone{
+  position:relative;width:390px;height:790px;overflow:hidden;
+  background:var(--base);border:1px solid var(--s0);border-radius:34px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 8px #08080e;
+  display:flex;flex-direction:column;
+}
+@media (max-width:900px){
+  body{display:block;padding:0;background:var(--base)}
+  .hint{display:none}
+  .switcher{padding:8px;background:var(--crust);position:sticky;top:0;z-index:50;max-width:none}
+  .phone{width:100%;height:calc(100dvh - 52px);border:0;border-radius:0;box-shadow:none}
+}
+
+/* ── shared shell bits, copied from the real mock ──────────── */
+.topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  padding:14px 12px 12px;background:var(--mantle);
+  border-bottom:1px solid var(--s0);position:relative;z-index:4;
+}
+.iconbtn{
+  width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;
+  border:0;border-radius:10px;background:transparent;color:var(--sub1);
+  font-size:17px;cursor:pointer;transition:background .15s;position:relative;
+}
+.iconbtn:active,.iconbtn:hover{background:var(--s0)}
+.tb-title{flex:1;min-width:0}
+.tb-title h1{
+  margin:0;font-size:15px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;
+}
+.tb-title p{
+  margin:2px 0 0;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;display:inline-block}
+.dot.waiting{background:var(--peach);box-shadow:0 0 0 3px rgba(250,179,135,.15)}
+.dot.working{background:var(--blue);position:relative}
+.dot.idle{background:var(--green)}
+.dot.shell{background:var(--s2)}
+.dot.stale{background:var(--ov0)}
+.dot.fail{background:var(--red);box-shadow:0 0 0 3px rgba(243,139,168,.15)}
+.dot.working::after{
+  content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:1.5px solid var(--blue);border-right-color:transparent;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.dot.working::after{animation:none;opacity:.4}}
+.output{flex:1;min-height:0;overflow-y:auto;padding:16px 14px 8px;background:var(--base)}
+.output pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.65;white-space:pre-wrap;color:var(--text)}
+.c-blue{color:var(--blue)}.c-green{color:var(--green)}.c-dim{color:var(--ov1)}.c-sub{color:var(--sub0)}
+.c-peach{color:var(--peach)}.c-mauve{color:var(--mauve)}.b{font-weight:700}
+.keypad{flex:0 0 auto;display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:var(--mantle);border-top:1px solid var(--s0);scrollbar-width:none}
+.keypad::-webkit-scrollbar{display:none}
+.key{
+  flex:0 0 auto;min-width:38px;height:34px;padding:0 11px;
+  background:var(--s0);border:1px solid var(--s1);border-radius:9px;
+  color:var(--sub1);font-family:var(--mono);font-size:12.5px;cursor:pointer;
+}
+.composer{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:10px 12px 14px;background:var(--mantle);border-top:1px solid var(--s0)}
+.composer .wrap{flex:1;display:flex;align-items:flex-end;gap:6px;background:var(--base);border:1px solid var(--s1);border-radius:20px;padding:6px 6px 6px 14px}
+.composer textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(--text);font-family:var(--ui);font-size:14.5px;line-height:1.45;padding:6px 0}
+.composer textarea::placeholder{color:var(--ov0)}
+.send{width:32px;height:32px;flex:0 0 32px;border:0;border-radius:50%;background:var(--blue);color:var(--crust);font-size:14px;display:grid;place-items:center;opacity:.3}
+
+/* ── drawer ────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:8;opacity:0;pointer-events:none;transition:opacity .22s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{
+  position:absolute;top:0;left:0;bottom:0;width:308px;z-index:9;
+  background:var(--mantle);border-right:1px solid var(--s0);
+  display:flex;flex-direction:column;
+  transform:translateX(-100%);transition:transform .24s cubic-bezier(.3,.8,.4,1);
+}
+.drawer.on{transform:none}
+.drawer-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:14px 12px;border-bottom:1px solid var(--s0)}
+.search{flex:1;display:flex;align-items:center;gap:8px;background:var(--base);border:1px solid var(--s0);border-radius:10px;padding:8px 10px}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:13.5px}
+.search input::placeholder{color:var(--ov0)}
+.newbtn{flex:0 0 auto;height:34px;padding:0 12px;border-radius:10px;cursor:pointer;background:var(--s0);border:1px solid var(--s1);color:var(--sub1);font-family:var(--ui);font-size:12.5px;font-weight:600}
+.list{flex:1;overflow-y:auto;padding:6px 0 20px}
+.list::-webkit-scrollbar,.screen-body::-webkit-scrollbar,.sheet-body::-webkit-scrollbar{width:6px}
+.list::-webkit-scrollbar-thumb,.screen-body::-webkit-scrollbar-thumb,.sheet-body::-webkit-scrollbar-thumb{background:var(--s1);border-radius:3px}
+.group{padding:14px 16px 6px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--ov0);display:flex;align-items:center;gap:7px}
+.group .n{margin-left:auto;letter-spacing:0;font-family:var(--mono);font-size:10.5px;color:var(--ov0)}
+.group.alert{color:var(--peach)}
+.row{display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:9px 16px;border-left:2px solid transparent;transition:background .12s}
+.row:active,.row:hover{background:var(--s0)}
+.row.active{background:var(--s0);border-left-color:var(--blue)}
+.row-t{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden}
+.row-t span{overflow:hidden;text-overflow:ellipsis}
+.row-s{margin-top:3px;font-family:var(--mono);font-size:11px;color:var(--ov1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drawer-foot{flex:0 0 auto;border-top:1px solid var(--s0);padding:10px 12px;display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ov1);cursor:pointer}
+.drawer-foot:hover{background:var(--s0)}
+
+/* ── THE NAV ENTRY: pinned GitHub row at the top of the drawer ── */
+.pinned{
+  padding:6px 10px 8px;border-bottom:1px solid var(--s0);margin-bottom:4px;
+}
+.pin-row{
+  display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;
+  padding:10px 11px;border-radius:11px;border:1px solid var(--s0);
+  background:var(--base);color:var(--text);font-family:var(--ui);
+  font-size:13.5px;font-weight:600;text-align:left;transition:.14s;
+}
+.pin-row:hover{border-color:var(--mauve);background:var(--s0)}
+.pin-row .glyph{
+  width:26px;height:26px;flex:0 0 26px;border-radius:8px;display:grid;place-items:center;
+  background:rgba(203,166,247,.14);color:var(--mauve);font-size:13px;
+}
+.pin-row .sub{display:block;margin-top:2px;font-family:var(--mono);font-size:10.5px;color:var(--ov1);font-weight:400}
+.badge{
+  margin-left:auto;flex:0 0 auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;
+  background:var(--mauve);color:var(--crust);font-size:11px;font-weight:700;
+  display:grid;place-items:center;font-family:var(--mono);
+}
+.badge.red{background:var(--red)}
+.dotbadge{
+  position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;
+  background:var(--mauve);border:2px solid var(--mantle);
+}
+
+/* ── full-screen overlay ───────────────────────────────────── */
+.screen{position:absolute;inset:0;z-index:20;background:var(--base);display:none;flex-direction:column}
+.screen.on{display:flex}
+.screen-head{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:14px 12px;background:var(--mantle);border-bottom:1px solid var(--s0)}
+.screen-head h2{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.screen-head h2 small{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--ov1);font-weight:400}
+.screen-body{flex:1;overflow-y:auto}
+.pad{padding:18px}
+
+/* segmented control */
+.seg{display:flex;gap:4px;background:var(--mantle);border-bottom:1px solid var(--s0);padding:8px 12px}
+.seg button{
+  flex:1;padding:9px;border:0;border-radius:9px;cursor:pointer;background:transparent;
+  color:var(--ov1);font-family:var(--ui);font-size:13px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.seg button.on{background:var(--s0);color:var(--text)}
+.seg .n{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+.seg button.on .n{color:var(--sub0)}
+
+/* ── github rows ───────────────────────────────────────────── */
+.ghgroup{
+  display:flex;align-items:center;gap:8px;
+  padding:16px 14px 7px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--ov0);
+}
+.ghgroup.hot{color:var(--peach)}
+.ghgroup .n{margin-left:auto;letter-spacing:0;font-family:var(--mono)}
+.gh{
+  display:flex;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:11px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--text);font-family:var(--ui);transition:background .12s;
+}
+.gh:hover,.gh:active{background:var(--mantle)}
+.gh .kind{
+  width:22px;height:22px;flex:0 0 22px;border-radius:7px;display:grid;place-items:center;
+  font-size:11px;margin-top:1px;background:var(--s0);color:var(--ov1);
+}
+.gh .kind.pr{background:rgba(166,227,161,.13);color:var(--green)}
+.gh .kind.pr.red{background:rgba(243,139,168,.13);color:var(--red)}
+.gh .kind.pr.draft{background:var(--s0);color:var(--ov1)}
+.gh .kind.iss{background:rgba(137,180,250,.13);color:var(--blue)}
+.gh .kind.men{background:rgba(203,166,247,.14);color:var(--mauve)}
+.gh .mid{flex:1;min-width:0}
+.gh .repo{
+  font-family:var(--mono);font-size:11px;color:var(--ov1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gh .repo b{color:var(--sub0);font-weight:500}
+.gh .ttl{
+  margin-top:3px;font-size:13.5px;font-weight:600;line-height:1.35;color:var(--text);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.gh .meta{display:flex;align-items:center;gap:7px;margin-top:6px;flex-wrap:wrap}
+.gh .age{flex:0 0 auto;font-family:var(--mono);font-size:10.5px;color:var(--ov0);margin-top:1px}
+
+/* chips */
+.chip{
+  display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  padding:3px 8px;border-radius:20px;font-size:10.5px;font-weight:600;
+  background:var(--s0);color:var(--sub0);border:1px solid transparent;
+}
+.chip.red{background:rgba(243,139,168,.13);color:var(--red)}
+.chip.green{background:rgba(166,227,161,.13);color:var(--green)}
+.chip.blue{background:rgba(137,180,250,.13);color:var(--blue)}
+.chip.peach{background:rgba(250,179,135,.13);color:var(--peach)}
+.chip.mauve{background:rgba(203,166,247,.14);color:var(--mauve)}
+.chip.pane{background:transparent;border-color:var(--s1);color:var(--sub1);font-family:var(--mono);font-weight:500}
+.chip.pane:hover{border-color:var(--blue);color:var(--blue)}
+.lbl-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+
+/* collapsed activity */
+.collapse{
+  display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;
+  padding:13px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--ov1);font-family:var(--ui);font-size:12.5px;text-align:left;
+}
+.collapse:hover{background:var(--mantle);color:var(--sub1)}
+.collapse .arrow{margin-left:auto;font-size:11px}
+
+/* ── repos tab ─────────────────────────────────────────────── */
+.repo-card{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:13px 14px;border:0;border-bottom:1px solid var(--s0);
+  background:transparent;color:var(--text);font-family:var(--ui);
+}
+.repo-card:hover{background:var(--mantle)}
+.repo-card .av{
+  width:32px;height:32px;flex:0 0 32px;border-radius:9px;display:grid;place-items:center;
+  background:var(--s0);color:var(--sub0);font-size:13px;font-weight:700;font-family:var(--mono);
+}
+.repo-card .mid{flex:1;min-width:0}
+.repo-card .nm{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-card .nm .owner{color:var(--ov1);font-weight:500}
+.repo-card .st{display:flex;align-items:center;gap:9px;margin-top:5px;font-family:var(--mono);font-size:11px;color:var(--ov1)}
+.repo-card .st b{color:var(--sub0);font-weight:500}
+.repo-card .chev{color:var(--ov0);font-size:14px;flex:0 0 auto}
+.addbar{padding:14px}
+.addbtn{
+  width:100%;padding:13px;border-radius:12px;cursor:pointer;
+  background:transparent;border:1px dashed var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:13.5px;font-weight:600;
+}
+.addbtn:hover{border-color:var(--mauve);color:var(--mauve)}
+
+/* ── filter chips on the repo screen ───────────────────────── */
+.filters{
+  display:flex;gap:6px;padding:10px 12px;overflow-x:auto;scrollbar-width:none;
+  background:var(--mantle);border-bottom:1px solid var(--s0);
+}
+.filters::-webkit-scrollbar{display:none}
+.f{
+  flex:0 0 auto;padding:6px 12px;border-radius:20px;cursor:pointer;
+  background:transparent;border:1px solid var(--s1);color:var(--ov1);
+  font-family:var(--ui);font-size:12px;font-weight:600;
+}
+.f:hover{color:var(--sub1);border-color:var(--s2)}
+.f.on{background:var(--s0);border-color:var(--blue);color:var(--text)}
+.f .n{font-family:var(--mono);font-size:11px;opacity:.7;margin-left:5px}
+.f.icon{padding:6px 10px}
+.loadmore{
+  display:block;width:calc(100% - 28px);margin:14px;padding:12px;
+  border-radius:11px;cursor:pointer;background:transparent;
+  border:1px solid var(--s1);color:var(--sub1);
+  font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.loadmore:hover{border-color:var(--blue);color:var(--blue)}
+.loadmore small{display:block;margin-top:4px;font-family:var(--mono);font-size:10.5px;color:var(--ov0);font-weight:400}
+.scopenote{
+  padding:12px 14px;font-size:11.5px;color:var(--ov0);line-height:1.6;
+  border-bottom:1px solid var(--s0);background:rgba(137,180,250,.05);
+}
+.scopenote b{color:var(--sub0);font-weight:600}
+
+/* ── detail screen ─────────────────────────────────────────── */
+.det-head{padding:18px 16px 14px;border-bottom:1px solid var(--s0)}
+.det-head .repo{font-family:var(--mono);font-size:11.5px;color:var(--ov1)}
+.det-head h3{margin:8px 0 0;font-size:17px;font-weight:700;line-height:1.35}
+.det-head .num{color:var(--ov0);font-weight:400}
+.det-head .meta{display:flex;align-items:center;gap:7px;margin-top:12px;flex-wrap:wrap}
+.det-sec{padding:16px;border-bottom:1px solid var(--s0)}
+.det-sec h4{margin:0 0 10px;font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--ov0)}
+.check{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px;color:var(--sub0)}
+.check .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:11.5px}
+.check .t{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+.body-md{font-size:13.5px;line-height:1.7;color:var(--sub0)}
+.body-md p{margin:0 0 12px}
+.body-md code{font-family:var(--mono);font-size:12px;background:var(--mantle);padding:2px 5px;border-radius:5px;color:var(--sub1)}
+.cmt{display:flex;gap:10px;padding:12px 0;border-top:1px solid var(--s0)}
+.cmt .av{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:var(--s0);color:var(--sub0);display:grid;place-items:center;font-size:11px;font-weight:700}
+.cmt .who{font-size:12px;font-weight:600;color:var(--sub1)}
+.cmt .who span{color:var(--ov0);font-weight:400;font-family:var(--mono);font-size:10.5px;margin-left:6px}
+.cmt .txt{margin-top:4px;font-size:13px;line-height:1.6;color:var(--sub0)}
+.actions{
+  flex:0 0 auto;display:flex;gap:8px;padding:12px;
+  background:var(--mantle);border-top:1px solid var(--s0);
+}
+.act{
+  flex:1;padding:12px 10px;border-radius:11px;cursor:pointer;border:1px solid var(--s1);
+  background:var(--s0);color:var(--sub1);font-family:var(--ui);font-size:13px;font-weight:600;
+}
+.act.primary{background:var(--blue);border-color:var(--blue);color:var(--crust)}
+.act:hover{border-color:var(--s2)}
+
+/* ── sheet ─────────────────────────────────────────────────── */
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;z-index:30;
+  background:var(--mantle);border-top:1px solid var(--s1);
+  border-radius:20px 20px 0 0;transform:translateY(101%);
+  transition:transform .26s cubic-bezier(.3,.8,.4,1);max-height:80%;
+  display:flex;flex-direction:column;
+}
+.sheet.on{transform:none}
+.grip{width:38px;height:4px;border-radius:2px;background:var(--s2);margin:10px auto 4px;flex:0 0 auto}
+.sheet-body{padding:8px 0 22px;overflow-y:auto}
+.sheet h3{margin:6px 18px 14px;font-size:16px;font-weight:700}
+.sheet .search{margin:0 18px 12px}
+.pick{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+  padding:11px 18px;border:0;background:transparent;color:var(--text);font-family:var(--ui);
+}
+.pick:hover{background:var(--s0)}
+.pick .av{width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:var(--s0);display:grid;place-items:center;font-family:var(--mono);font-size:12px;color:var(--sub0)}
+.pick .mid{flex:1;min-width:0}
+.pick .nm{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick .sub{margin-top:2px;font-family:var(--mono);font-size:10.5px;color:var(--ov1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick .add{flex:0 0 auto;font-size:18px;color:var(--ov0)}
+.pick.added .add{color:var(--green)}
+.sheet .go{
+  width:calc(100% - 36px);margin:10px 18px 0;padding:13px;border:0;border-radius:12px;cursor:pointer;
+  background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:14.5px;font-weight:700;
+}
+.cmdbox{
+  margin:0 18px 12px;padding:12px 13px;border-radius:11px;
+  background:var(--base);border:1px solid var(--s1);
+  font-family:var(--mono);font-size:12.5px;color:var(--green);
+  word-break:break-all;line-height:1.55;
+}
+.cmdbox .c-dim{color:var(--ov1)}
+
+/* ── stale banner ──────────────────────────────────────────── */
+.stale-bar{display:flex;align-items:center;gap:9px;padding:10px 14px;font-size:12.5px;color:var(--peach);font-weight:600;background:rgba(250,179,135,.10);border-bottom:1px solid rgba(250,179,135,.25)}
+.stale-bar .grow{flex:1}
+body.offline-demo .gh,body.offline-demo .repo-card{opacity:.6}
+
+/* ── centred message ───────────────────────────────────────── */
+.msg{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 32px}
+.msg .glyph{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;font-size:26px;margin-bottom:12px;background:var(--s0);border:1px solid var(--s1)}
+.msg h2{margin:0;font-size:18px;font-weight:700}
+.msg p{margin:8px 0 0;font-size:13.5px;color:var(--sub0);line-height:1.6;max-width:290px}
+.msg code{font-family:var(--mono);font-size:12.5px;color:var(--peach)}
+.msg .cta{margin-top:20px;padding:11px 20px;border-radius:11px;border:0;cursor:pointer;background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:14px;font-weight:700}
+.checklist{margin-top:22px;width:100%;max-width:290px;text-align:left;background:var(--mantle);border:1px solid var(--s0);border-radius:12px;padding:12px 14px}
+.checklist div{display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:12.5px;color:var(--sub0);line-height:1.5}
+.checklist div span{color:var(--ov0);flex:0 0 auto}
+.checklist code{font-family:var(--mono);font-size:11.5px;color:var(--sub1)}
+
+/* toast */
+.toast{
+  position:absolute;left:50%;bottom:90px;transform:translate(-50%,10px);z-index:40;
+  background:var(--s1);color:var(--text);border:1px solid var(--s2);
+  padding:9px 15px;border-radius:11px;font-size:12.5px;font-family:var(--mono);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;white-space:nowrap;max-width:90%;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* route label under the phone */
+.route{font-family:var(--mono);font-size:11.5px;color:var(--ov0)}
+.route b{color:var(--mauve);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="switcher" id="switcher">
+  <button class="sw on" data-s="nav">1 · Where nav lives</button>
+  <button class="sw" data-s="inbox">2 · Inbox</button>
+  <button class="sw" data-s="repos">3 · Repos</button>
+  <button class="sw" data-s="repo">4 · One repo (Yours)</button>
+  <button class="sw" data-s="repoall">4b · One repo (All 109)</button>
+  <button class="sw" data-s="repoprs">4c · PRs tab</button>
+  <button class="sw" data-s="repo2">4d · PRs, busy repo</button>
+  <button class="sw" data-s="pr">5 · PR detail</button>
+  <button class="sw" data-s="issue">6 · Issue detail</button>
+  <button class="sw" data-s="add">7 · Add repo</button>
+  <button class="sw" data-s="topane">8 · Send to pane</button>
+  <button class="sw" data-s="offline">9 · Offline</button>
+  <button class="sw" data-s="nogh">10 · gh not logged in</button>
+</div>
+<div class="hint">Real data: your 4 yegadev repos, apache/shardingsphere PRs, viminizer/shortlist issues, and the panes they map to.</div>
+
+<div class="phone" id="phone">
+
+  <!-- ══ BASE: the pane screen, unchanged ══════════════════ -->
+  <header class="topbar">
+    <button class="iconbtn" id="burger" aria-label="Open drawer">☰<span class="dotbadge" id="tbBadge"></span></button>
+    <div class="tb-title">
+      <h1><span class="dot waiting"></span><span>shortlist</span></h1>
+      <p>saas · win 1 · codex</p>
+    </div>
+    <button class="iconbtn" id="kebab" aria-label="Menu">⋮</button>
+  </header>
+
+  <main class="output">
+    <pre>
+<span class="c-dim">│</span> <span class="c-green">✓</span> ObjectStore adapter wired into the port
+<span class="c-dim">│</span> <span class="c-green">✓</span> 14 tests passing
+<span class="c-dim">│</span>
+<span class="c-peach">?</span> <span class="b">Run the live verification campaign now?</span>
+  <span class="c-sub">1. Yes, hit the staging API</span>
+  <span class="c-sub">2. No, stop here</span>
+
+<span class="c-dim">›</span> <span class="c-blue">_</span>
+
+<span class="c-dim">── the GitHub screen is one tap away, in the drawer ──</span>
+<span class="c-dim">   nothing on this screen moved to make room.</span>
+</pre>
+  </main>
+
+  <div class="keypad">
+    <button class="key">esc</button><button class="key">⏎</button><button class="key">tab</button>
+    <button class="key">↑</button><button class="key">↓</button>
+    <button class="key">1</button><button class="key">2</button><button class="key">y</button><button class="key">n</button>
+  </div>
+  <div class="composer">
+    <div class="wrap"><textarea rows="1" placeholder="Message codex…"></textarea></div>
+    <button class="send">➤</button>
+  </div>
+
+  <!-- ══ DRAWER: the nav entry point ═══════════════════════ -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <div class="search"><span style="color:var(--ov0);font-size:13px">⌕</span><input placeholder="Search panes"></div>
+      <button class="newbtn">✚ New</button>
+    </div>
+
+    <div class="list">
+      <!-- ▼ the whole integration is this one pinned row ▼ -->
+      <div class="pinned">
+        <button class="pin-row" data-open="gh">
+          <span class="glyph">◈</span>
+          <span>GitHub
+            <span class="sub">7 assigned · 2 checks red</span>
+          </span>
+          <span class="badge red">9</span>
+        </button>
+      </div>
+
+      <div class="group alert"><span class="dot waiting"></span>Waiting <span class="n">1</span></div>
+      <button class="row active">
+        <div class="row-t"><span class="dot waiting"></span><span>shortlist</span></div>
+        <div class="row-s">saas · win 1 · codex</div>
+      </button>
+
+      <div class="group">1yegabiz <span class="n">9</span></div>
+      <button class="row">
+        <div class="row-t"><span class="dot working"></span><span>seoul-wedding-api</span></div>
+        <div class="row-s">win 1 · codex</div>
+      </button>
+      <button class="row">
+        <div class="row-t"><span class="dot idle"></span><span>seoulwomen-react</span></div>
+        <div class="row-s">win 2 · claude</div>
+      </button>
+      <button class="row">
+        <div class="row-t"><span class="dot idle"></span><span>seoul-wedding-client</span></div>
+        <div class="row-s">win 3 · claude</div>
+      </button>
+      <button class="row">
+        <div class="row-t"><span class="dot shell"></span><span>seoulwomen-docs</span></div>
+        <div class="row-s">win 4 · zsh</div>
+      </button>
+
+      <div class="group">saas <span class="n">12</span></div>
+      <button class="row">
+        <div class="row-t"><span class="dot working"></span><span>remux</span></div>
+        <div class="row-s">win 6 · claude</div>
+      </button>
+    </div>
+
+    <div class="drawer-foot"><span class="dot idle"></span>Connected · Settings</div>
+  </aside>
+
+  <!-- ══ SCREEN: GitHub — Inbox / Repos ════════════════════ -->
+  <div class="screen" id="s-gh">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="gh">←</button>
+      <h2>GitHub<small>viminizer · 8 repos watched</small></h2>
+      <button class="iconbtn" id="ghRefresh">⟳</button>
+    </div>
+
+    <div class="stale-bar" id="ghStale" style="display:none">
+      <span class="dot stale"></span>
+      <span class="grow">Cached · GitHub last read 12 min ago</span>
+      <span style="color:var(--ov1);font-size:11px">Retry</span>
+    </div>
+
+    <div class="seg" id="ghSeg">
+      <button class="on" data-tab="inbox">Inbox <span class="n">9</span></button>
+      <button data-tab="repos">Repos <span class="n">8</span></button>
+    </div>
+
+    <!-- ── Inbox ── -->
+    <div class="screen-body" id="tab-inbox">
+
+      <div class="ghgroup hot">Needs you <span class="n">2</span></div>
+
+      <button class="gh" data-open="pr">
+        <span class="kind pr red">⑂</span>
+        <span class="mid">
+          <span class="repo">apache/<b>shardingsphere</b> · #39385</span>
+          <span class="ttl">Add SYSTEM_USER to PostgreSQL unparenthesized function names</span>
+          <span class="meta">
+            <span class="chip red">● 2 checks failed</span>
+            <span class="chip">review required</span>
+          </span>
+        </span>
+        <span class="age">6d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind men">@</span>
+        <span class="mid">
+          <span class="repo">yegadev/<b>seoul-wedding-api</b> · #412</span>
+          <span class="ttl">soobin mentioned you: “can you confirm the reservation lock covers the weekend slots?”</span>
+          <span class="meta">
+            <span class="chip mauve">mention</span>
+            <span class="chip pane">↗ 1yegabiz · win 1</span>
+          </span>
+        </span>
+        <span class="age">3h</span>
+      </button>
+
+      <div class="ghgroup">Assigned to you <span class="n">7</span></div>
+
+      <button class="gh" data-open="issue">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">viminizer/<b>shortlist</b> · #250</span>
+          <span class="ttl">feat: add the second ObjectStore adapter, so the port's design is proven by two implementations</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--blue)"></span>enhancement</span>
+            <span class="chip pane">↗ saas · win 1</span>
+          </span>
+        </span>
+        <span class="age">2h</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">viminizer/<b>shortlist</b> · #231</span>
+          <span class="ttl">test: execute a thorough live API end-to-end verification campaign</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--yellow)"></span>testing</span>
+            <span class="chip pane">↗ saas · win 1</span>
+          </span>
+        </span>
+        <span class="age">8h</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">yegadev/<b>seoul-wedding-client</b> · #339</span>
+          <span class="ttl">[Improvement] 예약 운영 달력 개편 - 주말 칸 확대, 3건 표시 상한 해소, 식장별 필터</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--mauve)"></span>improvement</span>
+            <span class="chip pane">↗ 1yegabiz · win 3</span>
+          </span>
+        </span>
+        <span class="age">4d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">yegadev/<b>seoulwomen-react</b> · #100</span>
+          <span class="ttl">fix: 예식신청 증빙파일 업로드의 필수/선택 표시가 동작하지 않고 업로드 경로가 미검증이다</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--red)"></span>bug</span>
+            <span class="chip pane">↗ 1yegabiz · win 2</span>
+          </span>
+        </span>
+        <span class="age">25d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">yegadev/<b>seoulwomen-docs</b> · #104</span>
+          <span class="ttl">[S5-21] Post-base 후기 공개 상태·관리자 편집</span>
+          <span class="meta">
+            <span class="chip pane">↗ 1yegabiz · win 4</span>
+          </span>
+        </span>
+        <span class="age">5w</span>
+      </button>
+
+      <div class="ghgroup">Your open PRs <span class="n">6</span></div>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">apache/<b>shardingsphere</b> · #39393</span>
+          <span class="ttl">Fix PostgreSQL function projection column label case folding</span>
+          <span class="meta">
+            <span class="chip green">✓ checks passed</span>
+            <span class="chip green">approved</span>
+          </span>
+        </span>
+        <span class="age">4w</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">yegadev/<b>lugar-flow</b> · #71</span>
+          <span class="ttl">feat: 인앱 버전 업데이트 알림 및 다운로드 기능</span>
+          <span class="meta">
+            <span class="chip blue">● checks running</span>
+          </span>
+        </span>
+        <span class="age">3w</span>
+      </button>
+
+      <button class="collapse" id="moreAct">
+        <span class="dot stale"></span>
+        <span>14 replies on threads you opened</span>
+        <span class="arrow">▾</span>
+      </button>
+
+      <div style="padding:22px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.6">
+        Read-only. Nothing here marks a thread read on GitHub.
+      </div>
+    </div>
+
+    <!-- ── Repos ── -->
+    <div class="screen-body" id="tab-repos" style="display:none">
+      <button class="repo-card" data-open="repo">
+        <span class="av">sh</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">viminizer/</span>shortlist</span>
+          <span class="st"><span class="dot waiting"></span><b>3</b> issues <b>2</b> PRs · <span style="color:var(--blue)">↗ saas · win 1</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card" data-open="repo2">
+        <span class="av">sh</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">apache/</span>shardingsphere</span>
+          <span class="st"><span class="dot fail"></span><b>186</b> issues <b>22</b> PRs · 2 of yours, 1 red</span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">sw</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">yegadev/</span>seoul-wedding-api</span>
+          <span class="st"><span class="dot working"></span><b>60</b> issues · no open PRs · <span style="color:var(--blue)">↗ 1yegabiz · win 1</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">sw</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">yegadev/</span>seoul-wedding-client</span>
+          <span class="st"><span class="dot idle"></span><b>108</b> issues <b>1</b> PR · <span style="color:var(--blue)">↗ 1yegabiz · win 3</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">sw</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">yegadev/</span>seoulwomen-react</span>
+          <span class="st"><span class="dot idle"></span><b>44</b> issues · no open PRs · <span style="color:var(--blue)">↗ 1yegabiz · win 2</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">sw</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">yegadev/</span>seoulwomen-docs</span>
+          <span class="st"><span class="dot shell"></span><b>58</b> issues · <span style="color:var(--blue)">↗ 1yegabiz · win 4</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">lf</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">yegadev/</span>lugar-flow</span>
+          <span class="st"><span class="dot working"></span><b>7</b> issues <b>1</b> PR · no pane</span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <button class="repo-card">
+        <span class="av">re</span>
+        <span class="mid">
+          <span class="nm"><span class="owner">viminizer/</span>remux</span>
+          <span class="st"><span class="dot working"></span><b>1</b> issue · no open PRs · <span style="color:var(--blue)">↗ saas · win 6</span></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+
+      <div class="addbar">
+        <button class="addbtn" data-sheet="add">✚ Add a repo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN: one repo ══════════════════════════════════ -->
+  <div class="screen" id="s-repo">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="repo">←</button>
+      <h2>seoul-wedding-client<small>yegadev · 1yegabiz · win 3</small></h2>
+      <button class="iconbtn">⋮</button>
+    </div>
+    <div class="seg" id="repoSeg">
+      <button class="on" data-rtab="issues">Issues <span class="n">108</span></button>
+      <button data-rtab="prs">PRs <span class="n">1</span></button>
+    </div>
+
+    <!-- the answer to "hundreds of issues": you never see them all -->
+    <div class="filters" id="repoFilters">
+      <button class="f on" data-f="mine">Yours <span class="n">2</span></button>
+      <button class="f" data-f="all">All <span class="n">108</span></button>
+      <button class="f" data-f="all">Waiting on me <span class="n">0</span></button>
+      <button class="f" data-f="all">bug <span class="n">31</span></button>
+      <button class="f icon" data-f="all">⌕</button>
+    </div>
+
+    <!-- default view: only what has your name on it -->
+    <div class="screen-body" id="repo-mine">
+      <div class="scopenote">
+        Opened on <b>Yours</b> · assigned, authored, or mentioning you.
+        The other <b>106</b> open issues were never fetched.
+      </div>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#339 · assigned to you</span>
+          <span class="ttl">[Improvement] 예약 운영 달력 개편 - 주말 칸 확대, 3건 표시 상한 해소, 식장별 필터</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--mauve)"></span>improvement</span>
+            <span class="chip">💬 4</span>
+          </span>
+        </span>
+        <span class="age">4d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#57 · assigned to you</span>
+          <span class="ttl">목 API 의 질의 파라미터·정렬 화이트리스트를 공용 list 경로 옵션으로 일반화한다</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--teal)"></span>refactor</span>
+          </span>
+        </span>
+        <span class="age">4w</span>
+      </button>
+
+      <div style="padding:26px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7">
+        That is the whole list.<br>
+        Tap <b style="color:var(--sub0)">All</b> above to browse the other 106.
+      </div>
+    </div>
+
+    <!-- what "All" actually looks like: one page of 30, sorted by recently updated -->
+    <div class="screen-body" id="repo-all" style="display:none">
+      <div class="scopenote">
+        <b>All open</b> · sorted by recently updated, <b>30 per page</b>.
+        Nothing loads until you ask for it.
+      </div>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#339 · assigned to you</span>
+          <span class="ttl">[Improvement] 예약 운영 달력 개편 - 주말 칸 확대, 3건 표시 상한 해소, 식장별 필터</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--mauve)"></span>improvement</span>
+            <span class="chip peach">assigned to you</span>
+          </span>
+        </span>
+        <span class="age">4d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#341</span>
+          <span class="ttl">예약 상세 모달이 ESC 로 닫힐 때 변경사항을 저장하지 않고 버린다</span>
+          <span class="meta"><span class="chip"><span class="lbl-dot" style="background:var(--red)"></span>bug</span><span class="chip">💬 2</span></span>
+        </span>
+        <span class="age">6h</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#340</span>
+          <span class="ttl">식장 목록 페이지네이션이 필터 변경 후 1페이지로 돌아가지 않는다</span>
+          <span class="meta"><span class="chip"><span class="lbl-dot" style="background:var(--red)"></span>bug</span></span>
+        </span>
+        <span class="age">1d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#338</span>
+          <span class="ttl">디자인 토큰 정리 — 색상 변수가 컴포넌트마다 중복 정의되어 있다</span>
+          <span class="meta"><span class="chip"><span class="lbl-dot" style="background:var(--teal)"></span>refactor</span></span>
+        </span>
+        <span class="age">5d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#335</span>
+          <span class="ttl">상담 신청 폼의 전화번호 검증이 010 이외 번호를 거부한다</span>
+          <span class="meta"><span class="chip"><span class="lbl-dot" style="background:var(--red)"></span>bug</span><span class="chip">💬 5</span></span>
+        </span>
+        <span class="age">1w</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind iss">◉</span>
+        <span class="mid">
+          <span class="repo">#57 · assigned to you</span>
+          <span class="ttl">목 API 의 질의 파라미터·정렬 화이트리스트를 공용 list 경로 옵션으로 일반화한다</span>
+          <span class="meta">
+            <span class="chip"><span class="lbl-dot" style="background:var(--teal)"></span>refactor</span>
+            <span class="chip peach">assigned to you</span>
+          </span>
+        </span>
+        <span class="age">4w</span>
+      </button>
+
+      <div style="padding:8px 16px 0;text-align:center;font-size:11px;color:var(--ov0);font-family:var(--mono)">
+        · · · 24 more rows · · ·
+      </div>
+
+      <button class="loadmore">
+        Load 30 more
+        <small>showing 30 of 108 · page 1 of 4</small>
+      </button>
+    </div>
+
+    <!-- PR filters. Different question than issues, so different chips. -->
+    <div class="filters" id="prFilters" style="display:none">
+      <button class="f" data-p="mine">Yours <span class="n">0</span></button>
+      <button class="f on" data-p="all">All <span class="n">1</span></button>
+      <button class="f" data-p="mine">Needs your review <span class="n">0</span></button>
+      <button class="f" data-p="all">Drafts <span class="n">1</span></button>
+      <button class="f icon" data-p="all">⌕</button>
+    </div>
+
+    <!-- PRs · All. This repo really does have exactly one open PR. -->
+    <div class="screen-body" id="repo-prs" style="display:none">
+      <div class="scopenote">
+        A PR row answers <b>can this merge</b>, not just what it is:
+        draft, checks, review decision, conflicts, base branch, size.
+      </div>
+
+      <button class="gh">
+        <span class="kind pr draft">⑂</span>
+        <span class="mid">
+          <span class="repo">#427 · hayohio-bit · <b>refactor/189-admin-path-derivation</b> → develop</span>
+          <span class="ttl">refactor(backoffice): 관리자 경로를 ADMIN_ROUTE_PREFIX 에서 파생시킨다</span>
+          <span class="meta">
+            <span class="chip">draft</span>
+            <span class="chip">checks skipped</span>
+            <span class="chip green">no conflicts</span>
+            <span class="chip">+61 −29 · 5 files</span>
+          </span>
+        </span>
+        <span class="age">2d</span>
+      </button>
+
+      <div style="padding:26px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7">
+        One open PR, and it is a draft by someone else.<br>
+        <b style="color:var(--sub0)">Yours</b> and <b style="color:var(--sub0)">Needs your review</b> are both empty here.
+      </div>
+    </div>
+
+    <!-- PRs · Yours — the empty state, which is the common case on your repos -->
+    <div class="screen-body" id="repo-prs-mine" style="display:none">
+      <div class="msg">
+        <div class="glyph" style="color:var(--ov1)">⑂</div>
+        <h2>Nothing here</h2>
+        <p>You have no open PRs in <b style="color:var(--sub1)">seoul-wedding-client</b>, and nobody is waiting on your review.</p>
+        <button class="chip pane" style="padding:9px 14px;margin-top:18px">↗ Open the pane · 1yegabiz · win 3</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="act" data-sheet="topane">Send to pane</button>
+      <button class="act primary">Open pane ↗</button>
+    </div>
+  </div>
+
+
+  <!-- ══ SCREEN: busy repo, PRs tab ════════════════════════ -->
+  <div class="screen" id="s-repo2">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="repo2">←</button>
+      <h2>shardingsphere<small>apache · no pane</small></h2>
+      <button class="iconbtn">⋮</button>
+    </div>
+    <div class="seg">
+      <button>Issues <span class="n">186</span></button>
+      <button class="on">PRs <span class="n">22</span></button>
+    </div>
+    <div class="filters" id="pr2Filters">
+      <button class="f on" data-q="mine">Yours <span class="n">2</span></button>
+      <button class="f" data-q="all">All <span class="n">22</span></button>
+      <button class="f" data-q="all">Needs your review <span class="n">0</span></button>
+      <button class="f" data-q="all">Drafts <span class="n">3</span></button>
+      <button class="f icon" data-q="all">⌕</button>
+    </div>
+
+    <div class="screen-body" id="repo2-mine">
+      <div class="scopenote">
+        22 open PRs in this repo. <b>Yours</b> is 2 of them.
+      </div>
+
+      <button class="gh" data-open="pr">
+        <span class="kind pr red">⑂</span>
+        <span class="mid">
+          <span class="repo">#39385 · you · <b>pg-system-user</b> → master</span>
+          <span class="ttl">Add SYSTEM_USER to PostgreSQL unparenthesized function names</span>
+          <span class="meta">
+            <span class="chip red">● 2 checks failed</span>
+            <span class="chip peach">changes requested</span>
+            <span class="chip">+38 −4</span>
+          </span>
+        </span>
+        <span class="age">6d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">#39393 · you · <b>pg-label-case</b> → master</span>
+          <span class="ttl">Fix PostgreSQL function projection column label case folding</span>
+          <span class="meta">
+            <span class="chip green">✓ checks passed</span>
+            <span class="chip green">approved</span>
+            <span class="chip green">no conflicts</span>
+          </span>
+        </span>
+        <span class="age">4w</span>
+      </button>
+
+      <div style="padding:26px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7">
+        #39393 is approved and green.<br>
+        Nothing is blocking it but a maintainer.
+      </div>
+    </div>
+
+    <div class="screen-body" id="repo2-all" style="display:none">
+      <div class="scopenote">
+        <b>All open</b> · 22 PRs, <b>30 per page</b>, so this one fits in a single fetch.
+      </div>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">#39786 · ClaireLytt → master</span>
+          <span class="ttl">Add kernel linked-server module for OPENQUERY encrypt rewrite</span>
+          <span class="meta"><span class="chip blue">● checks running</span><span class="chip">review required</span></span>
+        </span>
+        <span class="age">5h</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr draft">⑂</span>
+        <span class="mid">
+          <span class="repo">#39775 · linghengqian → master</span>
+          <span class="ttl">Fix nativeTest failures under GraalVM Native Image caused by reflection config</span>
+          <span class="meta"><span class="chip">draft</span><span class="chip green">✓ checks passed</span></span>
+        </span>
+        <span class="age">1d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">#39773 · rishi-rana → master</span>
+          <span class="ttl">Add error handling for unknown or closed BLOB handles and ids</span>
+          <span class="meta"><span class="chip green">✓ checks passed</span><span class="chip peach">changes requested</span></span>
+        </span>
+        <span class="age">2d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr red">⑂</span>
+        <span class="mid">
+          <span class="repo">#39764 · ym0506 → master</span>
+          <span class="ttl">Finish SQL execution hook before sane result fallback</span>
+          <span class="meta"><span class="chip">draft</span><span class="chip red">● 1 check failed</span><span class="chip red">conflicts</span></span>
+        </span>
+        <span class="age">3d</span>
+      </button>
+
+      <button class="gh">
+        <span class="kind pr">⑂</span>
+        <span class="mid">
+          <span class="repo">#39759 · TedCraft → master</span>
+          <span class="ttl">Refactor function return types in Firebird proxy</span>
+          <span class="meta"><span class="chip green">✓ checks passed</span><span class="chip green">approved</span></span>
+        </span>
+        <span class="age">4d</span>
+      </button>
+
+      <button class="gh" data-open="pr">
+        <span class="kind pr red">⑂</span>
+        <span class="mid">
+          <span class="repo">#39385 · you → master</span>
+          <span class="ttl">Add SYSTEM_USER to PostgreSQL unparenthesized function names</span>
+          <span class="meta"><span class="chip red">● 2 checks failed</span><span class="chip peach">changes requested</span></span>
+        </span>
+        <span class="age">6d</span>
+      </button>
+
+      <div style="padding:8px 16px 0;text-align:center;font-size:11px;color:var(--ov0);font-family:var(--mono)">
+        · · · 16 more rows · · ·
+      </div>
+
+      <div style="padding:18px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7">
+        All 22 fit on one page. No Load more.
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="act">Open in GitHub ↗</button>
+      <button class="act primary" data-sheet="topane">Checkout in a pane</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN: PR detail ═════════════════════════════════ -->
+  <div class="screen" id="s-pr">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="pr">←</button>
+      <h2>Pull request<small>apache/shardingsphere</small></h2>
+      <button class="iconbtn">⋮</button>
+    </div>
+    <div class="screen-body">
+      <div class="det-head">
+        <div class="repo">apache/shardingsphere</div>
+        <h3>Add SYSTEM_USER to PostgreSQL unparenthesized function names <span class="num">#39385</span></h3>
+        <div class="meta">
+          <span class="chip green">open</span>
+          <span class="chip red">● 2 checks failed</span>
+          <span class="chip">review required</span>
+          <span class="chip">+38 −4</span>
+        </div>
+      </div>
+
+      <div class="det-sec">
+        <h4>Checks</h4>
+        <div class="check"><span class="dot fail"></span><span class="nm">ci / build (java 8)</span><span class="t">4m 12s</span></div>
+        <div class="check"><span class="dot fail"></span><span class="nm">ci / e2e-sql-parser</span><span class="t">11m 3s</span></div>
+        <div class="check"><span class="dot idle"></span><span class="nm">ci / checkstyle</span><span class="t">58s</span></div>
+        <div class="check"><span class="dot working"></span><span class="nm">ci / build (java 17)</span><span class="t">running</span></div>
+        <div class="check"><span class="dot idle"></span><span class="nm">license / rat</span><span class="t">22s</span></div>
+      </div>
+
+      <div class="det-sec">
+        <h4>Description</h4>
+        <div class="body-md">
+          <p>PostgreSQL allows <code>SYSTEM_USER</code> without parentheses, like <code>CURRENT_USER</code>. The parser rejected it, so any query using it failed at parse time.</p>
+          <p>Adds it to the unparenthesized function name list and covers it with a parser test case.</p>
+        </div>
+      </div>
+
+      <div class="det-sec">
+        <h4>Recent activity</h4>
+        <div class="cmt">
+          <div class="av">st</div>
+          <div>
+            <div class="who">strongduanmu <span>reviewer · 6d</span></div>
+            <div class="txt">Please add the same handling for the <code>SESSION_USER</code> case, and rerun the e2e job.</div>
+          </div>
+        </div>
+        <div class="cmt">
+          <div class="av">gh</div>
+          <div>
+            <div class="who">github-actions <span>bot · 6d</span></div>
+            <div class="txt">e2e-sql-parser failed: 1 assertion mismatch in <code>select_system_user.xml</code>.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:22px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.6">
+        No pane is open in this repo.<br>Send to pane will offer to <code style="font-family:var(--mono);color:var(--sub1)">gh pr checkout</code> it in a new one.
+      </div>
+    </div>
+    <div class="actions">
+      <button class="act">Open in GitHub ↗</button>
+      <button class="act primary" data-sheet="topane">Send to pane</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN: issue detail ══════════════════════════════ -->
+  <div class="screen" id="s-issue">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="issue">←</button>
+      <h2>Issue<small>viminizer/shortlist</small></h2>
+      <button class="iconbtn">⋮</button>
+    </div>
+    <div class="screen-body">
+      <div class="det-head">
+        <div class="repo">viminizer/shortlist</div>
+        <h3>feat: add the second ObjectStore adapter, so the port's design is proven by two implementations <span class="num">#250</span></h3>
+        <div class="meta">
+          <span class="chip green">open</span>
+          <span class="chip"><span class="lbl-dot" style="background:var(--blue)"></span>enhancement</span>
+          <span class="chip peach">assigned to you</span>
+          <span class="chip">💬 3</span>
+        </div>
+      </div>
+
+      <div class="det-sec" style="background:rgba(137,180,250,.06)">
+        <h4>Live in tmux</h4>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="dot waiting"></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">codex is waiting in this repo</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--ov1);margin-top:3px">saas · win 1 · ~/…/course/shortlist</div>
+          </div>
+          <button class="chip pane" style="padding:7px 11px">Open ↗</button>
+        </div>
+      </div>
+
+      <div class="det-sec">
+        <h4>Description</h4>
+        <div class="body-md">
+          <p>One implementation behind a port proves nothing. The interface bends to whatever the single adapter happens to do.</p>
+          <p>Add a second <code>ObjectStore</code> adapter and make the existing contract tests run against both.</p>
+        </div>
+      </div>
+
+      <div class="det-sec">
+        <h4>Recent activity</h4>
+        <div class="cmt">
+          <div class="av">vi</div>
+          <div>
+            <div class="who">viminizer <span>2h</span></div>
+            <div class="txt">Started on this. The filesystem adapter is the easier second one.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="act">Open in GitHub ↗</button>
+      <button class="act primary" data-sheet="topane">Send to pane</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN: gh not logged in ══════════════════════════ -->
+  <div class="screen" id="s-nogh">
+    <div class="screen-head">
+      <button class="iconbtn" data-close="nogh">←</button><h2>GitHub</h2>
+    </div>
+    <div class="msg">
+      <div class="glyph" style="color:var(--peach);background:rgba(250,179,135,.10);border-color:rgba(250,179,135,.28)">◈</div>
+      <h2>gh is not logged in</h2>
+      <p>remux reads GitHub through the <code>gh</code> CLI already on your Mac. It found no token.</p>
+      <div class="checklist">
+        <div><span>›</span><span>Run <code>gh auth login</code> at the laptop once.</span></div>
+        <div><span>›</span><span>Nothing to paste here. No token is stored on this phone.</span></div>
+        <div><span>›</span><span>Scopes needed: <code>repo</code>, <code>read:org</code>.</span></div>
+      </div>
+      <button class="cta" data-close="nogh">Back</button>
+    </div>
+  </div>
+
+  <!-- ══ SHEET: add repo ═══════════════════════════════════ -->
+  <div class="sheet" id="sheet-add">
+    <div class="grip"></div>
+    <div class="sheet-body">
+      <h3>Add a repo</h3>
+      <div class="search"><span style="color:var(--ov0);font-size:13px">⌕</span><input placeholder="Search your repos and orgs"></div>
+
+      <div class="ghgroup">Open in a pane right now <span class="n">3</span></div>
+      <button class="pick added">
+        <span class="av">re</span>
+        <span class="mid"><span class="nm">viminizer/remux</span><span class="sub">saas · win 6 · watching</span></span>
+        <span class="add">✓</span>
+      </button>
+      <button class="pick">
+        <span class="av">lf</span>
+        <span class="mid"><span class="nm">yegadev/lugar-flow</span><span class="sub">no pane · updated 3w ago</span></span>
+        <span class="add">＋</span>
+      </button>
+
+      <div class="ghgroup">viminizer <span class="n">41</span></div>
+      <button class="pick">
+        <span class="av">pe</span>
+        <span class="mid"><span class="nm">viminizer/perseus</span><span class="sub">2 open PRs · updated 7mo ago</span></span>
+        <span class="add">＋</span>
+      </button>
+      <button class="pick">
+        <span class="av">bl</span>
+        <span class="mid"><span class="nm">viminizer/blog</span><span class="sub">updated 2mo ago</span></span>
+        <span class="add">＋</span>
+      </button>
+
+      <div class="ghgroup">yegadev <span class="n">12</span></div>
+      <button class="pick added">
+        <span class="av">sw</span>
+        <span class="mid"><span class="nm">yegadev/seoul-wedding-api</span><span class="sub">1yegabiz · win 1 · watching</span></span>
+        <span class="add">✓</span>
+      </button>
+      <button class="pick">
+        <span class="av">eg</span>
+        <span class="mid"><span class="nm">yegadev/egov-template</span><span class="sub">no pane · updated 5d ago</span></span>
+        <span class="add">＋</span>
+      </button>
+
+      <button class="go" data-sheet="none">Done</button>
+    </div>
+  </div>
+
+  <!-- ══ SHEET: send to pane ═══════════════════════════════ -->
+  <div class="sheet" id="sheet-topane">
+    <div class="grip"></div>
+    <div class="sheet-body">
+      <h3>Send to pane</h3>
+      <div class="cmdbox" id="cmdPreview">gh issue develop 250 <span class="c-dim">--checkout</span></div>
+
+      <div class="ghgroup">Panes in this repo <span class="n">2</span></div>
+      <button class="pick">
+        <span class="av" style="color:var(--peach)">◐</span>
+        <span class="mid"><span class="nm">codex · win 1</span><span class="sub">waiting · ~/…/course/shortlist</span></span>
+        <span class="add">›</span>
+      </button>
+      <button class="pick">
+        <span class="av" style="color:var(--s2)">$</span>
+        <span class="mid"><span class="nm">zsh · win 2</span><span class="sub">shell · ~/…/course/shortlist</span></span>
+        <span class="add">›</span>
+      </button>
+
+      <div class="ghgroup">Or</div>
+      <button class="pick">
+        <span class="av">✚</span>
+        <span class="mid"><span class="nm">New window in saas</span><span class="sub">created with -d · your layout will not jump</span></span>
+        <span class="add">›</span>
+      </button>
+
+      <div style="padding:14px 18px 4px;font-size:11.5px;color:var(--ov0);line-height:1.6">
+        The text is typed into the pane, not submitted. Press ⏎ on the pane screen yourself.
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">sent to saas · win 1</div>
+</div>
+
+<div class="route" id="routeLabel">route <b>#/p/%14</b> · drawer closed</div>
+
+<script>
+(function () {
+  var phone = document.getElementById('phone')
+  var drawer = document.getElementById('drawer')
+  var scrim = document.getElementById('scrim')
+  var routeLabel = document.getElementById('routeLabel')
+  var toast = document.getElementById('toast')
+
+  var screens = ['gh', 'repo', 'repo2', 'pr', 'issue', 'nogh']
+  var sheets = ['add', 'topane']
+
+  var routes = {
+    base: '#/p/%14',
+    gh: '#/gh',
+    repo: '#/gh/r/yegadev%2Fseoul-wedding-client',
+    repoall: '#/gh/r/yegadev%2Fseoul-wedding-client?f=all',
+    repoprs: '#/gh/r/yegadev%2Fseoul-wedding-client?t=prs',
+    repo2: '#/gh/r/apache%2Fshardingsphere?t=prs',
+    pr: '#/gh/i/apache%2Fshardingsphere/39385',
+    issue: '#/gh/i/viminizer%2Fshortlist/250',
+    nogh: '#/gh'
+  }
+
+  function label(key, extra) {
+    routeLabel.innerHTML = 'route <b>' + (routes[key] || routes.base) + '</b>' + (extra ? ' · ' + extra : '')
+  }
+
+  function closeAll() {
+    screens.forEach(function (s) { document.getElementById('s-' + s).classList.remove('on') })
+    sheets.forEach(function (s) { document.getElementById('sheet-' + s).classList.remove('on') })
+    drawer.classList.remove('on')
+    scrim.classList.remove('on')
+  }
+
+  function openScreen(name) {
+    closeAll()
+    document.getElementById('s-' + name).classList.add('on')
+    label(name)
+  }
+
+  function openDrawer() {
+    drawer.classList.add('on')
+    scrim.classList.add('on')
+    label('base', 'drawer open')
+  }
+
+  function openSheet(name) {
+    if (name === 'none') {
+      sheets.forEach(function (s) { document.getElementById('sheet-' + s).classList.remove('on') })
+      scrim.classList.remove('on')
+      return
+    }
+    document.getElementById('sheet-' + name).classList.add('on')
+    scrim.classList.add('on')
+  }
+
+  function tab(which) {
+    document.getElementById('tab-inbox').style.display = which === 'inbox' ? '' : 'none'
+    document.getElementById('tab-repos').style.display = which === 'repos' ? '' : 'none'
+    var btns = document.getElementById('ghSeg').querySelectorAll('button')
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('on', btns[i].getAttribute('data-tab') === which)
+    }
+  }
+
+  // A repo screen never renders its whole issue list. "Yours" is the default
+  // and is usually a handful of rows; "All" is one page of 30 behind a tap.
+  function repoFilter(btn) {
+    var which = btn.getAttribute('data-f')
+    var all = document.getElementById('repoFilters').querySelectorAll('.f')
+    for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === btn)
+    document.getElementById('repo-mine').style.display = which === 'mine' ? '' : 'none'
+    document.getElementById('repo-all').style.display = which === 'all' ? '' : 'none'
+  }
+
+  function show(id, on) { document.getElementById(id).style.display = on ? '' : 'none' }
+
+  function pick(container, btn) {
+    var all = document.getElementById(container).querySelectorAll('.f')
+    for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === btn)
+  }
+
+  // Issues and PRs are different questions, so the filter row swaps with the
+  // tab rather than trying to serve both.
+  function repoTab(which) {
+    var btns = document.getElementById('repoSeg').querySelectorAll('button')
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('on', btns[i].getAttribute('data-rtab') === which)
+    }
+    show('repoFilters', which === 'issues')
+    show('prFilters', which === 'prs')
+    if (which === 'issues') {
+      show('repo-prs', false); show('repo-prs-mine', false)
+      repoFilter(document.getElementById('repoFilters').querySelector('[data-f="mine"]'))
+    } else {
+      show('repo-mine', false); show('repo-all', false)
+      prFilter(document.getElementById('prFilters').querySelector('[data-p="all"]'))
+    }
+  }
+
+  function prFilter(btn) {
+    var which = btn.getAttribute('data-p')
+    pick('prFilters', btn)
+    show('repo-prs', which === 'all')
+    show('repo-prs-mine', which === 'mine')
+  }
+
+  function pr2Filter(btn) {
+    var which = btn.getAttribute('data-q')
+    pick('pr2Filters', btn)
+    show('repo2-mine', which === 'mine')
+    show('repo2-all', which === 'all')
+  }
+
+  // ── the switcher above the phone ──────────────────────────
+  var states = {
+    nav: function () { closeAll(); openDrawer() },
+    inbox: function () { openScreen('gh'); tab('inbox') },
+    repos: function () { openScreen('gh'); tab('repos') },
+    repo: function () { openScreen('repo'); repoTab('issues') },
+    repoall: function () {
+      openScreen('repo'); repoTab('issues')
+      repoFilter(document.getElementById('repoFilters').querySelector('[data-f="all"]'))
+    },
+    repoprs: function () { openScreen('repo'); repoTab('prs') },
+    repo2: function () {
+      openScreen('repo2')
+      pr2Filter(document.getElementById('pr2Filters').querySelector('[data-q="mine"]'))
+    },
+    pr: function () { openScreen('pr') },
+    issue: function () { openScreen('issue') },
+    add: function () { openScreen('gh'); tab('repos'); openSheet('add') },
+    topane: function () { openScreen('issue'); openSheet('topane') },
+    offline: function () { openScreen('gh'); tab('inbox') },
+    nogh: function () { openScreen('nogh') }
+  }
+
+  document.getElementById('switcher').addEventListener('click', function (e) {
+    var b = e.target.closest('.sw')
+    if (!b) return
+    var s = b.getAttribute('data-s')
+    var all = document.querySelectorAll('.sw')
+    for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === b)
+
+    document.body.classList.toggle('offline-demo', s === 'offline')
+    document.getElementById('ghStale').style.display = s === 'offline' ? 'flex' : 'none'
+    states[s]()
+  })
+
+  // ── in-phone interactions ─────────────────────────────────
+  phone.addEventListener('click', function (e) {
+    var t = e.target
+
+    var seg = t.closest('#ghSeg button')
+    if (seg) { tab(seg.getAttribute('data-tab')); return }
+
+    var rseg = t.closest('#repoSeg button')
+    if (rseg) { repoTab(rseg.getAttribute('data-rtab')); return }
+
+    var f = t.closest('#repoFilters .f')
+    if (f) { repoFilter(f); return }
+
+    var pf = t.closest('#prFilters .f')
+    if (pf) { prFilter(pf); return }
+
+    var pf2 = t.closest('#pr2Filters .f')
+    if (pf2) { pr2Filter(pf2); return }
+
+    var open = t.closest('[data-open]')
+    if (open) { openScreen(open.getAttribute('data-open')); return }
+
+    var sheet = t.closest('[data-sheet]')
+    if (sheet) { openSheet(sheet.getAttribute('data-sheet')); return }
+
+    var close = t.closest('[data-close]')
+    if (close) {
+      var name = close.getAttribute('data-close')
+      document.getElementById('s-' + name).classList.remove('on')
+      // back from a detail lands on the GitHub screen, not the pane
+      if (name === 'repo' || name === 'repo2' || name === 'pr' || name === 'issue') { openScreen('gh') }
+      else { label('base', 'drawer closed') }
+      return
+    }
+
+    if (t.closest('#burger')) { openDrawer(); return }
+
+    if (t.closest('.pick')) {
+      openSheet('none')
+      toast.classList.add('on')
+      setTimeout(function () { toast.classList.remove('on') }, 1600)
+      return
+    }
+
+    if (t === scrim) { closeAll(); label('base', 'drawer closed') }
+  })
+
+  states.nav()
+})()
+</script>
+</body>
+</html>
