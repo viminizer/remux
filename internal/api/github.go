@@ -223,9 +223,11 @@ func (s *Server) handleGitHubPicker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(repos) == 0 {
-		log.Printf("github picker: q=%q returned no repos", q)
-	}
+	// Logged on the way out whatever happens. A picker call only exists
+	// because somebody tapped Add, so there is no volume to worry about and
+	// every one of them is worth a line - a failure-only log left silence
+	// meaning both "it worked" and "the request never arrived".
+	log.Printf("github picker: q=%q returned %d repos", q, len(repos))
 
 	watched := map[string]bool{}
 	for _, full := range s.Watchlist() {

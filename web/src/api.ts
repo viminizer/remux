@@ -32,10 +32,19 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const text = await res.text()
   let body: unknown = null
+  let parsed = true
   try {
     body = text ? JSON.parse(text) : null
   } catch {
     body = text
+    parsed = false
+  }
+  // A 200 that is not JSON means the request fell through to the SPA
+  // handler, which answers any unknown path with index.html. Treating that
+  // as a successful empty result is how a missing route turns into a screen
+  // that silently shows nothing.
+  if (res.ok && !parsed) {
+    throw new ApiError(res.status, `${path} did not return JSON`, text.slice(0, 200))
   }
   if (!res.ok) {
     const msg =
