@@ -85,7 +85,17 @@ fragment prBits on PullRequest {
   number title url updatedAt isDraft mergeable reviewDecision
   repository { nameWithOwner }
   labels(first: 5) { nodes { name color } }
-  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  commits(last: 1) { nodes { commit { statusCheckRollup {
+    state
+    contexts(last: 40) {
+      totalCount
+      nodes {
+        __typename
+        ... on CheckRun { name status conclusion }
+        ... on StatusContext { context state }
+      }
+    }
+  } } } }
 }
 `
 
@@ -109,13 +119,22 @@ type searchNode struct {
 			Commit struct {
 				StatusCheckRollup *struct {
 					State string `json:"state"`
+					// The individual checks, so a pull request that is
+					// red only because of an ignored one can be told
+					// apart from a pull request that is actually red.
+					// They ride along in the same request the inbox
+					// already makes, so this costs nothing.
+					Contexts struct {
+						TotalCount int          `json:"totalCount"`
+						Nodes      []rollupNode `json:"nodes"`
+					} `json:"contexts"`
 				} `json:"statusCheckRollup"`
 			} `json:"commit"`
 		} `json:"nodes"`
 	} `json:"commits"`
 }
 
-func (n searchNode) item() InboxItem {
+func (n searchNode) item(ig Ignored) InboxItem {
 	it := InboxItem{
 		Kind:      KindIssue,
 		Repo:      n.Repository.NameWithOwner,
@@ -133,7 +152,7 @@ func (n searchNode) item() InboxItem {
 	}
 	if len(n.Commits.Nodes) > 0 {
 		if r := n.Commits.Nodes[0].Commit.StatusCheckRollup; r != nil {
-			it.Checks = checksFromState(r.State)
+			it.Checks = rollupChecks(r.State, r.Contexts.Nodes, r.Contexts.TotalCount, ig)
 		}
 	}
 	return it
@@ -182,6 +201,8 @@ func (c *Client) Inbox(ctx context.Context, viewer string) (Inbox, error) {
 		return Inbox{}, err
 	}
 
+	ig := c.ignored()
+
 	var in Inbox
 	seen := map[string]bool{}
 	take := func(it InboxItem, into *[]InboxItem) {
@@ -198,18 +219,18 @@ func (c *Client) Inbox(ctx context.Context, viewer string) (Inbox, error) {
 	// opened whose checks are red belongs under Needs you, not under Your
 	// open PRs where it would read as fine.
 	for _, n := range data.Review.Nodes {
-		take(n.item(), &in.NeedsYou)
+		take(n.item(ig), &in.NeedsYou)
 	}
 	for _, n := range data.Mine.Nodes {
-		if it := n.item(); it.blocked() {
+		if it := n.item(ig); it.blocked() {
 			take(it, &in.NeedsYou)
 		}
 	}
 	for _, n := range data.Mine.Nodes {
-		take(n.item(), &in.YourPRs)
+		take(n.item(ig), &in.YourPRs)
 	}
 	for _, n := range data.Assigned.Nodes {
-		take(n.item(), &in.Assigned)
+		take(n.item(ig), &in.Assigned)
 	}
 
 	for _, s := range []*[]InboxItem{&in.NeedsYou, &in.Assigned, &in.YourPRs} {

@@ -24,6 +24,8 @@ export function GitHubScreen({
   onOpenItem,
   onOpenPane,
   onAdd,
+  onMute,
+  onUnmute,
 }: {
   snap: GitHubSnapshot
   loading: boolean
@@ -34,6 +36,8 @@ export function GitHubScreen({
   onOpenItem: (item: InboxItem) => void
   onOpenPane: (p: Pane) => void
   onAdd: () => void
+  onMute: (item: InboxItem) => void
+  onUnmute: (item: InboxItem) => void
 }) {
   const [tab, setTab] = useState<'inbox' | 'repos'>('inbox')
   // Defended rather than assumed: these come off the wire, and a field that
@@ -101,10 +105,13 @@ export function GitHubScreen({
       {tab === 'inbox' ? (
         <InboxTab
           inbox={inbox}
+          muted={snap.muted ?? []}
           cold={cold}
           panes={panes}
           onOpenItem={onOpenItem}
           onOpenPane={onOpenPane}
+          onMute={onMute}
+          onUnmute={onUnmute}
         />
       ) : (
         <ReposTab repos={repos} cold={cold} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
@@ -132,18 +139,25 @@ function PanesBlockedNote() {
 
 function InboxTab({
   inbox,
+  muted,
   cold,
   panes,
   onOpenItem,
   onOpenPane,
+  onMute,
+  onUnmute,
 }: {
   inbox: Inbox
+  muted: InboxItem[]
   cold: boolean
   panes: Map<string, Pane>
   onOpenItem: (item: InboxItem) => void
   onOpenPane: (p: Pane) => void
+  onMute: (item: InboxItem) => void
+  onUnmute: (item: InboxItem) => void
 }) {
   const { needsYou, assigned, yourPRs, replies } = inbox
+  const [showMuted, setShowMuted] = useState(false)
   const empty = !needsYou.length && !assigned.length && !yourPRs.length
 
   if (cold) {
@@ -165,10 +179,38 @@ function InboxTab({
             byId={panes}
             onOpen={() => onOpenItem(it)}
             onOpenPane={onOpenPane}
+            onMute={() => onMute(it)}
           />
         ))}
       </>
     )
+
+  /* Muted rows are listed, not deleted.
+     A mute lapses by itself the moment the item is updated, so this is a
+     "not now" and not a delete - and a list nobody can see the far side of
+     would be exactly the thing that makes an inbox untrustworthy. */
+  const mutedSection = muted.length > 0 && (
+    <>
+      <button className="collapse tap" onClick={() => setShowMuted((v) => !v)}>
+        <span className="dot stale" />
+        <span className="grow">
+          {muted.length} muted · back when {muted.length === 1 ? 'it changes' : 'they change'}
+        </span>
+        <span className="arrow">{showMuted ? '▴' : '▾'}</span>
+      </button>
+      {showMuted &&
+        muted.map((it) => (
+          <InboxRow
+            key={`m-${it.repo}#${it.number}#${it.kind}`}
+            item={it}
+            byId={panes}
+            onOpen={() => onOpenItem(it)}
+            onOpenPane={onOpenPane}
+            onUnmute={() => onUnmute(it)}
+          />
+        ))}
+    </>
+  )
 
   if (empty) {
     return (
@@ -183,6 +225,7 @@ function InboxTab({
             {replies > 0 && ` ${replies} replies on threads you opened.`}
           </p>
         </div>
+        {mutedSection}
       </div>
     )
   }
@@ -204,6 +247,8 @@ function InboxTab({
           </span>
         </div>
       )}
+
+      {mutedSection}
 
       <EndNote>Read-only. Nothing here marks a thread read on GitHub.</EndNote>
     </div>

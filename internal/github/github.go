@@ -53,6 +53,11 @@ var (
 type Client struct {
 	Bin     string        // gh binary, defaults to "gh"
 	Timeout time.Duration // per-command timeout
+
+	// Ignored names the checks that do not count as a failure. It is a
+	// function rather than a slice because the list is edited from the
+	// phone, and every read wants the current one without a restart.
+	Ignored func() Ignored
 }
 
 // defaultTimeout is generous on purpose. `gh pr list` on

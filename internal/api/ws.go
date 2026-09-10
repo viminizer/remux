@@ -330,7 +330,9 @@ func (p *poller) pollGitHub(ctx context.Context) {
 	if p.srv.GH == nil {
 		return
 	}
-	snap := p.srv.GH.Snapshot()
+	// Through ghBase, not the poller directly: a muted row must leave the
+	// drawer badge at the same moment it leaves the list.
+	snap := p.srv.ghBase()
 	next := ghSummary{
 		T:         "gh",
 		Count:     snap.Inbox.Count(),

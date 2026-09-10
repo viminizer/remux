@@ -162,6 +162,17 @@ export const api = {
   githubUnwatch: (repo: string) =>
     call<{ repos: string[] }>(`/api/github/watch/${repo}`, { method: 'DELETE' }),
 
+  // Both answer with the whole snapshot, so the screen redraws from the
+  // server's own view rather than guessing what the change did.
+  githubMute: (repo: string, number: number) =>
+    call<GitHubSnapshot>('/api/github/mute', {
+      method: 'POST',
+      body: JSON.stringify({ repo, number }),
+    }),
+
+  githubUnmute: (repo: string, number: number) =>
+    call<GitHubSnapshot>(`/api/github/mute/${repo}/${number}`, { method: 'DELETE' }),
+
   pushKey: () => call<{ publicKey: string; subscriptions: number }>('/api/push/key'),
 
   pushSubscribe: (sub: unknown) =>

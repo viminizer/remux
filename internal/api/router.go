@@ -76,6 +76,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/github/picker", s.handleGitHubPicker)
 		mux.HandleFunc("POST /api/github/watch", s.handleGitHubWatch)
 		mux.HandleFunc("DELETE /api/github/watch/{owner}/{name}", s.handleGitHubUnwatch)
+		mux.HandleFunc("POST /api/github/mute", s.handleGitHubMute)
+		mux.HandleFunc("DELETE /api/github/mute/{owner}/{name}/{number}", s.handleGitHubUnmute)
 		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/issues", s.handleGitHubIssues)
 		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/issues/{number}", s.handleGitHubIssue)
 		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/prs", s.handleGitHubPRs)

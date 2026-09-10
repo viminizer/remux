@@ -509,6 +509,26 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   display:block;margin-top:3px;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
   overflow-wrap:anywhere;
 }
+/* A row whose control is too big to sit beside its label. */
+.crow.col{display:block}
+.crow.col .lbl{margin-bottom:10px}
+.chipset{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chipset .dim{font-family:var(--mono);font-size:11.5px;color:var(--ov1)}
+.chip-x{
+  border:0;background:transparent;color:var(--ov0);cursor:pointer;
+  padding:0 0 0 4px;font-size:10px;line-height:1;
+}
+.chip-x:active{color:var(--red)}
+.addrow{display:flex;gap:8px;margin-top:10px}
+.addrow input{
+  flex:1;min-width:0;padding:9px 11px;border-radius:9px;
+  background:var(--base);border:1px solid var(--s1);color:var(--text);
+  font-family:var(--ui);font-size:13px;
+}
+.addrow input::placeholder{color:var(--ov0)}
+.addbtn.sm{width:auto;flex:0 0 auto;padding:9px 15px;border-style:solid;font-size:13px}
+.addbtn.sm:disabled{opacity:.45;cursor:default}
+
 /* A login or hostname is arbitrary length; it shrinks before the label does. */
 .crow .val{
   font-family:var(--mono);font-size:12.5px;color:var(--sub0);
@@ -942,11 +962,24 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .ghgroup.hot{color:var(--peach)}
 .ghgroup .n{margin-left:auto;letter-spacing:0;font-family:var(--mono)}
 .gh{
-  display:flex;gap:11px;width:100%;text-align:left;cursor:pointer;
-  padding:11px 14px;border:0;border-bottom:1px solid var(--s0);
-  background:transparent;color:var(--text);font-family:var(--ui);transition:background .12s;
+  display:flex;align-items:stretch;width:100%;
+  border-bottom:1px solid var(--s0);background:transparent;
 }
-.gh:active{background:var(--mantle)}
+/* The wide part that opens the item. It carries the padding, so a mute button
+   beside it reaches the edge of the row rather than floating inside it. */
+.gh-hit{
+  display:flex;gap:11px;flex:1;min-width:0;text-align:left;cursor:pointer;
+  padding:11px 14px;border:0;background:transparent;color:var(--text);
+  font-family:var(--ui);transition:background .12s;
+}
+.gh-hit:active{background:var(--mantle)}
+/* 44px wide: a dismiss sitting next to a navigation target has to be hard to
+   hit by accident and easy to hit on purpose. */
+.gh-mute{
+  flex:0 0 44px;border:0;border-left:1px solid var(--s0);background:transparent;
+  color:var(--ov0);font-size:14px;cursor:pointer;transition:color .12s,background .12s;
+}
+.gh-mute:active{background:var(--mantle);color:var(--sub0)}
 .gh .kind{
   width:22px;height:22px;flex:0 0 22px;border-radius:7px;display:grid;place-items:center;
   font-size:11px;margin-top:1px;background:var(--s0);color:var(--ov1);
@@ -993,6 +1026,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   padding:13px 14px;border:0;border-bottom:1px solid var(--s0);
   background:transparent;color:var(--ov1);font-family:var(--ui);font-size:12.5px;text-align:left;
 }
+/* The muted line is the same row, but it opens something. */
+.collapse.tap{cursor:pointer}
+.collapse.tap:active{background:var(--mantle)}
+.collapse .grow{flex:1;min-width:0}
+.collapse .arrow{color:var(--ov0);font-size:11px}
 
 /* ── repos tab ────────────────────────────────────────────── */
 .repo-card{

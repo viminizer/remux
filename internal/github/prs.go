@@ -56,7 +56,7 @@ func (c *Client) PRs(ctx context.Context, full string, limit int) ([]PR, error) 
 
 	prs := make([]PR, len(raw))
 	for i, g := range raw {
-		prs[i] = g.pr()
+		prs[i] = g.pr(c.ignored())
 	}
 	sort.SliceStable(prs, func(i, j int) bool { return prs[i].Updated.After(prs[j].Updated) })
 	return prs, nil
@@ -82,7 +82,7 @@ func (c *Client) PR(ctx context.Context, full string, number int) (PR, error) {
 	if err := json.Unmarshal(out, &g); err != nil {
 		return PR{}, fmt.Errorf("gh pr view %s#%d: bad json: %w", full, number, err)
 	}
-	return g.detail(), nil
+	return g.detail(c.ignored()), nil
 }
 
 // Mine reports whether this PR is one Kevin has to do something about: he

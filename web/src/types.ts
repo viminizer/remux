@@ -77,6 +77,13 @@ export interface NotifySettings {
   notifyCi: boolean
   /** The watchlist, read-only here: the GitHub screen owns editing it. */
   repos?: string[]
+  /**
+   * Check names that do not count as a failure, matched case-insensitively
+   * as substrings. Vercel is here by default: a failed preview deploy turns
+   * the whole rollup red, which parked two of Kevin's pull requests in
+   * "Needs you" with nothing he could do about it.
+   */
+  ignoreChecks?: string[]
 }
 
 /**

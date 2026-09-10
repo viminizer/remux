@@ -200,3 +200,101 @@ func TestGitHubRoutesAbsentWithoutPoller(t *testing.T) {
 		t.Errorf("status %d, want 404", code)
 	}
 }
+
+// A mute keeps a row out of the inbox until the row itself moves.
+func TestApplyMutesLapsesWhenTheItemChanges(t *testing.T) {
+	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	snap := gh.Snapshot{Inbox: gh.Inbox{
+		NeedsYou: []gh.InboxItem{
+			{Repo: "viminizer/remux", Number: 41, Updated: at},
+			{Repo: "viminizer/remux", Number: 42, Updated: at},
+		},
+		Assigned: []gh.InboxItem{{Repo: "yegadev/lugar-flow", Number: 71, Updated: at}},
+	}}
+
+	// Case is not significant in a repo name, so it must not be in the key.
+	muted := map[string]time.Time{
+		"viminizer/remux#41":    at,
+		"YegaDev/lugar-flow#71": at,
+	}
+	got := applyMutes(snap, muted)
+	if len(got.Inbox.NeedsYou) != 1 || got.Inbox.NeedsYou[0].Number != 42 {
+		t.Errorf("needs you: %+v", got.Inbox.NeedsYou)
+	}
+	if len(got.Inbox.Assigned) != 0 {
+		t.Errorf("assigned: %+v", got.Inbox.Assigned)
+	}
+	if len(got.Muted) != 2 {
+		t.Errorf("muted: %+v", got.Muted)
+	}
+
+	// One new comment on #41 and it is waiting again.
+	snap.Inbox.NeedsYou[0].Updated = at.Add(time.Minute)
+	got = applyMutes(snap, muted)
+	if len(got.Inbox.NeedsYou) != 2 {
+		t.Errorf("a changed item stayed muted: %+v", got.Inbox.NeedsYou)
+	}
+
+	// No mutes at all must not touch the snapshot.
+	if plain := applyMutes(snap, nil); len(plain.Muted) != 0 || len(plain.Inbox.Assigned) != 1 {
+		t.Errorf("empty mute set changed the snapshot: %+v", plain)
+	}
+}
+
+func TestGitHubMuteRoundTrip(t *testing.T) {
+	ts, srv := githubServer(t)
+
+	code, body := do(t, ts, "POST", "/api/github/mute",
+		map[string]any{"repo": "viminizer/remux", "number": 41})
+	if code != http.StatusOK {
+		t.Fatalf("mute: %d %s", code, body)
+	}
+	if got := srv.mutes(); len(got) != 1 {
+		t.Fatalf("in-memory mutes: %v", got)
+	}
+
+	saved, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := saved.Muted["viminizer/remux#41"]; !ok {
+		t.Errorf("config on disk: %v", saved.Muted)
+	}
+
+	code, body = do(t, ts, "DELETE", "/api/github/mute/viminizer/remux/41", nil)
+	if code != http.StatusOK {
+		t.Fatalf("unmute: %d %s", code, body)
+	}
+	if got := srv.mutes(); len(got) != 0 {
+		t.Errorf("after unmute: %v", got)
+	}
+
+	// A malformed item must not reach the config file.
+	if code, _ := do(t, ts, "POST", "/api/github/mute",
+		map[string]any{"repo": "nope", "number": 1}); code != http.StatusBadRequest {
+		t.Errorf("bad repo: %d", code)
+	}
+	if code, _ := do(t, ts, "POST", "/api/github/mute",
+		map[string]any{"repo": "viminizer/remux", "number": 0}); code != http.StatusBadRequest {
+		t.Errorf("bad number: %d", code)
+	}
+}
+
+func TestSettingsNormalisesIgnoreChecks(t *testing.T) {
+	ts, srv := githubServer(t)
+
+	code, body := do(t, ts, "PUT", "/api/settings", map[string]any{
+		"notifyWaiting": true,
+		"ignoreChecks":  []string{" Vercel ", "vercel", "", "netlify"},
+	})
+	if code != http.StatusOK {
+		t.Fatalf("put: %d %s", code, body)
+	}
+	got := srv.IgnoredChecks()
+	if len(got) != 2 || got[0] != "netlify" || got[1] != "Vercel" {
+		t.Errorf("normalised to %v", got)
+	}
+	if !got.Match("Vercel - Preview") {
+		t.Error("the stored list does not match what it was set from")
+	}
+}

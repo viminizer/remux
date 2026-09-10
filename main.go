@@ -111,6 +111,9 @@ func run(cfg *config.Config, local bool) error {
 	// failure - the screen says so and everything else keeps working - so
 	// the poller starts either way and reports what it finds.
 	ghClient := gh.New()
+	// Read through the server so an edit from the phone applies on the next
+	// poll rather than on the next restart.
+	ghClient.Ignored = func() gh.Ignored { return srv.IgnoredChecks() }
 	srv.GHClient = ghClient
 	srv.Match = gh.NewMatcher()
 	srv.GH = &gh.Poller{

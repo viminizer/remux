@@ -189,11 +189,17 @@ func (n rollupNode) verdict() Checks {
 	return ChecksPending
 }
 
-func (n rollupNode) run() CheckRun {
-	name := n.Name
-	if name == "" {
-		name = n.Context
+// name is what the check calls itself. A CheckRun has a name, a StatusContext
+// has a context, and only one of the two is ever set.
+func (n rollupNode) name() string {
+	if n.Name != "" {
+		return n.Name
 	}
+	return n.Context
+}
+
+func (n rollupNode) run() CheckRun {
+	name := n.name()
 	url := n.DetailsURL
 	if url == "" {
 		url = n.TargetURL
@@ -216,7 +222,7 @@ func (n rollupNode) took() string {
 	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-func (g ghPR) pr() PR {
+func (g ghPR) pr(ig Ignored) PR {
 	return PR{
 		Number:    g.Number,
 		Title:     g.Title,
@@ -227,7 +233,7 @@ func (g ghPR) pr() PR {
 		Head:      g.HeadRefName,
 		Additions: g.Additions,
 		Deletions: g.Deletions,
-		Checks:    g.checks(),
+		Checks:    g.checks(ig),
 		Review:    g.ReviewDecision,
 		Conflicts: g.Mergeable == "CONFLICTING",
 		Reviewers: g.reviewers(),
@@ -262,29 +268,25 @@ func (g ghPR) reviewers() []string {
 // blocks the merge, but the merge button says so far better than a red dot on
 // a phone would, and calling every skipped optional check a failure would make
 // the colour useless.
-func (g ghPR) checks() Checks {
-	pending := false
+// Checks on the ignore list are left out of the verdict, but not out of the
+// detail screen: a pull request that is only red because of a preview deploy
+// should read as green in a list and still show the red line when opened.
+func (g ghPR) checks(ig Ignored) Checks {
+	kept := make([]rollupNode, 0, len(g.StatusCheckRollup))
 	for _, c := range g.StatusCheckRollup {
-		switch c.verdict() {
-		case ChecksFail:
-			return ChecksFail
-		case ChecksPending:
-			pending = true
+		if !ig.Match(c.name()) {
+			kept = append(kept, c)
 		}
 	}
-	switch {
-	case pending:
-		return ChecksPending
-	case len(g.StatusCheckRollup) > 0:
-		return ChecksPass
-	}
-	return ChecksNone
+	// A pull request whose every check is on the ignore list reports the same
+	// as one with no checks at all, which is what it now effectively has.
+	return foldChecks(kept)
 }
 
 // detail adds what only the single-item screen shows: every check by name,
 // and the tail of the conversation.
-func (g ghPR) detail() PR {
-	p := g.pr()
+func (g ghPR) detail(ig Ignored) PR {
+	p := g.pr(ig)
 	for _, n := range g.StatusCheckRollup {
 		p.Runs = append(p.Runs, n.run())
 	}

@@ -41,6 +41,16 @@ type Config struct {
 	// NotifyCI fires a push when one of your pull requests turns red or
 	// somebody asks you for a review.
 	NotifyCI bool `json:"notifyCi"`
+	// IgnoreChecks names checks that do not count as a failure, matched
+	// case-insensitively as substrings. Vercel is the default because a
+	// failed preview deploy is not a thing a pull request waits on a
+	// person for, and one of them turns the whole rollup red.
+	IgnoreChecks []string `json:"ignoreChecks"`
+	// Muted are inbox rows dismissed from the phone, keyed "owner/name#42"
+	// and valued with the item's own updatedAt at the moment it was muted.
+	// Anything newer means the item actually moved, so the mute lapses and
+	// the row comes back rather than disappearing for good.
+	Muted map[string]time.Time `json:"muted,omitempty"`
 }
 
 func Default() *Config {
@@ -54,6 +64,7 @@ func Default() *Config {
 		NotifyDone:    false,
 		GitHubMS:      60000,
 		NotifyCI:      true,
+		IgnoreChecks:  []string{"Vercel"},
 	}
 }
 

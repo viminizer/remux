@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Health, Conn } from '../types'
 import type { Settings } from '../store'
 import { ago } from '../store'
@@ -177,6 +178,14 @@ export function SettingsScreen({
         </div>
 
         <div className="sec">
+          <h3>GitHub</h3>
+          <IgnoreChecks
+            names={settings.ignoreChecks}
+            onChange={(names) => patch({ ignoreChecks: names })}
+          />
+        </div>
+
+        <div className="sec">
           <h3>Display</h3>
           <div className="card">
             <div className="crow">
@@ -284,6 +293,77 @@ export function SettingsScreen({
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Checks that do not count as a failure.
+ *
+ * One noisy check turns a commit's whole rolled-up state red, and the rollup is
+ * all a row has room for - so a failing Vercel preview deploy parked two of
+ * Kevin's pull requests in "Needs you" with nothing he could do about either.
+ * Naming the check is the fix, and it is a preference rather than a per-item
+ * decision, so it lives here.
+ *
+ * The names are still shown, still red, on a pull request's own screen. This
+ * only decides what counts as blocked.
+ */
+function IgnoreChecks({
+  names,
+  onChange,
+}: {
+  names: string[]
+  onChange: (names: string[]) => void
+}) {
+  const [draft, setDraft] = useState('')
+
+  const add = () => {
+    const v = draft.trim()
+    if (!v) return
+    // Case-folded, because the server matches that way and two entries that
+    // differ only in case would look like a bug.
+    if (!names.some((n) => n.toLowerCase() === v.toLowerCase())) onChange([...names, v])
+    setDraft('')
+  }
+
+  return (
+    <div className="card">
+      <div className="crow col">
+        <div className="lbl">
+          Checks that don't count as red
+          <small>matched anywhere in the name, case-insensitive</small>
+        </div>
+        <div className="chipset">
+          {names.map((n) => (
+            <span className="chip" key={n}>
+              {n}
+              <button
+                className="chip-x"
+                aria-label={`Stop ignoring ${n}`}
+                onClick={() => onChange(names.filter((x) => x !== n))}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {!names.length && <span className="dim">Every check counts.</span>}
+        </div>
+        <div className="addrow">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="Check name, e.g. Vercel"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+          />
+          <button className="addbtn sm" onClick={add} disabled={!draft.trim()}>
+            Add
+          </button>
         </div>
       </div>
     </div>

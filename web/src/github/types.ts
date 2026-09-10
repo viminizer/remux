@@ -121,6 +121,12 @@ export interface GitHubSnapshot {
    * and the background service has not been granted access to them.
    */
   panesBlocked?: boolean
+  /**
+   * Inbox rows dismissed from the phone. They are sent rather than dropped so
+   * the screen can say how many there are and put one back. A mute lapses on
+   * its own the moment the item is updated, so nothing here is permanent.
+   */
+  muted?: InboxItem[]
 }
 
 export interface IssuePage {

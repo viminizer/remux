@@ -24,6 +24,7 @@ import { ItemScreen } from './github/ItemScreen'
 import { AddRepoSheet } from './github/AddRepoSheet'
 import { SendToPaneSheet } from './github/SendToPaneSheet'
 import { useGitHub } from './github/useGitHub'
+import type { InboxItem } from './github/types'
 import { KeyPadScreen } from './screens/KeyPadScreen'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
@@ -100,8 +101,36 @@ export default function App() {
   // ── GitHub ──────────────────────────────────────────────────────────────
 
   const ghOpen = isGitHub(route)
-  const { snap: gh, loading: ghLoading, load: ghLoad, refresh: ghRefresh } =
+  const { snap: gh, loading: ghLoading, load: ghLoad, refresh: ghRefresh, apply: ghApply } =
     useGitHub(ghOpen, ghBadge?.at ?? 0)
+
+  /* Muting is "not now", not "delete".
+     The server records the item's own updatedAt, so the row comes back by
+     itself the moment anything happens to it, and until then it is listed
+     under Muted at the foot of the inbox. Both calls answer with the whole
+     snapshot, so the screen and the drawer badge move together. */
+  const ghMute = useCallback(
+    async (it: InboxItem) => {
+      try {
+        ghApply(await api.githubMute(it.repo, it.number))
+        toast(`muted ${it.repo}#${it.number}`)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [ghApply],
+  )
+
+  const ghUnmute = useCallback(
+    async (it: InboxItem) => {
+      try {
+        ghApply(await api.githubUnmute(it.repo, it.number))
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [ghApply],
+  )
 
   const paneById = useMemo(() => new Map(panes.map((p) => [p.id, p])), [panes])
 
@@ -187,7 +216,14 @@ export default function App() {
         // The notification toggles are the server's, not this device's.
         try {
           const n = await api.settings()
-          if (!cancelled) patch({ notifyWaiting: n.notifyWaiting, notifyDone: n.notifyDone })
+          if (!cancelled) {
+            patch({
+              notifyWaiting: n.notifyWaiting,
+              notifyDone: n.notifyDone,
+              notifyCi: n.notifyCi,
+              ignoreChecks: n.ignoreChecks ?? [],
+            })
+          }
         } catch {
           // Non-fatal: the toggles just show the last known local values.
         }
@@ -432,15 +468,20 @@ export default function App() {
   // Notification toggles must reach the server or they do nothing.
   const patchNotify = (p: Partial<typeof settings>) => {
     patch(p)
-    if ('notifyWaiting' in p || 'notifyDone' in p || 'notifyCi' in p) {
+    if ('notifyWaiting' in p || 'notifyDone' in p || 'notifyCi' in p || 'ignoreChecks' in p) {
       const next = { ...settings, ...p }
-      guard('save settings', () =>
-        api.saveSettings({
+      guard('save settings', async () => {
+        await api.saveSettings({
           notifyWaiting: next.notifyWaiting,
           notifyDone: next.notifyDone,
           notifyCi: next.notifyCi,
-        }),
-      )
+          ignoreChecks: next.ignoreChecks,
+        })
+        // The ignore list changes what counts as red, and the server kicks the
+        // poller on save. Pick the new snapshot up rather than waiting for the
+        // next badge tick to notice.
+        if ('ignoreChecks' in p) void ghLoad()
+      })
     }
   }
 
@@ -641,6 +682,8 @@ export default function App() {
             }
             onOpenPane={openPaneFromGitHub}
             onAdd={() => setGhSheet('add')}
+            onMute={(it) => void ghMute(it)}
+            onUnmute={(it) => void ghUnmute(it)}
           />
         ) : route.name === 'ghRepo' ? (
           <RepoScreen

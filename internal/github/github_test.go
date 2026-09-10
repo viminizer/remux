@@ -75,7 +75,7 @@ func TestChecksRollup(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"statusCheckRollup":`+js+`}`), &g); err != nil {
 			t.Fatal(err)
 		}
-		return g.checks()
+		return g.checks(nil)
 	}
 
 	cases := []struct {

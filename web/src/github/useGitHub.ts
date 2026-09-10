@@ -50,21 +50,32 @@ export function useGitHub(open: boolean, serverAt: number) {
     }
   }, [])
 
+  /**
+   * Adopt a snapshot.
+   *
+   * Muting and unmuting answer with the whole thing, so they land here rather
+   * than triggering a second request for a value the server just sent.
+   */
+  const apply = useCallback((next: GitHubSnapshot) => {
+    if (!alive.current) return
+    setSnap(next)
+    // Only a successful read is worth caching. Caching a failure would
+    // replace good stale data with an empty screen that claims an age.
+    if (next.at && !next.errorKind) writeCache(next)
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const next = await api.github()
       if (!alive.current) return next
-      setSnap(next)
-      // Only a successful read is worth caching. Caching a failure would
-      // replace good stale data with an empty screen that claims an age.
-      if (next.at && !next.errorKind) writeCache(next)
+      apply(next)
       return next
     } catch {
       // Leave whatever is on screen. The connection dot already says the
       // server is unreachable, and a second banner adds nothing.
       return null
     }
-  }, [])
+  }, [apply])
 
   // Fetch when the screen opens, and again whenever the server's poll lands.
   useEffect(() => {
@@ -98,5 +109,5 @@ export function useGitHub(open: boolean, serverAt: number) {
     }
   }, [snap.at, load])
 
-  return { snap, loading, load, refresh }
+  return { snap, loading, load, refresh, apply }
 }

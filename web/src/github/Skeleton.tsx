@@ -33,14 +33,16 @@ export function SkeletonRows({ n = 4 }: { n?: number }) {
     <div aria-busy="true" aria-label="Loading">
       {Array.from({ length: n }, (_, i) => (
         <div className="gh skrow" key={i} style={delay(i)}>
-          <span className="kind sk" />
-          <span className="mid">
-            <Bar w={SUB[i % SUB.length]} h={8} />
-            <Bar w={TITLE[i % TITLE.length]} h={11} />
-            <Bar w="30%" h={8} />
-          </span>
-          <span className="age">
-            <Bar w="18px" h={8} />
+          <span className="gh-hit">
+            <span className="kind sk" />
+            <span className="mid">
+              <Bar w={SUB[i % SUB.length]} h={8} />
+              <Bar w={TITLE[i % TITLE.length]} h={11} />
+              <Bar w="30%" h={8} />
+            </span>
+            <span className="age">
+              <Bar w="18px" h={8} />
+            </span>
           </span>
         </div>
       ))}

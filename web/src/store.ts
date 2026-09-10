@@ -9,6 +9,16 @@ export interface Settings {
   notifyDone: boolean
   /** Push when one of your pull requests turns red, or a review is asked of you. */
   notifyCi: boolean
+  /**
+   * Check names that do not count as a failure, matched case-insensitively as
+   * substrings.
+   *
+   * Server-side like the notify toggles, and for the same reason: the gh
+   * client that applies it runs there. Vercel is the default - a failed
+   * preview deploy turns the whole rollup red and parked two pull requests in
+   * "Needs you" with nothing to do about them.
+   */
+  ignoreChecks: string[]
   submitOnEnter: boolean
   /** Whether the opt-in bar has been answered. Asked once, never again. */
   askedNotifications: boolean
@@ -112,6 +122,7 @@ const DEFAULTS: Settings = {
   notifyWaiting: true,
   notifyDone: false,
   notifyCi: true,
+  ignoreChecks: ['Vercel'],
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],

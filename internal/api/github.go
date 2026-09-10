@@ -84,12 +84,61 @@ func (s *Server) handleGitHubRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 }
 
-// githubSnapshot is the poller's snapshot with the tmux link filled in.
+// ghBase is the poller's snapshot with the muted rows lifted out of it.
+//
+// The badge on the WebSocket and the GitHub screen both come through here, so
+// muting a row changes the number in the drawer at the same moment it clears
+// the list - which is the whole point of muting it.
+func (s *Server) ghBase() gh.Snapshot {
+	return applyMutes(s.GH.Snapshot(), s.mutes())
+}
+
+// applyMutes moves dismissed rows out of the three inbox lists and into
+// Muted, where the screen can show a count and put one back.
+//
+// A mute is recorded against the item's updatedAt, so it lapses the moment
+// the item actually moves. That is what keeps this from being a way to lose
+// something: a new commit, a new comment, a review, and the row returns.
+func applyMutes(snap gh.Snapshot, muted map[string]time.Time) gh.Snapshot {
+	if len(muted) == 0 {
+		return snap
+	}
+	// Keys are folded on the way in, not trusted as stored. A repo name's
+	// case is not significant to GitHub, and this file is hand-editable.
+	byKey := make(map[string]time.Time, len(muted))
+	for k, v := range muted {
+		byKey[strings.ToLower(k)] = v
+	}
+
+	var out []gh.InboxItem
+	keep := func(items []gh.InboxItem) []gh.InboxItem {
+		kept := make([]gh.InboxItem, 0, len(items))
+		for _, it := range items {
+			if at, ok := byKey[muteKey(it.Repo, it.Number)]; ok && !it.Updated.After(at) {
+				out = append(out, it)
+				continue
+			}
+			kept = append(kept, it)
+		}
+		return kept
+	}
+	snap.Inbox.NeedsYou = keep(snap.Inbox.NeedsYou)
+	snap.Inbox.Assigned = keep(snap.Inbox.Assigned)
+	snap.Inbox.YourPRs = keep(snap.Inbox.YourPRs)
+	snap.Muted = out
+	return snap
+}
+
+func muteKey(repo string, number int) string {
+	return strings.ToLower(repo) + "#" + strconv.Itoa(number)
+}
+
+// githubSnapshot is ghBase with the tmux link filled in.
 //
 // The matching happens here rather than in the poller because it depends on
 // where the panes are right now, which changes far faster than GitHub does.
 func (s *Server) githubSnapshot(r *http.Request) gh.Snapshot {
-	snap := s.GH.Snapshot()
+	snap := s.ghBase()
 	byRepo := s.panesByRepo(r)
 	snap.PanesBlocked = s.Match != nil && s.Match.Blocked()
 	if len(byRepo) == 0 {
@@ -107,6 +156,7 @@ func (s *Server) githubSnapshot(r *http.Request) gh.Snapshot {
 	snap.Inbox.NeedsYou = withPanes(snap.Inbox.NeedsYou, byRepo)
 	snap.Inbox.Assigned = withPanes(snap.Inbox.Assigned, byRepo)
 	snap.Inbox.YourPRs = withPanes(snap.Inbox.YourPRs, byRepo)
+	snap.Muted = withPanes(snap.Muted, byRepo)
 	return snap
 }
 
@@ -332,6 +382,117 @@ func (s *Server) handleGitHubUnwatch(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, "github", full, "unwatched")
 	s.GH.Kick()
 	writeJSON(w, http.StatusOK, map[string]any{"repos": list})
+}
+
+// ── muting ────────────────────────────────────────────────────────────────
+
+// mutes is a copy of the dismissed set.
+func (s *Server) mutes() map[string]time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]time.Time, len(s.Cfg.Muted))
+	for k, v := range s.Cfg.Muted {
+		out[k] = v
+	}
+	return out
+}
+
+// IgnoredChecks is the check names that do not count as a failure. Exported
+// because the gh client reads it fresh on every call, so an edit from the
+// phone takes effect without a restart.
+func (s *Server) IgnoredChecks() gh.Ignored {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(gh.Ignored, len(s.Cfg.IgnoreChecks))
+	copy(out, s.Cfg.IgnoreChecks)
+	return out
+}
+
+// handleGitHubMute dismisses one inbox row.
+//
+// The timestamp is taken from the server's own snapshot rather than from the
+// request. The phone would be sending back a value it read from this same
+// snapshot, and trusting it would let a stale screen mute an item as of a
+// moment that has already passed - which is exactly the case where the row
+// should have come back instead.
+func (s *Server) handleGitHubMute(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Repo   string `json:"repo"`
+		Number int    `json:"number"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !gh.ValidRepo(body.Repo) || body.Number <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid item")
+		return
+	}
+
+	at := time.Now()
+	snap := s.GH.Snapshot()
+	for _, list := range [][]gh.InboxItem{snap.Inbox.NeedsYou, snap.Inbox.Assigned, snap.Inbox.YourPRs} {
+		for _, it := range list {
+			if strings.EqualFold(it.Repo, body.Repo) && it.Number == body.Number {
+				at = it.Updated
+			}
+		}
+	}
+
+	if err := s.setMute(muteKey(body.Repo, body.Number), at, true); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.audit(r, "github", body.Repo+"#"+strconv.Itoa(body.Number), "muted")
+	writeJSON(w, http.StatusOK, s.githubSnapshot(r))
+}
+
+func (s *Server) handleGitHubUnmute(w http.ResponseWriter, r *http.Request) {
+	full, ok := repoParam(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid repo")
+		return
+	}
+	n, ok := numberParam(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid number")
+		return
+	}
+	if err := s.setMute(muteKey(full, n), time.Time{}, false); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.audit(r, "github", full+"#"+strconv.Itoa(n), "unmuted")
+	writeJSON(w, http.StatusOK, s.githubSnapshot(r))
+}
+
+// setMute adds or removes one entry, in memory and on disk.
+//
+// Entries older than 90 days are dropped on the way past. A muted pull request
+// that was merged long ago is never coming back through the inbox to clear
+// itself, and without this the file would only ever grow.
+func (s *Server) setMute(key string, at time.Time, on bool) error {
+	cutoff := time.Now().AddDate(0, 0, -90)
+
+	edit := func(m map[string]time.Time) map[string]time.Time {
+		out := make(map[string]time.Time, len(m)+1)
+		for k, v := range m {
+			if k != key && v.After(cutoff) {
+				out[k] = v
+			}
+		}
+		if on {
+			out[key] = at
+		}
+		return out
+	}
+
+	s.mu.Lock()
+	s.Cfg.Muted = edit(s.Cfg.Muted)
+	s.mu.Unlock()
+
+	_, err := config.Update(func(c *config.Config) { c.Muted = edit(c.Muted) })
+	return err
 }
 
 // Watchlist is the repos the GitHub poller should read. It is exported

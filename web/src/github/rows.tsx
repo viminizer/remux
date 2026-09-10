@@ -91,6 +91,13 @@ export function Kind({ kind, red, draft }: { kind: 'issue' | 'pr' | 'mention'; r
   return <span className="kind iss">◉</span>
 }
 
+/**
+ * The row is a container, not a button, because it can hold two of them.
+ *
+ * A button inside a button is invalid HTML and behaves unpredictably on touch,
+ * so the row itself is a div: the wide part that opens the item is one button,
+ * and the mute is another beside it.
+ */
 function Row({
   kind,
   red,
@@ -100,6 +107,7 @@ function Row({
   chips,
   stamp,
   onClick,
+  side,
 }: {
   kind: 'issue' | 'pr' | 'mention'
   red?: boolean
@@ -109,17 +117,22 @@ function Row({
   chips: ReactNode
   stamp: string
   onClick?: () => void
+  /** A trailing control - mute, or put back. Absent on most rows. */
+  side?: ReactNode
 }) {
   return (
-    <button className="gh" onClick={onClick}>
-      <Kind kind={kind} red={red} draft={draft} />
-      <span className="mid">
-        <span className="repo">{top}</span>
-        <span className="ttl">{title}</span>
-        <span className="meta">{chips}</span>
-      </span>
-      <span className="age">{stamp}</span>
-    </button>
+    <div className="gh">
+      <button className="gh-hit" onClick={onClick}>
+        <Kind kind={kind} red={red} draft={draft} />
+        <span className="mid">
+          <span className="repo">{top}</span>
+          <span className="ttl">{title}</span>
+          <span className="meta">{chips}</span>
+        </span>
+        <span className="age">{stamp}</span>
+      </button>
+      {side}
+    </div>
   )
 }
 
@@ -129,15 +142,32 @@ export function InboxRow({
   byId,
   onOpen,
   onOpenPane,
+  onMute,
+  onUnmute,
 }: {
   item: InboxItem
   byId: Map<string, Pane>
   onOpen: () => void
   onOpenPane: (p: Pane) => void
+  /** Dismiss this row until the item itself changes. */
+  onMute?: () => void
+  /** Put a dismissed row back. */
+  onUnmute?: () => void
 }) {
   const [owner, name] = item.repo.split('/')
   return (
     <Row
+      side={
+        onUnmute ? (
+          <button className="gh-mute" onClick={onUnmute} aria-label="Put back">
+            ↺
+          </button>
+        ) : onMute ? (
+          <button className="gh-mute" onClick={onMute} aria-label="Mute">
+            ✕
+          </button>
+        ) : undefined
+      }
       kind={item.kind}
       red={item.checks === 'fail' || item.conflicts}
       draft={item.draft}

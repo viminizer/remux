@@ -31,6 +31,10 @@ type Snapshot struct {
 	// watchlist too, because the inbox spans them: an issue assigned to
 	// Kevin in a repo he never added still deserves its pane chip.
 	Panes map[string][]string `json:"panes,omitempty"`
+	// Muted are the inbox rows the phone has dismissed, lifted out of the
+	// three lists above by the API layer. They ride along rather than being
+	// dropped so the screen can say how many there are and put one back.
+	Muted []InboxItem `json:"muted,omitempty"`
 	// PanesBlocked is set when the filesystem refused to answer where a
 	// pane's repo is. On macOS that is the privacy control: the service has
 	// not been granted access to the folders the repos live in, so the
