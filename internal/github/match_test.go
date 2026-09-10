@@ -3,7 +3,9 @@ package github
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestRepoFromURL(t *testing.T) {
@@ -165,5 +167,70 @@ func TestMatcherCaches(t *testing.T) {
 	m.TTL = -1
 	if got := m.Repo(root); got != "" {
 		t.Errorf("after TTL = %q, want a fresh empty answer", got)
+	}
+}
+
+// A directory that never answers must not take the caller with it.
+//
+// This is not hypothetical: reading .git/config under ~/Desktop from a
+// LaunchAgent that macOS has not granted access to blocks rather than failing,
+// and having that on the request path left every GitHub request hanging with
+// no response at all.
+func TestResolveWithinGivesUp(t *testing.T) {
+	start := time.Now()
+	repo, ok := resolveWithin(blockingDir(t), 80*time.Millisecond)
+	if ok {
+		t.Error("a directory that never answers reported success")
+	}
+	if repo != "" {
+		t.Errorf("got %q, want empty", repo)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("waited %v - it should have given up after 80ms", d)
+	}
+}
+
+// blockingDir is a FIFO standing in for a file whose open never returns.
+// Opening one for reading blocks until a writer arrives, which is the same
+// shape as the privacy-control stall.
+func blockingDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	gitDir := filepath.Join(root, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fifo := filepath.Join(gitDir, "config")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("cannot make a fifo here: %v", err)
+	}
+	return root
+}
+
+// The matcher records that it was refused, so the UI can say why the pane
+// chips are missing rather than silently dropping them.
+func TestMatcherRecordsBlocked(t *testing.T) {
+	m := NewMatcher()
+	m.Probe = 60 * time.Millisecond
+	if m.Blocked() {
+		t.Fatal("blocked before anything was probed")
+	}
+	if got := m.Repo(blockingDir(t)); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+	if !m.Blocked() {
+		t.Error("a probe that never answered was not recorded")
+	}
+}
+
+// A plain missing repo is not a refusal - reporting it as one would put a
+// "grant Full Disk Access" banner on a perfectly healthy screen.
+func TestMatcherNotBlockedForOrdinaryMiss(t *testing.T) {
+	m := NewMatcher()
+	if got := m.Repo(t.TempDir()); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+	if m.Blocked() {
+		t.Error("a directory that is simply not a repo was reported as refused")
 	}
 }

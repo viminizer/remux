@@ -31,6 +31,11 @@ type Snapshot struct {
 	// watchlist too, because the inbox spans them: an issue assigned to
 	// Kevin in a repo he never added still deserves its pane chip.
 	Panes map[string][]string `json:"panes,omitempty"`
+	// PanesBlocked is set when the filesystem refused to answer where a
+	// pane's repo is. On macOS that is the privacy control: the service has
+	// not been granted access to the folders the repos live in, so the
+	// screen says so instead of quietly dropping every pane chip.
+	PanesBlocked bool `json:"panesBlocked,omitempty"`
 }
 
 // ErrorKind names a failure in one word the UI can switch on.
@@ -95,10 +100,18 @@ func (p *Poller) init() {
 
 // Snapshot returns the most recent read. It never blocks on the network, so a
 // page load is instant even mid-poll.
+//
+// Repos is always a list, never nil. Before the first poll this is the zero
+// value, and a nil slice serialises as JSON null - which the screen then reads
+// a length off and crashes on. "Nothing yet" is an empty list.
 func (p *Poller) Snapshot() Snapshot {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.snap
+	snap := p.snap
+	if snap.Repos == nil {
+		snap.Repos = []Repo{}
+	}
+	return snap
 }
 
 // Kick asks for a poll now, for the refresh button and for just-added repos.

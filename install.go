@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 	"github.com/viminizer/remux/internal/config"
+	gh "github.com/viminizer/remux/internal/github"
+	"github.com/viminizer/remux/internal/tmux"
 )
 
 // remux runs as a LaunchAgent, not a system daemon.
@@ -270,8 +273,54 @@ func cmdStatus() error {
 	} else {
 		fmt.Println("  · allowed identity      not pinned yet - the first tailnet user to connect")
 	}
+
+	printFolderAccess()
 	fmt.Println()
 	return nil
+}
+
+// printFolderAccess reports whether the service can read the repos it watches.
+//
+// ~/Desktop, ~/Documents and ~/Downloads are protected by macOS, and a
+// LaunchAgent that has not been granted access cannot read .git/config inside
+// them. Run from a terminal this check passes on inherited access and says
+// nothing useful, so it reports what it can see and names the fix either way -
+// this is the one part of the setup that a person has to do by hand and would
+// otherwise only discover as pane links quietly missing.
+func printFolderAccess() {
+	tm := tmux.New()
+	tree, err := tm.Tree(context.Background())
+	if err != nil {
+		return
+	}
+
+	m := gh.NewMatcher()
+	matched := 0
+	for _, p := range tree.Panes() {
+		if m.Repo(p.Path) != "" {
+			matched++
+		}
+	}
+
+	switch {
+	case m.Blocked():
+		fmt.Printf("  ✗ folder access         refused - pane links will be missing\n")
+		fmt.Printf("                          System Settings -> Privacy & Security -> Full Disk Access,\n")
+		fmt.Printf("                          add %s, then: remux restart\n", installedPath())
+	case matched > 0:
+		fmt.Printf("  ✓ folder access         %d of %d panes matched to a repo\n", matched, len(tree.Panes()))
+	default:
+		fmt.Printf("  · folder access         no pane is inside a GitHub checkout\n")
+	}
+}
+
+// installedPath is the binary the LaunchAgent runs, which is the thing that
+// needs the grant - not whichever copy printed this line.
+func installedPath() string {
+	if p, err := installedBinary(); err == nil {
+		return p
+	}
+	return "the remux binary"
 }
 
 // guiTarget is the launchd domain for the current user's GUI session, which is

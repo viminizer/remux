@@ -34,6 +34,9 @@ type Server struct {
 
 	startedAt time.Time
 	mu        sync.Mutex
+	// paneRepos is the repo each pane is checked out in, kept fresh by
+	// RefreshPaneRepos so no request has to touch the filesystem.
+	paneRepos map[string][]string
 }
 
 func NewServer(cfg *config.Config, tm *tmux.Client, web http.Handler) *Server {
@@ -91,7 +94,45 @@ func (s *Server) Handler() http.Handler {
 	if s.Web != nil {
 		mux.Handle("/", s.Web)
 	}
-	return s.withAuth(mux)
+	return logRequests(s.withAuth(mux))
+}
+
+// logRequests records every API call: method, path, status, size, duration.
+//
+// The UI's own assets are skipped, so this is one line per thing the phone
+// actually asks the Mac to do - a handful a minute, since the WebSocket
+// carries the rest. It exists because a screen that came up empty gave no way
+// to tell a failing request from one that was never sent, and those want
+// completely different fixes.
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(rec, r)
+		log.Printf("%s %s -> %d %dB %dms",
+			r.Method, r.URL.RequestURI(), rec.code, rec.n, time.Since(start).Milliseconds())
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+	n    int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.code = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	n, err := s.ResponseWriter.Write(b)
+	s.n += n
+	return n, err
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────

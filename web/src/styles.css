@@ -1044,6 +1044,9 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   border-bottom:1px solid var(--s0);background:rgba(137,180,250,.05);
 }
 .scopenote b{color:var(--sub0);font-weight:600}
+.scopenote code{font-family:var(--mono);font-size:11px;color:var(--sub1)}
+.scopenote.warn{background:rgba(250,179,135,.07);color:var(--sub0)}
+.scopenote.warn b{color:var(--peach)}
 .endnote{padding:24px 16px 34px;text-align:center;font-size:11.5px;color:var(--ov0);line-height:1.7}
 .endnote b{color:var(--sub0)}
 .loading{padding:26px 16px;text-align:center;font-size:12.5px;color:var(--ov0);font-family:var(--mono)}

@@ -115,6 +115,12 @@ export interface GitHubSnapshot {
    * It covers repos outside the watchlist too, because the inbox spans them.
    */
   panes?: Record<string, string[]>
+  /**
+   * Set when the Mac refused to say which repo a pane is in. On macOS that is
+   * the privacy control: ~/Desktop, ~/Documents and ~/Downloads are protected
+   * and the background service has not been granted access to them.
+   */
+  panesBlocked?: boolean
 }
 
 export interface IssuePage {

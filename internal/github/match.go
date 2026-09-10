@@ -1,10 +1,13 @@
 package github
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,9 +27,25 @@ type Matcher struct {
 	// but a pane that cd's out of one, or a remote that is renamed, has to
 	// be picked up eventually.
 	TTL time.Duration
+	// Probe is how long one directory gets to answer.
+	//
+	// This exists because of macOS privacy control. ~/Desktop, ~/Documents
+	// and ~/Downloads are protected, and a LaunchAgent that has not been
+	// granted access does not get a quick refusal when it opens a file
+	// there - the open blocks, seemingly forever, while the system waits on
+	// a consent decision that a background service can never produce. Kevin
+	// keeps every repo under ~/Desktop, so that is the normal case here and
+	// not a corner. A read that cannot be cancelled must at least not be
+	// waited on.
+	Probe time.Duration
 
 	mu    sync.Mutex
 	cache map[string]entry
+
+	// blocked records that a probe was refused or never came back, so the
+	// UI can say "grant Full Disk Access" instead of quietly showing no
+	// pane chips at all.
+	blocked atomic.Bool
 }
 
 type entry struct {
@@ -35,7 +54,7 @@ type entry struct {
 }
 
 func NewMatcher() *Matcher {
-	return &Matcher{TTL: 5 * time.Minute, cache: map[string]entry{}}
+	return &Matcher{TTL: 5 * time.Minute, Probe: 2 * time.Second, cache: map[string]entry{}}
 }
 
 func (m *Matcher) ttl() time.Duration {
@@ -44,6 +63,18 @@ func (m *Matcher) ttl() time.Duration {
 	}
 	return m.TTL
 }
+
+func (m *Matcher) probe() time.Duration {
+	if m.Probe <= 0 {
+		return 2 * time.Second
+	}
+	return m.Probe
+}
+
+// Blocked reports whether the filesystem refused a probe or never answered
+// one. On macOS that means this process has not been granted access to the
+// folders the repos live in.
+func (m *Matcher) Blocked() bool { return m.blocked.Load() }
 
 // Repo returns "owner/name" for the checkout containing dir, or "" if dir is
 // not inside a git repository with a GitHub origin.
@@ -58,7 +89,10 @@ func (m *Matcher) Repo(dir string) string {
 	}
 	m.mu.Unlock()
 
-	repo := resolve(dir)
+	repo, ok := resolveWithin(dir, m.probe())
+	if !ok {
+		m.blocked.Store(true)
+	}
 
 	m.mu.Lock()
 	if m.cache == nil {
@@ -81,17 +115,51 @@ func (m *Matcher) Panes(paths map[string]string) map[string][]string {
 	return out
 }
 
+// resolveWithin runs resolve on its own goroutine and gives up after d.
+//
+// A blocked syscall cannot be cancelled, so the goroutine is left behind. That
+// is deliberate and bounded: the caller records the failure in the cache, so
+// each directory is abandoned at most once per TTL rather than once per
+// request. The alternative - waiting - is what left every GitHub request
+// hanging with no response at all.
+//
+// ok is false when the probe did not finish, or finished by being refused.
+func resolveWithin(dir string, d time.Duration) (string, bool) {
+	type result struct {
+		repo   string
+		denied bool
+	}
+	ch := make(chan result, 1) // buffered, so the goroutine can always finish
+	go func() {
+		repo, denied := resolve(dir)
+		ch <- result{repo, denied}
+	}()
+
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case r := <-ch:
+		return r.repo, !r.denied
+	case <-t.C:
+		return "", false
+	}
+}
+
 // resolve does the uncached work: find .git, find its config, read origin.
-func resolve(dir string) string {
+//
+// denied separates "this is not a repo" from "this machine would not let me
+// look", which are the same empty answer to a caller but very different
+// things to tell a person.
+func resolve(dir string) (repo string, denied bool) {
 	gitDir := findGitDir(dir)
 	if gitDir == "" {
-		return ""
+		return "", false
 	}
 	b, err := os.ReadFile(filepath.Join(gitDir, "config"))
 	if err != nil {
-		return ""
+		return "", errors.Is(err, fs.ErrPermission)
 	}
-	return repoFromConfig(string(b))
+	return repoFromConfig(string(b)), false
 }
 
 // findGitDir walks up from dir to the first .git, and returns the directory

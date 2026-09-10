@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/viminizer/remux/internal/config"
 	gh "github.com/viminizer/remux/internal/github"
@@ -89,6 +91,7 @@ func (s *Server) handleGitHubRefresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) githubSnapshot(r *http.Request) gh.Snapshot {
 	snap := s.GH.Snapshot()
 	byRepo := s.panesByRepo(r)
+	snap.PanesBlocked = s.Match != nil && s.Match.Blocked()
 	if len(byRepo) == 0 {
 		return snap
 	}
@@ -116,21 +119,58 @@ func withPanes(items []gh.InboxItem, byRepo map[string][]string) []gh.InboxItem 
 	return out
 }
 
-// panesByRepo maps every pane's working directory to the repo checked out
-// there. A tmux failure is not fatal here - it just means no pane chips.
-func (s *Server) panesByRepo(r *http.Request) map[string][]string {
+// panesByRepo returns the last mapping the background refresher computed.
+//
+// It is a map read and nothing else. It used to walk the filesystem inline,
+// and that is what made every GitHub request hang: reading .git/config under
+// ~/Desktop from a LaunchAgent that macOS has not granted access to does not
+// fail, it blocks - so the handler never returned, no response was written,
+// and the phone sat on a spinner forever. Pane chips are a nice-to-have; they
+// must never be able to hold up the screen they decorate.
+func (s *Server) panesByRepo(*http.Request) map[string][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.paneRepos
+}
+
+// RefreshPaneRepos recomputes the pane/repo mapping until ctx is cancelled.
+//
+// Off the request path on purpose - see panesByRepo. If a probe blocks, this
+// goroutine is the only thing that waits, and the matcher abandons that
+// directory rather than retrying it every tick.
+func (s *Server) RefreshPaneRepos(ctx context.Context, every time.Duration) {
 	if s.Match == nil {
-		return nil
+		return
 	}
-	tree, err := s.Tmux.Tree(r.Context())
+	if every <= 0 {
+		every = 5 * time.Second
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		s.refreshPaneRepos(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+func (s *Server) refreshPaneRepos(ctx context.Context) {
+	tree, err := s.Tmux.Tree(ctx)
 	if err != nil {
-		return nil
+		return
 	}
-	paths := map[string]string{}
+	paths := make(map[string]string, len(tree.Panes()))
 	for _, p := range tree.Panes() {
 		paths[p.ID] = p.Path
 	}
-	return s.Match.Panes(paths)
+	byRepo := s.Match.Panes(paths)
+
+	s.mu.Lock()
+	s.paneRepos = byRepo
+	s.mu.Unlock()
 }
 
 // ── one repo ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Pane } from '../types'
 import { dotClass } from '../types'
-import type { GitHubSnapshot, InboxItem, Repo } from './types'
+import type { GitHubSnapshot, Inbox, InboxItem, Repo } from './types'
 import { age } from './types'
 import { EndNote, GhGroup, InboxRow } from './rows'
 
@@ -35,7 +35,11 @@ export function GitHubScreen({
   onAdd: () => void
 }) {
   const [tab, setTab] = useState<'inbox' | 'repos'>('inbox')
-  const { inbox, repos } = snap
+  // Defended rather than assumed: these come off the wire, and a field that
+  // is absent must degrade to an empty screen, never to a crash that takes
+  // the whole app down.
+  const inbox = snap.inbox ?? { needsYou: [], assigned: [], yourPRs: [], replies: 0 }
+  const repos = snap.repos ?? []
 
   // gh being logged out is the one failure the phone cannot do anything
   // about, so it gets a screen of its own instead of a banner.
@@ -87,27 +91,46 @@ export function GitHubScreen({
         </button>
       </div>
 
+      {snap.panesBlocked && <PanesBlockedNote />}
+
       {tab === 'inbox' ? (
-        <InboxTab snap={snap} panes={panes} onOpenItem={onOpenItem} onOpenPane={onOpenPane} />
+        <InboxTab inbox={inbox} panes={panes} onOpenItem={onOpenItem} onOpenPane={onOpenPane} />
       ) : (
-        <ReposTab snap={snap} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
+        <ReposTab repos={repos} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
       )}
     </div>
   )
 }
 
+/**
+ * Pane chips are missing and there is a reason, so say it.
+ *
+ * Without this the repo rows just quietly lack their "↗ saas · win 3" and
+ * nothing anywhere suggests that one settings toggle would bring them back.
+ */
+function PanesBlockedNote() {
+  return (
+    <div className="scopenote warn">
+      Pane links are off. macOS is not letting remux see which repo each pane is
+      in. Fix it once at the laptop: <b>System Settings → Privacy &amp; Security
+      → Full Disk Access</b>, add <code>~/.local/bin/remux</code>, then run{' '}
+      <code>remux restart</code>.
+    </div>
+  )
+}
+
 function InboxTab({
-  snap,
+  inbox,
   panes,
   onOpenItem,
   onOpenPane,
 }: {
-  snap: GitHubSnapshot
+  inbox: Inbox
   panes: Map<string, Pane>
   onOpenItem: (item: InboxItem) => void
   onOpenPane: (p: Pane) => void
 }) {
-  const { needsYou, assigned, yourPRs, replies } = snap.inbox
+  const { needsYou, assigned, yourPRs, replies } = inbox
   const empty = !needsYou.length && !assigned.length && !yourPRs.length
 
   const section = (title: string, items: InboxItem[], hot = false) =>
@@ -167,23 +190,23 @@ function InboxTab({
 }
 
 function ReposTab({
-  snap,
+  repos,
   panes,
   onOpenRepo,
   onAdd,
 }: {
-  snap: GitHubSnapshot
+  repos: Repo[]
   panes: Map<string, Pane>
   onOpenRepo: (repo: string) => void
   onAdd: () => void
 }) {
   return (
     <div className="screen-body">
-      {snap.repos.map((r) => (
+      {repos.map((r) => (
         <RepoCard key={r.full} repo={r} panes={panes} onOpen={() => onOpenRepo(r.full)} />
       ))}
 
-      {!snap.repos.length && (
+      {!repos.length && (
         <div className="msg" style={{ paddingBottom: 8 }}>
           <div className="glyph">◈</div>
           <h2>No repos yet</h2>

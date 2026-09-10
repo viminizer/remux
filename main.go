@@ -153,6 +153,10 @@ func run(cfg *config.Config, local bool) error {
 	}
 
 	go srv.GH.Run(ctx)
+	// Pane/repo matching runs here rather than inside a handler, because it
+	// reads the filesystem and a read under ~/Desktop from a LaunchAgent
+	// macOS has not granted access to blocks rather than failing.
+	go srv.RefreshPaneRepos(ctx, cfg.TreePoll())
 
 	if local {
 		return serveLocal(ctx, srv, cfg)
