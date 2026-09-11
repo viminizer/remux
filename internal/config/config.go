@@ -51,6 +51,11 @@ type Config struct {
 	// Anything newer means the item actually moved, so the mute lapses and
 	// the row comes back rather than disappearing for good.
 	Muted map[string]time.Time `json:"muted,omitempty"`
+	// NamePanes lets a cheap model read each agent pane and name what it is
+	// working on. It is the only thing in remux that costs money, so it gets
+	// a switch - the state glyph beside the name is free and stays on either
+	// way. Gated, it is a few cents a day; the gates are in internal/titler.
+	NamePanes bool `json:"namePanes"`
 }
 
 func Default() *Config {
@@ -65,6 +70,7 @@ func Default() *Config {
 		GitHubMS:      60000,
 		NotifyCI:      true,
 		IgnoreChecks:  []string{"Vercel"},
+		NamePanes:     true,
 	}
 }
 

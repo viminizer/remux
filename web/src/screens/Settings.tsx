@@ -186,6 +186,25 @@ export function SettingsScreen({
         </div>
 
         <div className="sec">
+          <h3>Panes</h3>
+          <div className="card">
+            <div className="crow">
+              <div className="lbl">
+                Name each agent pane
+                <small>a cheap model reads the screen and writes what it is doing</small>
+              </div>
+              <button
+                className={`sw-toggle ${settings.namePanes ? 'on' : ''}`}
+                role="switch"
+                aria-checked={settings.namePanes}
+                aria-label="Name each agent pane"
+                onClick={() => patch({ namePanes: !settings.namePanes })}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="sec">
           <h3>Display</h3>
           <div className="card">
             <div className="crow">

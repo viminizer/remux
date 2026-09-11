@@ -420,11 +420,11 @@ func buildLine(title string) string { return buildLineWith("", title) }
 
 // buildLineWith takes both names: @remux_title, then pane_title last.
 func buildLineWith(remuxTitle, title string) string {
-	return buildLineFull(remuxTitle, "", title)
+	return buildLineFull(remuxTitle, "", "", title)
 }
 
-// buildLineFull adds @remux_state, which sits between the two.
-func buildLineFull(remuxTitle, remuxState, title string) string {
+// buildLineFull adds @remux_task and @remux_state, which sit between the two.
+func buildLineFull(remuxTitle, remuxTask, remuxState, title string) string {
 	f := []string{
 		"$2", "saas", "1",
 		"@8", "8", "issue168", "1", "1788946490",
@@ -432,6 +432,7 @@ func buildLineFull(remuxTitle, remuxState, title string) string {
 		"/Users/mac/dev", "1", "213", "54",
 		"0", "0", "0", "35713",
 		remuxTitle,
+		remuxTask,
 		remuxState,
 		title,
 	}
@@ -597,6 +598,9 @@ func TestSetPaneStateRoundTrips(t *testing.T) {
 	if err := c.SetPaneTitle(ctx, pane, "venue filter"); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.SetPaneTask(ctx, pane, "token refresh race"); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.SetPaneState(ctx, pane, "!"); err != nil {
 		t.Fatal(err)
 	}
@@ -605,8 +609,11 @@ func TestSetPaneStateRoundTrips(t *testing.T) {
 	if p.RemuxState != "!" {
 		t.Errorf("@remux_state = %q, want %q", p.RemuxState, "!")
 	}
+	if p.RemuxTask != "token refresh race" {
+		t.Errorf("@remux_task = %q, want %q", p.RemuxTask, "token refresh race")
+	}
 	if p.RemuxTitle != "venue filter" {
-		t.Errorf("@remux_title = %q, want %q - the two options collided",
+		t.Errorf("@remux_title = %q, want %q - the three options collided",
 			p.RemuxTitle, "venue filter")
 	}
 
@@ -621,6 +628,9 @@ func TestSetPaneStateRoundTrips(t *testing.T) {
 	}
 	if p.RemuxTitle != "venue filter" {
 		t.Errorf("clearing the state cleared the title too: %q", p.RemuxTitle)
+	}
+	if p.RemuxTask != "token refresh race" {
+		t.Errorf("clearing the state cleared the task too: %q", p.RemuxTask)
 	}
 }
 

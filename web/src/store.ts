@@ -19,6 +19,8 @@ export interface Settings {
    * "Needs you" with nothing to do about them.
    */
   ignoreChecks: string[]
+  /** Server-side, like the three above: the naming pass reads it there. */
+  namePanes: boolean
   submitOnEnter: boolean
   /** Whether the opt-in bar has been answered. Asked once, never again. */
   askedNotifications: boolean
@@ -123,6 +125,7 @@ const DEFAULTS: Settings = {
   notifyDone: false,
   notifyCi: true,
   ignoreChecks: ['Vercel'],
+  namePanes: true,
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],

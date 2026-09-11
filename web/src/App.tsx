@@ -222,6 +222,7 @@ export default function App() {
               notifyDone: n.notifyDone,
               notifyCi: n.notifyCi,
               ignoreChecks: n.ignoreChecks ?? [],
+              namePanes: n.namePanes,
             })
           }
         } catch {
@@ -468,7 +469,13 @@ export default function App() {
   // Notification toggles must reach the server or they do nothing.
   const patchNotify = (p: Partial<typeof settings>) => {
     patch(p)
-    if ('notifyWaiting' in p || 'notifyDone' in p || 'notifyCi' in p || 'ignoreChecks' in p) {
+    if (
+      'notifyWaiting' in p ||
+      'notifyDone' in p ||
+      'notifyCi' in p ||
+      'ignoreChecks' in p ||
+      'namePanes' in p
+    ) {
       const next = { ...settings, ...p }
       guard('save settings', async () => {
         await api.saveSettings({
@@ -476,6 +483,7 @@ export default function App() {
           notifyDone: next.notifyDone,
           notifyCi: next.notifyCi,
           ignoreChecks: next.ignoreChecks,
+          namePanes: next.namePanes,
         })
         // The ignore list changes what counts as red, and the server kicks the
         // poller on save. Pick the new snapshot up rather than waiting for the

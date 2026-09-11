@@ -19,6 +19,10 @@ type notifySettings struct {
 	// NotifyCI is the same argument for the GitHub watcher: it reads the
 	// flag in this process, so the switch has to reach the server.
 	NotifyCI bool `json:"notifyCi"`
+	// NamePanes is the same argument again, and the one switch here that is
+	// about money rather than noise: the naming pass reads it in this
+	// process, on every tick.
+	NamePanes bool `json:"namePanes"`
 	// Repos is read-only here. It is shown on the Settings screen so the
 	// watchlist is visible in one place, but it is edited through the
 	// GitHub screen's Add and Remove, which also kick the poller.
@@ -55,6 +59,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		NotifyWaiting: s.Cfg.NotifyWaiting,
 		NotifyDone:    s.Cfg.NotifyDone,
 		NotifyCI:      s.Cfg.NotifyCI,
+		NamePanes:     s.Cfg.NamePanes,
 		Repos:         s.Watchlist(),
 		IgnoreChecks:  s.IgnoredChecks(),
 	})
@@ -74,6 +79,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.Cfg.NotifyDone = body.NotifyDone
 	s.Cfg.NotifyCI = body.NotifyCI
 	s.Cfg.IgnoreChecks = body.IgnoreChecks
+	s.Cfg.NamePanes = body.NamePanes
 	body.Repos = s.Cfg.Repos
 	s.mu.Unlock()
 
@@ -82,6 +88,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		c.NotifyDone = body.NotifyDone
 		c.NotifyCI = body.NotifyCI
 		c.IgnoreChecks = body.IgnoreChecks
+		c.NamePanes = body.NamePanes
 	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

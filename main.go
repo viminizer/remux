@@ -169,7 +169,13 @@ func run(cfg *config.Config, local bool) error {
 	// matches. Excluding it would mean the one feature whose acceptance is
 	// "it works against the panes running right now" could not be tried
 	// against them.
-	srv.OnTree = titler.NewState(tm).OnTree
+	//
+	// The naming half spends money, so it carries a switch the phone can
+	// reach. The glyph half does not and has none.
+	namer := titler.New(tm)
+	namer.Chain = titler.Chain()
+	namer.Enabled = func() bool { return cfg.NamePanes }
+	srv.OnTree = namer.OnTree
 
 	go srv.GH.Run(ctx)
 	// The one always-on pass over the workspace. Pane/repo matching runs here

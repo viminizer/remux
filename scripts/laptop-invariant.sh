@@ -11,10 +11,10 @@
 #   ... run tests ...
 #   ./scripts/laptop-invariant.sh after
 #
-# The one deliberate exemption is @remux_title and @remux_state. remux writes
-# those two pane options on its own initiative - that is the pane-naming
-# feature working, not damage - so they are filtered out of the options
-# snapshot. Everything else about a pane must be identical.
+# The one deliberate exemption is the three @remux_* pane options. remux writes
+# @remux_task and @remux_state on its own initiative - that is the pane-naming
+# feature working, not damage - and @remux_title when Kevin renames a pane from
+# the phone. Everything else about a pane must be identical.
 #
 set -euo pipefail
 
@@ -51,7 +51,7 @@ tmux list-clients -F '#{client_tty} #{client_session} #{client_width}x#{client_h
   > "$DIR/$TAG.clients" || true
 sort -o "$DIR/$TAG.clients" "$DIR/$TAG.clients"
 
-# Every pane option outside the scratch session, minus the two remux owns.
+# Every pane option outside the scratch session, minus the three remux owns.
 # pane_title is deliberately not snapshotted: agents rewrite it on every
 # render, so it changes on its own and proves nothing.
 : > "$DIR/$TAG.options"
@@ -59,6 +59,7 @@ while read -r sess pane; do
   [ "$sess" = "$SCRATCH" ] && continue
   tmux show-options -p -t "$pane" \
     | grep -v '^@remux_title' \
+    | grep -v '^@remux_task' \
     | grep -v '^@remux_state' \
     | sed "s|^|$pane |" >> "$DIR/$TAG.options" || true
 done < <(tmux list-panes -a -F '#{session_name} #{pane_id}')
@@ -101,7 +102,7 @@ fi
 
 if ! diff -u "$DIR/before.options" "$DIR/after.options"; then
   echo "FAIL: a pane option changed outside $SCRATCH." >&2
-  echo "      Only @remux_title and @remux_state may be written." >&2
+  echo "      Only @remux_title, @remux_task and @remux_state may be written." >&2
   fail=1
 fi
 

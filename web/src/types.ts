@@ -6,6 +6,8 @@ export interface Pane {
   title: string
   /** A name the user gave this pane from the phone. Wins over `title`. */
   remuxTitle?: string
+  /** What remux read the pane to be working on. See paneTitle. */
+  remuxTask?: string
   command: string
   path: string
   active: boolean
@@ -75,6 +77,8 @@ export interface NotifySettings {
   notifyDone: boolean
   /** Fires when one of your pull requests turns red, or a review is asked of you. */
   notifyCi: boolean
+  /** Lets a cheap model name each agent pane by what it is working on. */
+  namePanes: boolean
   /** The watchlist, read-only here: the GitHub screen owns editing it. */
   repos?: string[]
   /**
@@ -125,6 +129,13 @@ export function paneTitle(p: Pane): string {
   // and agents rewrite it constantly, so it can never hold a user's name.
   const mine = (p.remuxTitle || '').trim()
   if (mine) return mine
+
+  // Then the task remux read off the screen. It comes second, not first,
+  // because it is written by a model every ninety seconds and his own name is
+  // not - and it comes before pane_title because it is the one name written to
+  // the same rule for every pane, which is what makes twenty of them scannable.
+  const task = (p.remuxTask || '').trim()
+  if (task) return task
 
   const t = (p.title || '').trim()
   const meaningless =

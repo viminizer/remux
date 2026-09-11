@@ -202,6 +202,19 @@ func (c *Client) SetPaneTitle(ctx context.Context, paneID, name string) error {
 	return c.setPaneOption(ctx, paneID, "@remux_title", name)
 }
 
+// SetPaneTask writes the task title remux read off the screen into
+// @remux_task.
+//
+// It is not @remux_title, and the difference is the point. @remux_title is the
+// name Kevin typed from the phone, and the drawer has always let that win over
+// anything the machine came up with. A model that overwrote it would take a
+// deliberate choice away roughly ninety seconds after he made it. Two options
+// keep both, and the reader picks: his name first, this second, the program's
+// own pane_title last.
+func (c *Client) SetPaneTask(ctx context.Context, paneID, task string) error {
+	return c.setPaneOption(ctx, paneID, "@remux_task", task)
+}
+
 // SetPaneState writes the agent verdict for one pane into @remux_state, so the
 // laptop's own tmux status line can show which panes are blocked.
 //

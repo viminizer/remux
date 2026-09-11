@@ -17,13 +17,18 @@ type fakePanes struct {
 	mu       sync.Mutex
 	screens  map[string]string
 	captured [][]string        // one entry per Previews call
-	writes   map[string]string // pane -> last value written
-	order    []string          // panes written, in order, with repeats
+	writes   map[string]string // pane -> last state written
+	tasks    map[string]string // pane -> last task written
+	order    []string          // panes whose state was written, in order
 	err      error
 }
 
 func newFake() *fakePanes {
-	return &fakePanes{screens: map[string]string{}, writes: map[string]string{}}
+	return &fakePanes{
+		screens: map[string]string{},
+		writes:  map[string]string{},
+		tasks:   map[string]string{},
+	}
 }
 
 func (f *fakePanes) Previews(_ context.Context, ids []string, _ int) map[string]string {
@@ -45,6 +50,16 @@ func (f *fakePanes) SetPaneState(_ context.Context, paneID, state string) error 
 	}
 	f.writes[paneID] = state
 	f.order = append(f.order, paneID)
+	return nil
+}
+
+func (f *fakePanes) SetPaneTask(_ context.Context, paneID, task string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.tasks[paneID] = task
 	return nil
 }
 
@@ -107,7 +122,7 @@ func TestWritesTheVerdictOfEachPane(t *testing.T) {
 	f.screens["%2"] = busyScreen
 	f.screens["%3"] = idleScreen
 
-	s := NewState(f)
+	s := New(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "codex"},
 		&tmux.Pane{ID: "%2", Command: "codex"},
@@ -126,7 +141,7 @@ func TestWritesTheVerdictOfEachPane(t *testing.T) {
 // pane is the failure that makes the whole status line untrustworthy.
 func TestShellIsNeverStatedAndIsCleared(t *testing.T) {
 	f := newFake()
-	s := NewState(f)
+	s := New(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "zsh"},
 		&tmux.Pane{ID: "%2", Command: "zsh", RemuxState: "!"},
@@ -149,7 +164,7 @@ func TestUnchangedVerdictIsNotRewritten(t *testing.T) {
 	f := newFake()
 	f.screens["%1"] = busyScreen
 
-	s := NewState(f)
+	s := New(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "codex", RemuxState: "✳"},
 	))
@@ -169,7 +184,7 @@ func TestQuietWorkspaceCapturesNothing(t *testing.T) {
 	// Activity well in the past: the gate re-captures anything that moved in
 	// the last two seconds regardless, to cover its one-second resolution.
 	old := time.Now().Unix() - 60
-	s := NewState(f)
+	s := New(f)
 	pane := func() *tmux.Pane { return &tmux.Pane{ID: "%1", Command: "codex", RemuxState: "✳"} }
 
 	s.OnTree(context.Background(), tree(old, pane())) // first pass: nothing seen yet
@@ -189,7 +204,7 @@ func TestWriteFailureIsLoggedOnce(t *testing.T) {
 	f.screens["%1"] = waitingScreen
 	f.err = errors.New("no such pane")
 
-	s := NewState(f)
+	s := New(f)
 	p := &tmux.Pane{ID: "%1", Command: "codex"}
 	s.OnTree(context.Background(), tree(100, p))
 
