@@ -277,10 +277,6 @@ export function GhGroup({ title, n, hot }: { title: string; n?: number; hot?: bo
   )
 }
 
-export function ScopeNote({ children }: { children: ReactNode }) {
-  return <div className="scopenote">{children}</div>
-}
-
 /** The end-of-list note every list in the mock closes with. */
 export function EndNote({ children }: { children: ReactNode }) {
   return <div className="endnote">{children}</div>

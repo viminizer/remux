@@ -3,7 +3,7 @@ import type { Pane } from '../types'
 import { dotClass } from '../types'
 import type { GitHubSnapshot, Inbox, InboxItem, Repo } from './types'
 import { age, loaded } from './types'
-import { EndNote, GhGroup, InboxRow } from './rows'
+import { GhGroup, InboxRow } from './rows'
 import { SkeletonCards, SkeletonRows } from './Skeleton'
 
 /**
@@ -249,8 +249,6 @@ function InboxTab({
       )}
 
       {mutedSection}
-
-      <EndNote>Read-only. Nothing here marks a thread read on GitHub.</EndNote>
     </div>
   )
 }

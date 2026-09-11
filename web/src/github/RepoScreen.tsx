@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import type { Pane } from '../types'
 import type { Issue, PR, Repo } from './types'
-import { EndNote, IssueRow, PRRow, ScopeNote } from './rows'
+import { EndNote, IssueRow, PRRow } from './rows'
 import { SkeletonRows } from './Skeleton'
 
 type Tab = 'issues' | 'prs'
@@ -199,23 +199,6 @@ function IssuesTab({
       </div>
 
       <div className="screen-body">
-        {filter === 'mine' ? (
-          <ScopeNote>
-            Opened on <b>Yours</b> · assigned to you or opened by you.
-            {total > shown && (
-              <>
-                {' '}
-                The other <b>{Math.max(0, total - shown)}</b> open issues were never fetched.
-              </>
-            )}
-          </ScopeNote>
-        ) : (
-          <ScopeNote>
-            <b>All open</b> · sorted by recently updated, <b>30 per page</b>. Nothing loads
-            until you ask for it.
-          </ScopeNote>
-        )}
-
         {err && <div className="loaderr">{err}</div>}
         {issues === null && !err && <SkeletonRows n={5} />}
 
@@ -336,11 +319,6 @@ function PRsTab({
       </div>
 
       <div className="screen-body">
-        <ScopeNote>
-          A PR row answers <b>can this merge</b>, not just what it is: draft, checks, review
-          decision, conflicts, branch, size.
-        </ScopeNote>
-
         {err && <div className="loaderr">{err}</div>}
         {prs === null && !err && <SkeletonRows n={4} />}
 
@@ -366,11 +344,6 @@ function PRsTab({
           </div>
         )}
 
-        {prs !== null && shown.length > 0 && (
-          <EndNote>
-            {counts.all} open PR{counts.all === 1 ? '' : 's'} in this repo, all on one page.
-          </EndNote>
-        )}
       </div>
     </>
   )
