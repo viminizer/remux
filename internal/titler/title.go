@@ -218,6 +218,13 @@ func isSame(s string) bool { return sameRe.MatchString(strings.TrimSpace(s)) }
 
 // buildPrompt asks for every pane at once.
 //
+// SAME is deliberately narrowed to panes that already have a name. Offered as
+// a general escape hatch it became one: measured against the live workspace,
+// eight of twenty-three panes answered SAME, and for an unnamed pane that is
+// not an answer - it falls to the screen fallback, which finds an empty
+// composer and leaves the pane blank for good. The same model named those very
+// panes perfectly well when asked without the escape hatch.
+//
 // The rules are strict about shape rather than content because the value of
 // twenty titles is that they were written to one rule: mixed lengths and
 // capitalisation are exactly what makes Claude Code's own generated titles
@@ -243,8 +250,11 @@ Rules:
 - 3 to 5 words
 - lowercase, no punctuation, no quotes
 - name the work, not the tool: "venue filter pagination", not "claude code session"
-- if the pane's current name still describes the work, answer exactly: SAME
-- if the screen says too little to tell, answer exactly: SAME
+- SAME is only for a pane that already has a current name below, and only when
+  that name still describes the work. It is not a way to decline.
+- a pane with no current name must be given one. Use whatever the screen shows -
+  the task, the file, the repo, the last thing discussed. A rough name is far
+  better than none, because a blank pane is one he has to open to identify.
 - answer one line per pane, in the form "<number>: <name>", and nothing else
 
 `)

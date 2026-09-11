@@ -486,6 +486,10 @@ func TestPanesQuietWhileAwayAreNamedOnReturn(t *testing.T) {
 
 // The re-read happens once per return, not on every pass, or coming back would
 // mean recapturing every pane in the workspace every two seconds.
+//
+// The pane carries a name on purpose: an unnamed one is recaptured every pass
+// by design (see TestAnUnnamedPaneIsRetriedWhileQuiet), so it could not tell a
+// latch that re-fires from one that works.
 func TestReturningReReadsOnlyOnce(t *testing.T) {
 	f := newFake()
 	f.screens["%1"] = busyScreen
@@ -497,20 +501,97 @@ func TestReturningReReadsOnlyOnce(t *testing.T) {
 	p.AwayFor = time.Nanosecond
 
 	quiet := int64(100)
-	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	pane := func() *tmux.Pane {
+		return &tmux.Pane{ID: "%1", Command: "codex", RemuxTask: "venue filter pagination"}
+	}
+
+	p.OnTree(context.Background(), tree(quiet, pane()))
 	settle(t, p)
 
 	away = false
-	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	p.OnTree(context.Background(), tree(quiet, pane()))
 	settle(t, p)
 	afterReturn := len(f.captured)
 
 	// Still here, still quiet: nothing more to read.
-	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	p.OnTree(context.Background(), tree(quiet, pane()))
 	settle(t, p)
 
 	if len(f.captured) != afterReturn {
 		t.Errorf("captured again on a quiet pass after returning (%d -> %d); "+
 			"the latch is re-firing", afterReturn, len(f.captured))
+	}
+}
+
+// A pane the model declined to name stays eligible, whatever the gate says.
+//
+// Measured against the live workspace: asked for twenty-three names in one
+// batch, haiku answered eight of them SAME. For a pane that already has a name
+// that is an answer; for one that does not it is a shrug, and the screen
+// fallback behind it finds an empty composer more often than not. The pane is
+// then blank for good, because the gate will not offer an idle pane again and
+// nothing is ever going to write to its window.
+//
+// The same model named those very panes on the next attempt, which is the
+// whole point: one unlucky answer must not be final.
+func TestAnUnnamedPaneIsRetriedWhileQuiet(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	// First answer declines, second succeeds - the run-to-run variance that
+	// made this permanent rather than momentary.
+	r := &fakeRunner{label: "fake", out: "1: SAME\n"}
+	p := New(f)
+	p.Chain = []Runner{r}
+	p.AwayFor = time.Nanosecond
+	p.Away = func() bool { return false }
+
+	quiet := int64(100)
+	pane := func() *tmux.Pane { return &tmux.Pane{ID: "%1", Command: "codex"} }
+
+	p.OnTree(context.Background(), tree(quiet, pane()))
+	settle(t, p)
+	if _, named := f.tasks["%1"]; named {
+		t.Fatalf("SAME on an unnamed pane wrote %q", f.tasks["%1"])
+	}
+
+	// The cooldown has to lapse for a second attempt, and the pane is still
+	// quiet - same window activity, nothing written to it.
+	p.asked.seen = map[string]time.Time{}
+	r.out = "1: prioritize demo work items\n"
+
+	p.OnTree(context.Background(), tree(quiet, pane()))
+	settle(t, p)
+
+	if got := f.tasks["%1"]; got != "prioritize demo work items" {
+		t.Errorf("task = %q; an unnamed quiet pane was never asked about again", got)
+	}
+}
+
+// A pane that has a name is left to the gate, so a named workspace sitting
+// still costs nothing.
+func TestANamedQuietPaneIsNotRecaptured(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	p := New(f)
+	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: SAME\n"}}
+	p.AwayFor = time.Nanosecond
+	p.Away = func() bool { return false }
+
+	quiet := int64(100)
+	named := func() *tmux.Pane {
+		return &tmux.Pane{ID: "%1", Command: "codex", RemuxTask: "venue filter pagination"}
+	}
+
+	p.OnTree(context.Background(), tree(quiet, named()))
+	settle(t, p)
+	before := len(f.captured)
+
+	p.OnTree(context.Background(), tree(quiet, named()))
+	settle(t, p)
+
+	if len(f.captured) != before {
+		t.Errorf("recaptured a named quiet pane (%d -> %d)", before, len(f.captured))
 	}
 }

@@ -103,9 +103,24 @@ type Screened struct {
 // push watcher prunes its per-pane maps when a pane disappears and the titler
 // did not, so the same fix had to be found twice.
 func (g *ActivityGate) Capture(ctx context.Context, p Previewer, panes []*Pane) []Screened {
+	return g.CaptureWith(ctx, p, panes, nil)
+}
+
+// CaptureWith is Capture plus a set of panes to read whatever the gate says.
+//
+// The gate answers "can this screen have changed". That is the right question
+// for a verdict computed from the screen and the wrong one for a caller that
+// needs a screen it has never successfully used - it would wait for output
+// that an idle pane is never going to produce. always is how such a caller
+// says so, and it still costs one capture, because a pane named twice is only
+// listed once.
+func (g *ActivityGate) CaptureWith(ctx context.Context, p Previewer, panes, always []*Pane) []Screened {
 	stale := map[string]bool{}
 	for _, id := range g.Changed(panes) {
 		stale[id] = true
+	}
+	for _, pane := range always {
+		stale[pane.ID] = true
 	}
 	ids := make([]string, 0, len(stale))
 	for _, pane := range panes {

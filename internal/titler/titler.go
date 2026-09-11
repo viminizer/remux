@@ -206,8 +206,32 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 		p.gate.Forget()
 	}
 
+	// An agent pane with no name yet is offered whatever the gate says.
+	//
+	// The gate answers "can this screen have changed", which is the right
+	// question for a glyph and the wrong one for a name a pane does not have.
+	// One unlucky answer - the model declining, the screen fallback finding an
+	// empty composer - and an idle pane is blank for good, because nothing
+	// will write to its window again to bring it back.
+	//
+	// Retrying is close to free: these panes join a batch that was happening
+	// anyway, the cooldown still holds each one to once per askEvery, and the
+	// presence gate means none of it runs while nobody is looking. They stop
+	// costing anything the moment they get a name.
+	// len(Chain) too, not just the switch: with no model configured there is
+	// nothing that could name these, so reading them would be a capture spent
+	// on an answer nobody can give.
+	unnamed := make([]*tmux.Pane, 0, len(agents))
+	if naming && len(p.Chain) > 0 {
+		for _, pane := range agents {
+			if pane.RemuxTask == "" {
+				unnamed = append(unnamed, pane)
+			}
+		}
+	}
+
 	var due []job
-	for _, s := range p.gate.Capture(ctx, p.Tmux, agents) {
+	for _, s := range p.gate.CaptureWith(ctx, p.Tmux, agents, unnamed) {
 		// A capture that failed is not a blank screen. Classifying the empty
 		// string gives Unknown, and writing that back would strip the "!" off
 		// a pane genuinely blocked on an answer until some later pass both
