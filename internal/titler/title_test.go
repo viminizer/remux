@@ -3,6 +3,7 @@ package titler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -722,5 +723,90 @@ func TestTailScreenStillObeysTheBudget(t *testing.T) {
 	}
 	if !strings.HasSuffix(strings.TrimSpace(got), "about its work") {
 		t.Error("kept the head instead of the tail; the newest lines are the point")
+	}
+}
+
+// A restart is not a reason to rename the workspace. Neither the cooldown nor
+// the activity gate survives the process, so without this the first tree makes
+// every pane due at once and the first pass rewrites names that were right.
+func TestARestartDoesNotRenameNamedPanes(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+	f.screens["%2"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: something else\n2: something else\n"}
+	p := newColdPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex", RemuxTask: "review pr 269"},
+		&tmux.Pane{ID: "%2", Command: "codex", RemuxTask: "fix issue 270"},
+	))
+	settle(t, p)
+
+	if r.count() != 0 {
+		t.Errorf("asked the model about %d panes that already had names", r.count())
+	}
+	if _, wrote := f.tasks["%1"]; wrote {
+		t.Errorf("renamed a pane on startup: %q", f.tasks["%1"])
+	}
+}
+
+// The pane with no name is the whole point of the first pass, so it is not
+// held back with the rest.
+func TestARestartStillNamesABlankPane(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+	f.screens["%2"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: token refresh race\n"}
+	p := newColdPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex"},
+		&tmux.Pane{ID: "%2", Command: "codex", RemuxTask: "fix issue 270"},
+	))
+	settle(t, p)
+
+	if got := f.tasks["%1"]; got != "token refresh race" {
+		t.Errorf("the blank pane was not named: %q", got)
+	}
+	if _, wrote := f.tasks["%2"]; wrote {
+		t.Errorf("the named pane was dragged in with it: %q", f.tasks["%2"])
+	}
+}
+
+// One prompt has a ceiling. Past it the run costs the most and returns the
+// least: killed at the timeout, every tier tried, then a backoff.
+func TestOneBatchIsCapped(t *testing.T) {
+	f := newFake()
+	var panes []*tmux.Pane
+	for i := 1; i <= maxBatch+4; i++ {
+		id := fmt.Sprintf("%%%d", i)
+		f.screens[id] = busyScreen
+		panes = append(panes, &tmux.Pane{ID: id, Command: "codex"})
+	}
+
+	r := &fakeRunner{label: "fake", out: "1: a name\n"}
+	p := newPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100, panes...))
+	settle(t, p)
+
+	if n := p.Report().Runs[0].Panes; n != maxBatch {
+		t.Errorf("sent %d panes in one prompt, cap is %d", n, maxBatch)
+	}
+	// The ones left out must not have been marked as asked, or they wait out
+	// a cooldown they never cost.
+	left := 0
+	for _, pane := range panes[maxBatch:] {
+		if p.asked.due(pane.ID, askEvery) {
+			left++
+		}
+	}
+	if left != len(panes)-maxBatch {
+		t.Errorf("%d of %d panes left out of the batch are still due", left, len(panes)-maxBatch)
 	}
 }

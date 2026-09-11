@@ -884,3 +884,66 @@ Scroll the pager and the control follows; tap the control and the pager
 follows; on the repo screen the swipe writes `?t=prs`; a deep link to `?t=prs`
 lands on the second page without animating in from the first; a list inside a
 page still scrolls vertically.
+
+# Why a restart renamed the whole workspace
+
+Kevin: "sometimes it is renaming all the 22 panes, even though I'm using a few
+of them". Two causes, and the second one was mine.
+
+## Nothing survives the process
+
+Neither the activity gate's marks nor the ninety-second cooldown is persisted.
+So on the first tree after a start, every pane is both unseen by the gate
+(`!had` returns it) and never asked, and the first pass sends all of them in
+one batch. Eight restarts shipping the swipe fixes is eight full sweeps.
+
+`Pass.settle` marks the panes that arrive already carrying a name, once, on the
+first tree. They keep what they have until they do something - the same bargain
+idle panes were already given. A pane with no name is deliberately left out of
+that: naming those is the whole point of the first pass.
+
+## A full sweep used to be silent
+
+Before, `current name:` sat above the screen in the prompt, the model anchored
+hard on it, and most panes came back `SAME`, which writes nothing. Moving the
+name below the screen and asking for it to be checked is what corrected "issues
+129 215" to "start api 128" - and it is also why a full sweep now re-derives
+all twenty-two and rewrites every one whose wording drifted.
+
+Measured since: on an eight-pane batch of panes that had not moved, six came
+back `SAME` and one was `NONE`. So the anchoring is not gone, and a sweep of a
+quiet workspace is still mostly silent. What the restarts produced was a sweep
+of twenty-two panes whose names really had drifted over a day of work, all
+rewritten at once.
+
+The sweep was always happening. The prompt change is what made it visible. Both
+halves are worth keeping; what was wrong is that the sweep happened at all on a
+restart.
+
+## And the batch had no ceiling
+
+The batch exists because the per-call floor is process startup: eight panes cost
+about what one does. That argument stops holding somewhere above it. Twenty-two
+panes is a 32KB prompt measured at 76 seconds against a 90 second timeout, and
+past the timeout the call is killed, every tier is tried in turn, and the chain
+backs off - so the most expensive run is the one that returns nothing. The log
+showed 22 `signal: killed` and a backoff climbing 1m30s, 3m, 6m. Worse, a
+backoff makes every pane due again at once, so the next attempt is another full
+sweep and fails the same way.
+
+`maxBatch` is 8. The rest wait for the next tick two seconds later, and only the
+panes actually sent are marked as asked, so nothing waits out a cooldown it
+never cost.
+
+## And the timeout was set against the wrong measurement
+
+Ninety seconds came from a 4.6s trivial prompt. On the real workspace: 22 panes
+at 76s, 8 panes at 63s, both seen past ninety. The cost is barely about the
+prompt - it is `claude -p` starting up and queueing behind everything else on a
+laptop where twenty agents share one account.
+
+So `maxBatch` alone does not buy the headroom; 63s against a 90s ceiling is not
+a margin. `modelTimeout` is 150s now. Holding the slot longer is close to free -
+naming is on a ninety-second cooldown anyway and one call in flight only delays
+the next batch by a tick - while being killed at the timeout is the most
+expensive outcome there is.

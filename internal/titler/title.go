@@ -37,6 +37,19 @@ const askEvery = 90 * time.Second
 // saying, and for what it cost when it was not true.
 const maxScreenChars = 1500
 
+// maxBatch is the most panes that go into one prompt.
+//
+// The batch exists because the per-call floor is process startup, so asking
+// about eight panes costs about what asking about one does. That argument
+// stops holding somewhere above it: twenty-two panes is a 32KB prompt, it was
+// measured at 76 seconds against a 90 second timeout, and past the timeout the
+// call is killed, every tier is tried in turn, and the chain backs off - so
+// the run that costs the most is also the one that returns nothing.
+//
+// Past this the rest wait for the next tick, two seconds later. Nothing is
+// dropped: only the panes actually sent are marked as asked.
+const maxBatch = 8
+
 // maxTitle is the longest task title that reaches tmux. The rule asked for is
 // three to five words; this is the guard for when a model answers with a
 // paragraph anyway.
@@ -94,6 +107,11 @@ func (p *Pass) startNaming(ctx context.Context, due []job) {
 		p.naming.Store(false)
 		return
 	}
+	if len(due) > maxBatch {
+		due = due[:maxBatch]
+	}
+	// After the cap, so a pane that did not make this batch is still due and
+	// joins the next one rather than waiting out a cooldown it never cost.
 	for _, j := range due {
 		p.asked.mark(j.ID)
 	}

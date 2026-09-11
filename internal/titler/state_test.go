@@ -47,6 +47,18 @@ func newFake() *fakePanes {
 func newPass(tm Panes) *Pass {
 	p := New(tm)
 	p.Away = func() bool { return false }
+	// Every test but the two about startup is describing a workspace that has
+	// been running a while, where the first tree is long past. Leaving this
+	// false would make each of them a test of Pass.settle instead of the thing
+	// it is named after - the named pane would simply be held back.
+	p.settled = true
+	return p
+}
+
+// newColdPass is a process that has just started: nothing seen, nothing asked.
+func newColdPass(tm Panes) *Pass {
+	p := newPass(tm)
+	p.settled = false
 	return p
 }
 

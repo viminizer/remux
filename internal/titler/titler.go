@@ -91,6 +91,9 @@ type Pass struct {
 	awayAt    time.Time       // when it was asked
 	couldName bool            // whether naming was possible on the previous pass
 
+	// settled is whether the first tree has been seen - see Pass.settle.
+	settled bool
+
 	// The journal - see journal.go for why the only part of remux that
 	// spends money is also the only part that keeps a history of itself.
 	runs  []Run
@@ -199,6 +202,20 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 	short := p.writeProjects(ctx, agents)
 
 	naming := p.Enabled == nil || p.Enabled()
+
+	// A restart is not a reason to rename the workspace.
+	//
+	// Neither the cooldown nor the activity gate survives the process, so on
+	// the first tree every pane is both unseen and never asked, and the first
+	// pass sends all of them in one batch. That is one enormous model call and
+	// then twenty-two rewrites of names that were already right - and shipping
+	// a fix means restarting, so a day of them is a day of churn.
+	//
+	// Panes that already carry a name start on the cooldown instead. They keep
+	// what they have until they do something, which is the same bargain idle
+	// panes already have (see the build log). A pane with no name is left
+	// alone here: naming those is the whole point of the first pass.
+	p.settle(agents, naming)
 
 	// Naming has just become possible, so every pane is made stale once.
 	//
@@ -380,4 +397,26 @@ func (p *Pass) report(_ context.Context, paneID string, err error) error {
 	}
 	delete(p.failed, paneID)
 	return nil
+}
+
+// settle marks the panes that arrive already named, once, on the first tree.
+//
+// It runs only when naming is on, because a pass that starts switched off has
+// nothing to protect: the names are being cleared, not kept.
+func (p *Pass) settle(agents []*tmux.Pane, naming bool) {
+	if !naming {
+		return
+	}
+	p.mu.Lock()
+	first := !p.settled
+	p.settled = true
+	p.mu.Unlock()
+	if !first {
+		return
+	}
+	for _, pane := range agents {
+		if pane.RemuxTask != "" {
+			p.asked.mark(pane.ID)
+		}
+	}
 }

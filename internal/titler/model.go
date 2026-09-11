@@ -18,11 +18,24 @@ type Runner interface {
 	Name() string
 }
 
-// modelTimeout bounds one batched call. Measured, `claude -p --model haiku`
-// takes about 4.6s for a trivial prompt and roughly 3s of that is CLI startup
-// rather than inference - which is also why the whole workspace goes in one
-// call. A batch of ten panes costs about what one pane costs.
-const modelTimeout = 90 * time.Second
+// modelTimeout bounds one batched call.
+//
+// Ninety seconds was set against a 4.6s measurement on a trivial prompt, and
+// on the real workspace it was not close to enough. Twenty-two panes measured
+// 76s, eight panes measured 63s, and both have been seen past ninety - so the
+// cost is barely about the prompt at all. Most of it is `claude -p` starting
+// up and then queueing behind everything else on a laptop where twenty agents
+// share one account, which is a number remux cannot predict and should not try
+// to.
+//
+// Being killed at the timeout is the worst outcome available: the prompt was
+// paid for, nothing comes back, tier 2 re-sends the same thing to a more
+// expensive model, and the chain ends up backing off - which then makes every
+// pane due at once, so the retry is a bigger call that fails the same way. The
+// log had twenty-two of those. A slot held longer costs nothing by comparison:
+// naming is on a ninety-second cooldown regardless, and one call in flight
+// only delays the next batch by a tick.
+const modelTimeout = 150 * time.Second
 
 // Chain is the fallback order from the issue. Nothing here pins a model id
 // beyond haiku: `codex exec` uses whatever it is configured with, because
