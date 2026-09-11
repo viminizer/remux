@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { useTabSwipe } from '../shell/useTabSwipe'
 import { api } from '../api'
 import type { Pane } from '../types'
 import type { Issue, PR, Repo } from './types'
@@ -48,9 +50,17 @@ export function RepoScreen({
   const open = (meta?.panes ?? []).map((id) => panes.get(id)).filter((p): p is Pane => !!p)
   const [menu, setMenu] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const swipeRef = useTabSwipe({
+    index: tab === 'issues' ? 0 : 1,
+    count: 2,
+    onChange: (i) => onTab(i === 0 ? 'issues' : 'prs'),
+    // The menu is a small panel answering a question, like a sheet. Swiping
+    // the screen under it would change tab behind an open menu.
+    enabled: !menu,
+  })
 
   return (
-    <div className="screen on gh-screen">
+    <div className="screen on gh-screen" ref={swipeRef}>
       <div className="screen-head">
         <button className="iconbtn" onClick={onBack} aria-label="Back">
           ←
@@ -109,11 +119,14 @@ export function RepoScreen({
         </button>
       </div>
 
-      {tab === 'issues' ? (
-        <IssuesTab repo={repo} total={meta?.issues ?? 0} viewer={viewer} onOpen={onOpenIssue} />
-      ) : (
-        <PRsTab repo={repo} viewer={viewer} onOpen={onOpenPR} />
-      )}
+      {/* Keyed so a swipe replays the slide-in from the side it came from. */}
+      <div className={`gh-tab ${tab === 'issues' ? 'from-left' : 'from-right'}`} key={tab}>
+        {tab === 'issues' ? (
+          <IssuesTab repo={repo} total={meta?.issues ?? 0} viewer={viewer} onOpen={onOpenIssue} />
+        ) : (
+          <PRsTab repo={repo} viewer={viewer} onOpen={onOpenPR} />
+        )}
+      </div>
 
       <div className="actions">
         {open.length ? (

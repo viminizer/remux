@@ -688,3 +688,59 @@ the pane is done. The new prompt applies as panes move.
 
 Do not "fix" this by adding the unnamed panes' `always` treatment to named
 ones. It is the decision, not an oversight.
+
+# Swipe between tabs
+
+Three screens have a two-tab segmented control: the GitHub overlay (Inbox and
+Repos) and every repo screen (Issues and PRs). The control sits at the top of
+the screen, which is the one place a thumb holding a phone cannot reach, so the
+only way to change tab was to move your hand.
+
+## The gesture already had an owner
+
+`useDrawerSwipe` listens at the app root and takes every rightward drag. Tabs
+cannot simply take the horizontal axis, because the drawer is how you leave
+these screens.
+
+The rule is the one that hook already uses for mirror mode, applied one level
+in: **the inner gesture owns the drag only while it has somewhere to go.** On
+the first tab a rightward drag has nowhere to go, so it is passed on and the
+drawer opens exactly as before, the same way a rightward drag on output that is
+scrolled fully left belongs to the drawer.
+
+`useTabSwipe` listens on the screen rather than the root, so it sees the drag
+first, and where it wants the gesture it calls `stopPropagation` before the
+root handler ever sees that move. Both hooks commit to an axis at the same
+eight pixels, so the drawer is still `undecided` at that moment and simply
+never decides. A drag that starts inside something that scrolls sideways - the
+filter chips - is left alone for the same reason, which is the same question
+`scrollerAt` asks in the drawer hook.
+
+`claim()` is split out as a pure function because it is the whole of the
+decision and none of the DOM, and `web/test/tabSwipe.test.js` covers it. The
+test that matters is the third one: a rightward drag on the first tab is not
+claimed.
+
+## The content does not follow the finger
+
+The drawer follows the finger because it is one panel sliding over another and
+the gesture is the animation. A tab is a whole screen of rows that would have
+to exist twice to be dragged between, and on the repo screen that means
+fetching the pull requests in order to animate past them - a GitHub call spent
+on a frame. The tab changes on release and the incoming list slides in 18px
+from the side it came from, which is the part the eye needs, and it costs one
+keyframe. It is off under `prefers-reduced-motion`.
+
+## Verified in the browser
+
+Synthetic touch pointer events against the running app, because the hook
+ignores anything that is not a finger:
+
+- swipe left on Inbox goes to Repos, swipe right goes back, drawer never opens
+- on the repo screen the swipe writes the route, so `?t=prs` is in the URL and
+  survives a reload, exactly as tapping the control does
+- a rightward drag on the first tab passes all ten of its moves up to the
+  window; a leftward drag passes none. That is the drawer cooperation, measured
+  rather than assumed.
+- a swipe starting on the filter chips, forced to overflow, does not change tab
+- a mostly-vertical drag does not change tab

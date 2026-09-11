@@ -934,6 +934,16 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    .screen-body normally carries, and every row pays its own. */
 
 .gh-screen .screen-body{padding:0}
+
+/* The swiped tab body. It exists to hold the slide-in, so it has to be
+   transparent to the column layout: the list inside it is what scrolls, and
+   without min-height:0 that list grows instead and the whole screen scrolls. */
+.gh-tab{display:flex;flex-direction:column;flex:1;min-height:0}
+@keyframes gh-tab-in{from{opacity:.4;transform:translateX(var(--from))}to{opacity:1;transform:none}}
+.gh-tab.from-left{--from:-18px}
+.gh-tab.from-right{--from:18px}
+.gh-tab{animation:gh-tab-in .16s ease-out}
+@media (prefers-reduced-motion:reduce){.gh-tab{animation:none}}
 .gh-screen .screen-head h2{
   flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
