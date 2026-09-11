@@ -355,10 +355,24 @@ func (pc *previewCache) get(id string) (string, bool) {
 	return e.text, true
 }
 
+// put stores one screen and drops every entry that has expired.
+//
+// The sweep is what keeps this bounded. Without it the map held 40 lines of
+// screen for every pane the process had ever seen, and remux runs as a
+// LaunchAgent for weeks - so a pane killed in the morning was still costing
+// memory at midnight. An expired entry is already unreachable, since get
+// refuses anything past the TTL, so nothing is lost by removing it. The map
+// is one entry per live pane and the walk is a few dozen comparisons.
 func (pc *previewCache) put(id, text string) {
+	now := time.Now()
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	pc.m[id] = previewEntry{text: text, at: time.Now()}
+	for k, e := range pc.m {
+		if now.Sub(e.at) > pc.ttl {
+			delete(pc.m, k)
+		}
+	}
+	pc.m[id] = previewEntry{text: text, at: now}
 }
 
 // PreviewLines is how much of a screen a status verdict needs. The classifier
