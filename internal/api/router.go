@@ -265,9 +265,7 @@ func lastLine(screen string) string {
 	lines := strings.Split(strings.TrimRight(agent.StripANSI(screen), "\n"), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		if t := strings.TrimSpace(lines[i]); t != "" {
-			if len(t) > 120 {
-				t = t[:120]
-			}
+			t = agent.TruncBytes(t, 120)
 			return t
 		}
 	}

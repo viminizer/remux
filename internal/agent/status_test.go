@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // Fixtures are real captures from this machine's workspace, except the two
@@ -196,5 +197,37 @@ func TestSingleNumberedLineIsNotAMenu(t *testing.T) {
 	screen := "I found three problems.\n  1. No tests cover the refund path\n\n› Ask Codex to do anything\n"
 	if got := Classify("codex", "", screen); got == Waiting {
 		t.Errorf("got waiting for a single numbered prose line")
+	}
+}
+
+func TestTruncBytesKeepsRunesWhole(t *testing.T) {
+	const ko = "한" // three bytes
+	cases := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{"short enough", "hello", 10, "hello"},
+		{"exactly the budget", "hello", 5, "hello"},
+		{"ascii cut is exact", "hello", 3, "hel"},
+		{"boundary lands between runes", "a" + ko, 4, "a" + ko},
+		{"cut inside a rune backs up", "a" + ko, 3, "a"},
+		{"cut one byte into a rune", "a" + ko, 2, "a"},
+		{"no whole rune fits", ko, 2, ""},
+		{"zero budget", "hello", 0, ""},
+		{"negative budget", "hello", -1, ""},
+	}
+	for _, c := range cases {
+		got := TruncBytes(c.in, c.n)
+		if got != c.want {
+			t.Errorf("%s: TruncBytes(%q, %d) = %q, want %q", c.name, c.in, c.n, got, c.want)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("%s: TruncBytes(%q, %d) = % x, not valid UTF-8", c.name, c.in, c.n, got)
+		}
+		if len(got) > c.n && c.n > 0 {
+			t.Errorf("%s: TruncBytes(%q, %d) is %d bytes, over budget", c.name, c.in, c.n, len(got))
+		}
 	}
 }

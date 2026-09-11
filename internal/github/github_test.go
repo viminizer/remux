@@ -3,7 +3,10 @@ package github
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 )
 
 func TestSplitRepo(t *testing.T) {
@@ -133,5 +136,22 @@ func TestPRMineAndBlocked(t *testing.T) {
 	// Still running is not yet a problem.
 	if (PR{Checks: ChecksPending}).Blocked() {
 		t.Error("pending checks are not a blocker")
+	}
+}
+
+// TestTrimCommentCutsWholeCharacters guards the bug in #44: the budget is in
+// bytes, so slicing to it directly split whichever character sat on the
+// boundary. json.Marshal then replaced the remains with U+FFFD, and a trimmed
+// Korean comment reached the phone ending in a replacement glyph.
+func TestTrimCommentCutsWholeCharacters(t *testing.T) {
+	for _, pad := range []int{597, 598, 599, 600} {
+		body := strings.Repeat("a", pad) + "한글"
+		c := trimComment("k", body, time.Now())
+		if !utf8.ValidString(c.Body) {
+			t.Errorf("pad %d: body ends % x, not valid UTF-8", pad, c.Body[len(c.Body)-4:])
+		}
+		if len(c.Body) > commentBudget {
+			t.Errorf("pad %d: body is %d bytes, over the %d budget", pad, len(c.Body), commentBudget)
+		}
 	}
 }

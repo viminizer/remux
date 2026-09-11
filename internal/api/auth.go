@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/viminizer/remux/internal/agent"
 	"github.com/viminizer/remux/internal/config"
 	"tailscale.com/client/local"
 	"tailscale.com/tailcfg"
@@ -183,7 +184,7 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return agent.TruncBytes(s, n) + "…"
 }
 
 func atoiClamp(s string, lo, hi int) int {
