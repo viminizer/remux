@@ -234,3 +234,48 @@ func TestMatcherNotBlockedForOrdinaryMiss(t *testing.T) {
 		t.Error("a directory that is simply not a repo was reported as refused")
 	}
 }
+
+// A refusal is recorded against the directory, not against the matcher, so it
+// expires with the cache entry.
+//
+// It used to latch: one slow probe - a cold cache, a busy disk, a directory
+// that answered late - put "grant Full Disk Access" on the GitHub screen for
+// the life of the process, telling Kevin to grant a permission he had already
+// granted. Only a restart cleared it.
+func TestMatcherBlockedExpires(t *testing.T) {
+	m := NewMatcher()
+	m.Probe = 60 * time.Millisecond
+	m.TTL = 150 * time.Millisecond
+
+	if got := m.Repo(blockingDir(t)); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+	if !m.Blocked() {
+		t.Fatal("a probe that never answered was not recorded")
+	}
+
+	time.Sleep(m.TTL + 50*time.Millisecond)
+	if m.Blocked() {
+		t.Error("the refusal outlived its cache entry")
+	}
+}
+
+// One unreadable directory must not hide a healthy one, and a healthy one must
+// not hide a refusal: Blocked is about whether anything is still refused.
+func TestMatcherBlockedIsPerDirectory(t *testing.T) {
+	m := NewMatcher()
+	m.Probe = 60 * time.Millisecond
+
+	m.Repo(t.TempDir())
+	if m.Blocked() {
+		t.Fatal("an ordinary directory was reported as refused")
+	}
+	m.Repo(blockingDir(t))
+	if !m.Blocked() {
+		t.Error("a later refusal was lost")
+	}
+	m.Repo(t.TempDir())
+	if !m.Blocked() {
+		t.Error("a good probe cleared a refusal that is still live")
+	}
+}
