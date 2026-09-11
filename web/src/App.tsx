@@ -339,11 +339,14 @@ export default function App() {
   // - the sheet is the thing being answered - and off past the breakpoint,
   // where the drawer is already beside the content.
   const drawerEl = useRef<HTMLElement>(null)
+  // The GitHub screens page their tabs with a native horizontal scroller, so
+  // the browser needs the axis there and the drawer has to stand down - see
+  // TabPager. Both screens keep a back arrow, so nothing becomes unreachable.
   const { rootRef, drag } = useDrawerSwipe({
     open: drawerOpen,
     setOpen: setDrawerOpen,
     panel: drawerEl,
-    enabled: !pinned && sheet === 'none',
+    enabled: !pinned && sheet === 'none' && !ghOpen,
   })
 
   // Stable identity on purpose. PaneMenu's outside-click effect lists its
@@ -672,7 +675,7 @@ export default function App() {
   const cmd = current ? displayCommand(meta?.cmd ?? current.command) : ''
 
   return (
-    <div className="phone" ref={rootRef}>
+    <div className={`phone ${ghOpen ? 'paging' : ''}`} ref={rootRef}>
       {/* The scrim has to know about every sheet, not just the pane ones.
           The GitHub sheets were left out when they were added, so tapping
           beside one did nothing and Done or back were the only ways out. */}

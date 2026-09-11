@@ -44,6 +44,12 @@ button,input,textarea,select{font-family:inherit}
   position:relative;flex:1;min-height:0;display:flex;flex-direction:column;
   background:var(--base);overflow:hidden;touch-action:pan-y pinch-zoom;
 }
+/* While a tab pager is open the browser does the horizontal paging, so it has
+   to be allowed to. A descendant cannot widen touch-action - the effective
+   value is the intersection down the tree - so it is relaxed here, at the
+   element that narrowed it. The drawer swipe is off on those screens as a
+   result; both of them have a back arrow. */
+.phone.paging{touch-action:pan-x pan-y pinch-zoom}
 
 .pane-col{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 
@@ -935,15 +941,24 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 
 .gh-screen .screen-body{padding:0}
 
-/* The swiped tab body. It exists to hold the slide-in, so it has to be
-   transparent to the column layout: the list inside it is what scrolls, and
-   without min-height:0 that list grows instead and the whole screen scrolls. */
-.gh-tab{display:flex;flex-direction:column;flex:1;min-height:0}
-@keyframes gh-tab-in{from{opacity:.4;transform:translateX(var(--from))}to{opacity:1;transform:none}}
-.gh-tab.from-left{--from:-18px}
-.gh-tab.from-right{--from:18px}
-.gh-tab{animation:gh-tab-in .16s ease-out}
-@media (prefers-reduced-motion:reduce){.gh-tab{animation:none}}
+/* The tab pager. Two pages side by side, scrolled and snapped by the browser
+   rather than by a gesture of ours - see TabPager for the three attempts that
+   went the other way. overscroll-behavior-x keeps a swipe past the last tab
+   from becoming the browser's own back gesture. */
+.tab-pager{
+  display:flex;flex:1;min-height:0;
+  overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x mandatory;overscroll-behavior-x:contain;
+  scrollbar-width:none;
+}
+.tab-pager::-webkit-scrollbar{display:none}
+/* A page is exactly the viewport wide and never narrower: min-width:0 would
+   let a long issue title set the width and the snap points would drift. */
+.tab-page{
+  flex:0 0 100%;width:100%;
+  display:flex;flex-direction:column;min-height:0;
+  scroll-snap-align:start;scroll-snap-stop:always;
+}
 .gh-screen .screen-head h2{
   flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }

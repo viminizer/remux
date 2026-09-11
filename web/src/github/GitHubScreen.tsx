@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
-import { useTabSwipe } from '../shell/useTabSwipe'
+import { TabPager } from '../shell/TabPager'
 import type { Pane } from '../types'
 import { dotClass } from '../types'
 import type { GitHubSnapshot, Inbox, InboxItem, Repo } from './types'
@@ -42,11 +42,7 @@ export function GitHubScreen({
   onUnmute: (item: InboxItem) => void
 }) {
   const [tab, setTab] = useState<'inbox' | 'repos'>('inbox')
-  const swipeRef = useTabSwipe({
-    index: tab === 'inbox' ? 0 : 1,
-    count: 2,
-    onChange: (i) => setTab(i === 0 ? 'inbox' : 'repos'),
-  })
+  const onIndex = useCallback((i: number) => setTab(i === 0 ? 'inbox' : 'repos'), [])
   // Defended rather than assumed: these come off the wire, and a field that
   // is absent must degrade to an empty screen, never to a crash that takes
   // the whole app down.
@@ -65,7 +61,7 @@ export function GitHubScreen({
   const total = inbox.needsYou.length + inbox.assigned.length + inbox.yourPRs.length
 
   return (
-    <div className="screen on gh-screen" ref={swipeRef}>
+    <div className="screen on gh-screen">
       <div className="screen-head">
         <button className="iconbtn" onClick={onBack} aria-label="Back">
           ←
@@ -109,24 +105,21 @@ export function GitHubScreen({
 
       {snap.panesBlocked && <PanesBlockedNote />}
 
-      {/* Keyed so a swipe remounts the list and replays the slide-in. The
-          direction it comes from is the only cue that the screen moved. */}
-      <div className={`gh-tab ${tab === 'inbox' ? 'from-left' : 'from-right'}`} key={tab}>
-        {tab === 'inbox' ? (
-          <InboxTab
-            inbox={inbox}
-            muted={snap.muted ?? []}
-            cold={cold}
-            panes={panes}
-            onOpenItem={onOpenItem}
-            onOpenPane={onOpenPane}
-            onMute={onMute}
-            onUnmute={onUnmute}
-          />
-        ) : (
-          <ReposTab repos={repos} cold={cold} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
-        )}
-      </div>
+      {/* Both mounted: a page has to exist to be scrolled to. Here that is
+          free - both read the one snapshot already in hand. */}
+      <TabPager index={tab === 'inbox' ? 0 : 1} onIndex={onIndex}>
+        <InboxTab
+          inbox={inbox}
+          muted={snap.muted ?? []}
+          cold={cold}
+          panes={panes}
+          onOpenItem={onOpenItem}
+          onOpenPane={onOpenPane}
+          onMute={onMute}
+          onUnmute={onUnmute}
+        />
+        <ReposTab repos={repos} cold={cold} panes={panes} onOpenRepo={onOpenRepo} onAdd={onAdd} />
+      </TabPager>
     </div>
   )
 }

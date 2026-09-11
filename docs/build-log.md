@@ -822,3 +822,65 @@ mostly-vertical drag, which still does not.
 was left alone: the drawer is pinned at this window size so the change could
 not be verified here, and shipping an unverifiable fix is what produced this
 entry and the one above it.
+
+## Giving the gesture back to the browser
+
+Three attempts at a pointer-event swipe all worked on a desktop and did nothing
+on the phone, in the same place: over the list. The fourth stopped trying.
+
+The list is a scroll container. When a finger lands on one and starts to move,
+the browser decides whether it owns the gesture before any JavaScript can
+claim it, and when it takes it, it fires `pointercancel` and stops sending
+moves. A thumb swiping sideways across a list starts its arc downward, so the
+browser took it every time. Swipes over the warning bar worked for one reason:
+there is no scroller under it, so nothing cancelled the pointer.
+
+None of that is tunable. The axis test, the travel threshold and the strip
+check were all arguing about events that had stopped arriving.
+
+**Synthetic PointerEvents cannot reproduce it.** They are injected below the
+touch pipeline, so no scroll ever starts and no cancel is ever sent. Every fix
+tested clean here and shipped broken, three times. That is the part worth
+remembering: the test could not fail.
+
+So the paging is the browser's now. `TabPager` is two pages in one horizontal
+scroller with `scroll-snap-type: x mandatory`. Nested scrollers on two axes are
+something browsers do natively and well - this one scrolls across, the list
+inside each page scrolls down, and there is no arbitration to lose. Snapping
+gives the finger-following the old version had explicitly given up on.
+
+### What it costs
+
+`.phone` is `touch-action: pan-y`, which is what hands every horizontal drag to
+`useDrawerSwipe`. A descendant cannot widen that - the effective value is the
+intersection down the tree - so `.phone` itself relaxes to `pan-x pan-y
+pinch-zoom` while a GitHub screen is open, and the drawer swipe stands down
+there. Both screens keep a back arrow.
+
+Both tabs are mounted, because a page has to exist to be scrolled to. On the
+GitHub screen that is free - both read the one snapshot already in hand. On the
+repo screen it means `gh pr list` runs when the repo opens rather than when the
+tab is first tapped: about half a second, measured, in exchange for the tab
+being there when you arrive.
+
+### Two self-inflicted bugs on the way
+
+A `ResizeObserver` reset `scrollLeft` on every callback, including the initial
+one and the ones the scroll itself caused, which pinned the pager to the page
+it started on. It now acts only on a real width change.
+
+The scroll handler was coalesced with `requestAnimationFrame`, which does not
+run in a hidden tab - so the sync could not be tested here at all. It reads the
+scroll event directly now: a divide and a compare, with an early return on
+every event but the one that crosses the half way point. The control lights the
+tab you are heading for while your finger is still moving, which is what a pager
+should do. For the same reason the programmatic scroll is instant rather than
+smooth when the document is hidden, where a smooth scroll is deferred and may
+never run, leaving the control and the pager disagreeing.
+
+### Verified
+
+Scroll the pager and the control follows; tap the control and the pager
+follows; on the repo screen the swipe writes `?t=prs`; a deep link to `?t=prs`
+lands on the second page without animating in from the first; a list inside a
+page still scrolls vertically.
