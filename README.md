@@ -38,6 +38,13 @@ The tmux layer refuses `attach-session`, `switch-client`, `kill-server`,
 `scripts/laptop-invariant.sh before` / `after` proves it: it snapshots the
 active window and every pane's geometry, and fails if anything moved.
 
+The one thing remux writes to panes you are using is three user options -
+`@remux_title`, `@remux_task` and `@remux_state` (see **Pane names on the
+laptop**). A user option is inert: nothing renders it unless your tmux config
+asks for it, and no running program can be disturbed by it. The invariant
+script reports every one of those writes and fails if a value is outside what
+remux is allowed to write.
+
 ## Install
 
 Download the release binary, make it executable, then:
@@ -131,6 +138,30 @@ it opens `/#/p/%14` directly.
 
 The phone needs ordinary internet to receive pushes, not just Tailscale, and
 the Mac needs outbound access to the push service.
+
+## Pane names on the laptop
+
+remux writes two user options onto each agent pane, so the laptop can read the
+same thing the phone does:
+
+| option | what | cost |
+|---|---|---|
+| `@remux_state` | one glyph: `!` blocked on an answer, `✳` working, `✓` idle | free, from the classifier that already runs |
+| `@remux_task` | 3-5 words naming the work, read off the screen by a cheap model | a fraction of a cent, and only when the work changes |
+
+Neither is rendered by tmux on its own. Put them in your status line to see
+them - this is the snippet the glyph exists for:
+
+```tmux
+set -g window-status-format         '#I:#W#{?#{!=:#{@remux_state},}, #{@remux_state},}'
+set -g window-status-current-format '#I:#W#{?#{!=:#{@remux_state},}, #{@remux_state},}'
+set -g pane-border-status top
+set -g pane-border-format ' #{?#{!=:#{@remux_task},},#{@remux_task},#{pane_current_command}} #{@remux_state} '
+```
+
+`@remux_task` is the only part of remux that spends money, so it has a switch
+on the Settings screen. Turning it off clears the names it wrote; the glyph
+half keeps working and has no switch, because it costs nothing.
 
 ## Development
 

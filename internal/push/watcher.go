@@ -98,24 +98,15 @@ func (w *Watcher) tick(ctx context.Context) {
 		}
 	}
 
-	stale := map[string]bool{}
-	for _, id := range w.gate.Changed(watched) {
-		stale[id] = true
-	}
-	ids := make([]string, 0, len(stale))
-	for _, p := range watched {
-		if stale[p.ID] {
-			ids = append(ids, p.ID)
-		}
-	}
-
-	screens := w.Tmux.Previews(ctx, ids, tmux.PreviewLines)
-
-	for _, p := range watched {
-		if !stale[p.ID] {
+	for _, s := range w.gate.Capture(ctx, w.Tmux, watched) {
+		// A capture that failed says nothing about the pane. Classifying the
+		// empty string gives Unknown, and a verdict of Unknown here is a
+		// transition like any other - it would fire "finished" on a pane that
+		// is still working, or lose the waiting mark on one that is not.
+		if !s.Captured {
 			continue
 		}
-		w.transition(p, agent.Classify(p.Command, p.Title, screens[p.ID]))
+		w.transition(s.Pane, agent.Classify(s.Pane.Command, s.Pane.Title, s.Screen))
 	}
 
 	// Forget panes that no longer exist, so a recycled pane id does not

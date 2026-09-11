@@ -29,15 +29,23 @@ const modelTimeout = 90 * time.Second
 // there is no `codex models list` to check against and a hardcoded "cheapest"
 // id would quietly rot.
 //
+// Every tier runs with its tools off, and that is not belt-and-braces. The
+// prompt is built out of the rendered screens of twenty panes - text those
+// agents pulled from the web, from repos, from issue trackers - and it is fed
+// to an agentic CLI on stdin. Without these flags a pane displaying a crafted
+// instruction block is a direct path from "something one of Kevin's agents
+// read" to "a second agent ran a tool". Naming a pane needs no tools at all,
+// so there is nothing to trade away.
+//
 // Tier 4 is not in this list. It is not a model at all - it is the last user
 // line off the pane's own screen - so it lives in title.go where the screen
 // is. What matters is that it cannot fail, so the chain always terminates and
 // a pane is never left blank or, worse, stale but confident.
 func Chain() []Runner {
 	return []Runner{
-		&cmdRunner{label: "claude haiku", bin: "claude", args: []string{"-p", "--model", "haiku"}},
-		&cmdRunner{label: "claude default", bin: "claude", args: []string{"-p"}},
-		&cmdRunner{label: "codex", bin: "codex", args: []string{"exec"}},
+		&cmdRunner{label: "claude haiku", bin: "claude", args: []string{"-p", "--tools", "", "--model", "haiku"}},
+		&cmdRunner{label: "claude default", bin: "claude", args: []string{"-p", "--tools", ""}},
+		&cmdRunner{label: "codex", bin: "codex", args: []string{"exec", "--sandbox", "read-only"}},
 	}
 }
 
@@ -62,6 +70,11 @@ func (r *cmdRunner) Run(ctx context.Context, prompt string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, r.args...)
+	// Somewhere with nothing in it. Unset, the child inherits remux's working
+	// directory, which under launchd is "/" and in development is whatever
+	// repo it was started from - so a CLI that reads project config, or is
+	// talked into looking around, starts inside real work.
+	cmd.Dir = os.TempDir()
 	cmd.Stdin = strings.NewReader(prompt)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -146,7 +159,13 @@ func hidIdle() (time.Duration, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "ioreg", "-c", "IOHIDSystem", "-d", "1").Output()
+	// -r is not optional. Without it `-d 1` truncates the registry one level
+	// below Root and never reaches IOHIDSystem at all: the command prints a
+	// single "+-o Root" line with no properties, HIDIdleTime is never found,
+	// and away() returns false forever - which silently deleted the only cost
+	// control this feature has. `ioreg -c IOHIDSystem -r -d 1` is the form
+	// that prints the key.
+	out, err := exec.CommandContext(ctx, "ioreg", "-c", "IOHIDSystem", "-r", "-d", "1").Output()
 	if err != nil {
 		return 0, false
 	}

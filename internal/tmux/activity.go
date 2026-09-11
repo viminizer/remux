@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -72,4 +73,59 @@ func (g *ActivityGate) Forget() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.seen = map[string]int64{}
+}
+
+// Previewer is the slice of tmux Capture needs. *Client satisfies it, and so
+// does the fake both consumers test against.
+type Previewer interface {
+	Previews(ctx context.Context, paneIDs []string, n int) map[string]string
+}
+
+// Screened is one pane the gate let through, paired with the screen that
+// changed.
+type Screened struct {
+	Pane   *Pane
+	Screen string
+	// Captured separates "capture-pane failed for this pane" from "this pane
+	// is blank". Previews omits a pane it could not read, so both arrive as
+	// the empty string, and they mean opposite things: a blank screen is a
+	// verdict, a failed exec is the absence of one. A caller that conflates
+	// them reclassifies a working pane as Unknown on one flaky exec and
+	// clears the glyph it had.
+	Captured bool
+}
+
+// Capture runs the gate over panes and reads the screens of the ones that
+// moved, returned in the order they were given.
+//
+// Both consumers of the gate want exactly this sequence - filter, capture,
+// classify - and each had grown its own copy of it. The copies drifted: the
+// push watcher prunes its per-pane maps when a pane disappears and the titler
+// did not, so the same fix had to be found twice.
+func (g *ActivityGate) Capture(ctx context.Context, p Previewer, panes []*Pane) []Screened {
+	stale := map[string]bool{}
+	for _, id := range g.Changed(panes) {
+		stale[id] = true
+	}
+	ids := make([]string, 0, len(stale))
+	for _, pane := range panes {
+		if stale[pane.ID] {
+			ids = append(ids, pane.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	screens := p.Previews(ctx, ids, PreviewLines)
+
+	out := make([]Screened, 0, len(ids))
+	for _, pane := range panes {
+		if !stale[pane.ID] {
+			continue
+		}
+		screen, ok := screens[pane.ID]
+		out = append(out, Screened{Pane: pane, Screen: screen, Captured: ok})
+	}
+	return out
 }

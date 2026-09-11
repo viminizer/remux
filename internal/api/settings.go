@@ -54,12 +54,46 @@ func normalizeChecks(in []string) []string {
 	return out
 }
 
+// The four switches are read from three goroutines - this handler, the push
+// watcher's ticker, and the naming pass on WatchPanes - and written by
+// handlePutSettings. Every read goes through one of these so the write below
+// is the only place that touches the fields, all of them under s.mu.
+//
+// They are methods on Server rather than closures over the config, because a
+// closure over a plain bool is exactly what the race was: `func() bool {
+// return cfg.NamePanes }` looks like a read of a value and is a read of shared
+// memory on a loop that runs every two seconds.
+
+func (s *Server) NotifyWaiting() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Cfg.NotifyWaiting
+}
+
+func (s *Server) NotifyDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Cfg.NotifyDone
+}
+
+func (s *Server) NotifyCI() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Cfg.NotifyCI
+}
+
+func (s *Server) NamePanes() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Cfg.NamePanes
+}
+
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, notifySettings{
-		NotifyWaiting: s.Cfg.NotifyWaiting,
-		NotifyDone:    s.Cfg.NotifyDone,
-		NotifyCI:      s.Cfg.NotifyCI,
-		NamePanes:     s.Cfg.NamePanes,
+		NotifyWaiting: s.NotifyWaiting(),
+		NotifyDone:    s.NotifyDone(),
+		NotifyCI:      s.NotifyCI(),
+		NamePanes:     s.NamePanes(),
 		Repos:         s.Watchlist(),
 		IgnoreChecks:  s.IgnoredChecks(),
 	})

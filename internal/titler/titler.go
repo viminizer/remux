@@ -23,6 +23,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/viminizer/remux/internal/agent"
 	"github.com/viminizer/remux/internal/tmux"
@@ -57,6 +58,14 @@ type Pass struct {
 	Chain []Runner
 	// Enabled gates the model half only. Nil means on.
 	Enabled func() bool
+	// Away reports whether Kevin is at the laptop. Nil means ask the machine.
+	//
+	// It is a field for the same reason Enabled is: the real implementation
+	// reads this Mac's HID idle timer, so without a seam every naming test
+	// passes or fails on whether anyone happened to touch the keyboard in the
+	// last fifteen minutes - and the suite quietly depended on away() being
+	// broken.
+	Away func() bool
 
 	gate *tmux.ActivityGate
 
@@ -65,8 +74,44 @@ type Pass struct {
 	naming atomic.Bool
 	asked  *cooldown
 
-	mu     sync.Mutex
-	failed map[string]bool // panes whose last write errored, so it is logged once
+	mu      sync.Mutex
+	failed  map[string]bool // panes whose last write errored, so it is logged once
+	backoff time.Duration   // current wait after a chain that failed at every tier
+	retryAt time.Time       // nothing is asked before this
+	wasAway bool            // last away answer
+	awayAt  time.Time       // when it was asked
+}
+
+// awayFor is how long one away() answer is reused.
+//
+// Nothing marks the cooldown while nobody is at the desk - a pane is marked
+// when its question is asked, and no question is asked - so due stays
+// non-empty and, uncached, every tick would fork ioreg for the whole night at
+// the tree poll interval. The answer moves on a fifteen-minute scale, so ten
+// seconds of reuse costs nothing and bounds it to one exec per ten seconds.
+const awayFor = 10 * time.Second
+
+func (p *Pass) isAway() bool {
+	p.mu.Lock()
+	if time.Since(p.awayAt) < awayFor {
+		v := p.wasAway
+		p.mu.Unlock()
+		return v
+	}
+	p.mu.Unlock()
+
+	// Outside the lock: away() execs ioreg with a 3s timeout, and report() on
+	// the background naming goroutine wants this same mutex to record a write.
+	ask := p.Away
+	if ask == nil {
+		ask = away
+	}
+	v := ask()
+
+	p.mu.Lock()
+	p.wasAway, p.awayAt = v, time.Now()
+	p.mu.Unlock()
+	return v
 }
 
 func New(tm Panes) *Pass {
@@ -87,50 +132,74 @@ func New(tm Panes) *Pass {
 func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 	panes := tree.Panes()
 
+	live := make(map[string]bool, len(panes))
 	agents := make([]*tmux.Pane, 0, len(panes))
 	for _, pane := range panes {
-		if agent.IsShell(pane.Command) {
-			// A pane that was an agent and is now back at a shell prompt
-			// still carries the last glyph and the last task. Clearing both
-			// is the only way the status line does not lie about a pane that
-			// finished.
+		live[pane.ID] = true
+		// agent.IsAgent, not !IsShell. The two are not complements: vim, htop,
+		// npm run dev, less and tail are none of them, and the loose test put
+		// every one of those into a paid model call and then wrote the model's
+		// guess over a real pane_title. A dev server writing to its window
+		// also passes the activity gate on every tick, so it was the most
+		// expensive kind of pane to get wrong.
+		if !agent.IsAgent(pane.Command) {
+			// A pane that was an agent and is now a shell - or vim, or
+			// anything else - still carries the last glyph and the last task.
+			// Clearing both is the only way the status line does not lie
+			// about a pane that finished. Neither write happens when the
+			// options are already unset, so an ordinary shell costs nothing.
 			p.writeState(ctx, pane, "")
 			p.writeTask(ctx, pane, "")
 			continue
 		}
 		agents = append(agents, pane)
 	}
+	p.forget(live)
 
-	stale := map[string]bool{}
-	for _, id := range p.gate.Changed(agents) {
-		stale[id] = true
-	}
-	ids := make([]string, 0, len(stale))
-	for _, pane := range agents {
-		if stale[pane.ID] {
-			ids = append(ids, pane.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return
-	}
-
-	screens := p.Tmux.Previews(ctx, ids, tmux.PreviewLines)
+	naming := p.Enabled == nil || p.Enabled()
 
 	var due []job
-	for _, pane := range agents {
-		if !stale[pane.ID] {
-			continue
+	for _, s := range p.gate.Capture(ctx, p.Tmux, agents) {
+		// A capture that failed is not a blank screen. Classifying the empty
+		// string gives Unknown, and writing that back would strip the "!" off
+		// a pane genuinely blocked on an answer until some later pass both
+		// captured and reclassified it.
+		if s.Captured {
+			p.writeState(ctx, s.Pane, glyph(agent.Classify(s.Pane.Command, s.Pane.Title, s.Screen)))
 		}
-		screen := screens[pane.ID]
-		p.writeState(ctx, pane, glyph(agent.Classify(pane.Command, pane.Title, screen)))
-		if p.dueForNaming(pane) {
+
+		switch {
+		case !naming:
+			// Off means off. Without this a name written before the switch was
+			// flipped sits on the pane forever, hiding the live pane_title
+			// that is free and always current.
+			p.writeTask(ctx, s.Pane, "")
+		case s.Captured && p.dueForNaming(s.Pane):
 			due = append(due, job{
-				ID: pane.ID, Dir: pane.Path, Task: pane.RemuxTask, Screen: screen,
+				ID: s.Pane.ID, Dir: s.Pane.Path, Task: s.Pane.RemuxTask, Screen: s.Screen,
 			})
 		}
 	}
 	p.startNaming(ctx, due)
+}
+
+// forget drops every pane that is no longer in the tree.
+//
+// Both maps are keyed by pane id in a LaunchAgent that runs for weeks, so
+// without this each pane Kevin opens and closes leaves a permanent entry. The
+// second reason is the one push.Watcher already learned: tmux recycles pane
+// ids, and an inherited cooldown means a brand new pane goes unnamed for up to
+// askEvery.
+func (p *Pass) forget(live map[string]bool) {
+	p.asked.keep(live)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for id := range p.failed {
+		if !live[id] {
+			delete(p.failed, id)
+		}
+	}
 }
 
 // report records the outcome of one option write, complaining at most once per

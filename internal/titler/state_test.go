@@ -21,14 +21,31 @@ type fakePanes struct {
 	tasks    map[string]string // pane -> last task written
 	order    []string          // panes whose state was written, in order
 	err      error
+	// uncapturable panes are left out of the Previews result, which is how a
+	// failed capture-pane actually reaches a caller.
+	uncapturable map[string]bool
 }
 
 func newFake() *fakePanes {
 	return &fakePanes{
-		screens: map[string]string{},
-		writes:  map[string]string{},
-		tasks:   map[string]string{},
+		screens:      map[string]string{},
+		writes:       map[string]string{},
+		tasks:        map[string]string{},
+		uncapturable: map[string]bool{},
 	}
+}
+
+// newPass is New plus the one stub every test here needs.
+//
+// away() reads this Mac's HID idle timer. Left real, the whole naming suite
+// passes or fails on whether anyone touched the keyboard in the last fifteen
+// minutes - and for a while it passed only because away() was broken and
+// always answered false, so the six tests that call settle() were asserting
+// against a run that had never started.
+func newPass(tm Panes) *Pass {
+	p := New(tm)
+	p.Away = func() bool { return false }
+	return p
 }
 
 func (f *fakePanes) Previews(_ context.Context, ids []string, _ int) map[string]string {
@@ -37,6 +54,12 @@ func (f *fakePanes) Previews(_ context.Context, ids []string, _ int) map[string]
 	f.captured = append(f.captured, append([]string(nil), ids...))
 	out := map[string]string{}
 	for _, id := range ids {
+		// Omitted, exactly as the real Previews omits a pane whose
+		// capture-pane failed. That is the difference this fake has to be able
+		// to express: a missing entry and an empty one are not the same thing.
+		if f.uncapturable[id] {
+			continue
+		}
 		out[id] = f.screens[id]
 	}
 	return out
@@ -122,7 +145,7 @@ func TestWritesTheVerdictOfEachPane(t *testing.T) {
 	f.screens["%2"] = busyScreen
 	f.screens["%3"] = idleScreen
 
-	s := New(f)
+	s := newPass(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "codex"},
 		&tmux.Pane{ID: "%2", Command: "codex"},
@@ -141,7 +164,7 @@ func TestWritesTheVerdictOfEachPane(t *testing.T) {
 // pane is the failure that makes the whole status line untrustworthy.
 func TestShellIsNeverStatedAndIsCleared(t *testing.T) {
 	f := newFake()
-	s := New(f)
+	s := newPass(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "zsh"},
 		&tmux.Pane{ID: "%2", Command: "zsh", RemuxState: "!"},
@@ -164,7 +187,7 @@ func TestUnchangedVerdictIsNotRewritten(t *testing.T) {
 	f := newFake()
 	f.screens["%1"] = busyScreen
 
-	s := New(f)
+	s := newPass(f)
 	s.OnTree(context.Background(), tree(100,
 		&tmux.Pane{ID: "%1", Command: "codex", RemuxState: "✳"},
 	))
@@ -184,7 +207,7 @@ func TestQuietWorkspaceCapturesNothing(t *testing.T) {
 	// Activity well in the past: the gate re-captures anything that moved in
 	// the last two seconds regardless, to cover its one-second resolution.
 	old := time.Now().Unix() - 60
-	s := New(f)
+	s := newPass(f)
 	pane := func() *tmux.Pane { return &tmux.Pane{ID: "%1", Command: "codex", RemuxState: "✳"} }
 
 	s.OnTree(context.Background(), tree(old, pane())) // first pass: nothing seen yet
@@ -204,7 +227,7 @@ func TestWriteFailureIsLoggedOnce(t *testing.T) {
 	f.screens["%1"] = waitingScreen
 	f.err = errors.New("no such pane")
 
-	s := New(f)
+	s := newPass(f)
 	p := &tmux.Pane{ID: "%1", Command: "codex"}
 	s.OnTree(context.Background(), tree(100, p))
 
@@ -213,5 +236,75 @@ func TestWriteFailureIsLoggedOnce(t *testing.T) {
 	s.mu.Unlock()
 	if !failed {
 		t.Fatal("a failed write was not remembered")
+	}
+}
+
+// A failed capture is not a blank screen. Before this, tmux.Previews omitting
+// a pane it could not read left screens[id] == "", which classifies as Unknown
+// and writes "" - so one flaky exec stripped the "!" off a pane genuinely
+// blocked on an answer, and it stayed stripped until some later pass both
+// captured and reclassified it.
+func TestFailedCaptureLeavesTheGlyphAlone(t *testing.T) {
+	f := newFake()
+	f.uncapturable["%1"] = true
+
+	s := newPass(f)
+	s.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex", RemuxState: "!"},
+	))
+
+	if got, wrote := f.writes["%1"]; wrote {
+		t.Errorf("a failed capture cleared the state to %q", got)
+	}
+}
+
+// Only agents are classified and named. vim, htop, npm run dev and a tail -f
+// are none of them and are not shells either, and the old !IsShell test put
+// every one of them into a paid model call - then wrote the model's guess over
+// a real pane_title. A dev server writing to its window also passes the
+// activity gate on every tick, so it was the most expensive pane to get wrong.
+func TestNonAgentPanesAreNeitherStatedNorNamed(t *testing.T) {
+	f := newFake()
+	// vim in insert mode matches idleRe, so the old code marked it done.
+	f.screens["%1"] = "-- INSERT --\n"
+	f.screens["%2"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: should not be asked\n"}
+	p := newPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "vim"},
+		&tmux.Pane{ID: "%2", Command: "node"},
+	))
+	settle(t, p)
+
+	if r.count() != 0 {
+		t.Errorf("asked a model about %d non-agent panes", r.count())
+	}
+	for _, id := range []string{"%1", "%2"} {
+		if got, wrote := f.writes[id]; wrote {
+			t.Errorf("pane %s got the state %q; it is not an agent", id, got)
+		}
+		if got, wrote := f.tasks[id]; wrote {
+			t.Errorf("pane %s got the name %q; it is not an agent", id, got)
+		}
+	}
+}
+
+// A pane that stops being an agent still carries both options, and they have
+// to be cleared or the status line lies about a pane that finished.
+func TestAPaneThatStopsBeingAnAgentIsCleared(t *testing.T) {
+	f := newFake()
+	s := newPass(f)
+	s.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "vim", RemuxState: "✳", RemuxTask: "venue filter pagination"},
+	))
+
+	if got, wrote := f.writes["%1"]; !wrote || got != "" {
+		t.Errorf("state = %q, want it cleared", got)
+	}
+	if got, wrote := f.tasks["%1"]; !wrote || got != "" {
+		t.Errorf("task = %q, want it cleared", got)
 	}
 }

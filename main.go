@@ -136,7 +136,7 @@ func run(cfg *config.Config, local bool) error {
 	// installed service and would double every notification.
 	if srv.Push != nil && !local {
 		ghw := push.NewGitHubWatcher(srv.Push)
-		ghw.Enabled = func() bool { return cfg.NotifyCI }
+		ghw.Enabled = srv.NotifyCI
 		srv.GH.OnSnapshot = ghw.OnSnapshot
 	}
 
@@ -151,8 +151,8 @@ func run(cfg *config.Config, local bool) error {
 	// normal case, not a corner.
 	if srv.Push != nil && !local {
 		w := push.NewWatcher(tm, srv.Push)
-		w.NotifyWaiting = func() bool { return cfg.NotifyWaiting }
-		w.NotifyDone = func() bool { return cfg.NotifyDone }
+		w.NotifyWaiting = srv.NotifyWaiting
+		w.NotifyDone = srv.NotifyDone
 		go w.Run(ctx)
 	}
 
@@ -174,7 +174,10 @@ func run(cfg *config.Config, local bool) error {
 	// reach. The glyph half does not and has none.
 	namer := titler.New(tm)
 	namer.Chain = titler.Chain()
-	namer.Enabled = func() bool { return cfg.NamePanes }
+	// srv.NamePanes, not a closure over cfg.NamePanes: this is read from the
+	// WatchPanes goroutine every couple of seconds and the settings handler
+	// writes it, so the read has to take the same lock as the write.
+	namer.Enabled = srv.NamePanes
 	srv.OnTree = namer.OnTree
 
 	go srv.GH.Run(ctx)

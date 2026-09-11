@@ -60,7 +60,7 @@ func TestNamesEveryPaneInOneCall(t *testing.T) {
 	// heuristic had: two panes in the same repo, told apart only by what is
 	// on their screens.
 	r := &fakeRunner{label: "fake", out: "1: venue filter pagination\n2: token refresh race\n"}
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{r}
 
 	p.OnTree(context.Background(), tree(100,
@@ -86,7 +86,7 @@ func TestSameLeavesTheTitleAlone(t *testing.T) {
 	f.screens["%1"] = busyScreen
 
 	r := &fakeRunner{label: "fake", out: "1: SAME\n"}
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{r}
 
 	p.OnTree(context.Background(), tree(100,
@@ -108,7 +108,7 @@ func TestOnePaneIsNotAskedTwiceInsideTheCooldown(t *testing.T) {
 	f.screens["%1"] = busyScreen
 
 	r := &fakeRunner{label: "fake", out: "1: venue filter pagination\n"}
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{r}
 
 	for i := 0; i < 3; i++ {
@@ -134,7 +134,7 @@ func TestChainFallsThrough(t *testing.T) {
 	junk := &fakeRunner{label: "junk", out: "I'm sorry, I can't help with that."}
 	good := &fakeRunner{label: "good", out: "1: token refresh race\n"}
 
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{dead, junk, good}
 
 	p.OnTree(context.Background(), tree(100, &tmux.Pane{ID: "%1", Command: "codex"}))
@@ -156,7 +156,7 @@ func TestFallsBackToTheScreenWhenNoModelAnswers(t *testing.T) {
 	f := newFake()
 	f.screens["%1"] = "some output\n❯ fix the venue filter pagination bug\n"
 
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{&fakeRunner{label: "dead", err: errors.New("not found")}}
 
 	p.OnTree(context.Background(), tree(100, &tmux.Pane{ID: "%1", Command: "codex"}))
@@ -175,7 +175,7 @@ func TestSameOnAnUnnamedPaneFallsBackToTheScreen(t *testing.T) {
 	f := newFake()
 	f.screens["%1"] = "some output\n\u276f fix the venue filter pagination bug\n"
 
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: SAME\n"}}
 
 	p.OnTree(context.Background(), tree(100, &tmux.Pane{ID: "%1", Command: "codex"}))
@@ -192,7 +192,7 @@ func TestDisabledNamesNothingButStillStates(t *testing.T) {
 	f.screens["%1"] = waitingScreen
 
 	r := &fakeRunner{label: "fake", out: "1: venue filter pagination\n"}
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{r}
 	p.Enabled = func() bool { return false }
 
@@ -211,7 +211,7 @@ func TestDisabledNamesNothingButStillStates(t *testing.T) {
 // finished does not keep advertising the task it used to be running.
 func TestShellLosesItsName(t *testing.T) {
 	f := newFake()
-	p := New(f)
+	p := newPass(f)
 	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: nope\n"}}
 
 	p.OnTree(context.Background(), tree(100,
@@ -297,5 +297,146 @@ func TestPromptCarriesScreenAndCurrentName(t *testing.T) {
 	}
 	if strings.Contains(p, "\x1b[") {
 		t.Error("prompt still carries ANSI escapes; that is tokens spent on colour codes")
+	}
+}
+
+// The away gate is the whole cost control for an unattended overnight run, and
+// it was dead: ioreg was called without -r, so HIDIdleTime was never found and
+// away() answered false forever. This is the test that would have caught it -
+// and the reason Pass.Away is a field.
+func TestAwayAsksNothing(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: venue filter pagination\n"}
+	p := newPass(f)
+	p.Chain = []Runner{r}
+	p.Away = func() bool { return true }
+
+	p.OnTree(context.Background(), tree(100, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+
+	if r.count() != 0 {
+		t.Errorf("asked a model %d times with nobody at the laptop", r.count())
+	}
+	// The free half still runs: the glyph costs a tmux write, not a model call.
+	if got := f.writes["%1"]; got != "✳" {
+		t.Errorf("state = %q; the away gate is about money, not about states", got)
+	}
+}
+
+// One transient chain failure must not rewrite twenty curated titles from raw
+// screen text. Tier 4 is for a pane with no name at all - that is the case its
+// argument covers - and when every tier fails, every pane in the batch arrives
+// there at once.
+func TestChainFailureLeavesAGoodTitleAlone(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = "some output\n❯ fix the venue filter pagination bug\n"
+
+	p := newPass(f)
+	p.Chain = []Runner{&fakeRunner{label: "dead", err: errors.New("rate limited")}}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex", RemuxTask: "venue filter pagination"},
+	))
+	settle(t, p)
+
+	if got, wrote := f.tasks["%1"]; wrote {
+		t.Errorf("a failed chain rewrote a good title to %q", got)
+	}
+}
+
+// A chain failing at every tier re-sends the same ~25KB prompt to the default
+// model, so retrying it every ninety seconds forever is the one way this
+// feature becomes expensive by accident. After a total failure nothing is
+// asked again until the backoff expires.
+func TestTotalFailureBacksOff(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	dead := &fakeRunner{label: "dead", err: errors.New("rate limited")}
+	p := newPass(f)
+	p.Chain = []Runner{dead}
+
+	for i := 0; i < 3; i++ {
+		p.OnTree(context.Background(), tree(int64(100+i), &tmux.Pane{ID: "%1", Command: "codex"}))
+		settle(t, p)
+	}
+
+	if dead.count() != 1 {
+		t.Errorf("retried %d times; the backoff did not hold", dead.count())
+	}
+	if p.backoff != askEvery {
+		t.Errorf("backoff = %v, want it to start at %v", p.backoff, askEvery)
+	}
+}
+
+// SAME is answered in more shapes than the constant. The prompt asks for
+// lowercase three rules earlier, so "same" is at least as likely as "SAME",
+// and matching only the exact string wrote "same" into the pane as a title -
+// for every pane at once, since one model answers the whole batch.
+func TestIsSame(t *testing.T) {
+	for in, want := range map[string]bool{
+		"SAME":                               true,
+		"same":                               true,
+		"SAME.":                              true,
+		`"SAME"`:                             true,
+		" same ":                             true,
+		"SAME - the current name still fits": true,
+		"same (nothing has changed)":         true,
+		// Not SAME: a real title that happens to start with the word.
+		"same origin policy fix":  false,
+		"venue filter pagination": false,
+		"":                        false,
+	} {
+		if got := isSame(in); got != want {
+			t.Errorf("isSame(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// Both maps are keyed by pane id in a process that runs for weeks. tmux also
+// recycles pane ids, so an inherited cooldown would leave a brand new pane
+// unnamed for up to askEvery.
+func TestClosingAPaneForgetsIt(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	p := newPass(f)
+	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: venue filter pagination\n"}}
+
+	p.OnTree(context.Background(), tree(100, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+
+	// The pane is gone on the next pass.
+	p.OnTree(context.Background(), tree(101, &tmux.Pane{ID: "%2", Command: "codex"}))
+	settle(t, p)
+
+	p.asked.mu.Lock()
+	_, remembered := p.asked.seen["%1"]
+	p.asked.mu.Unlock()
+	if remembered {
+		t.Error("a pane that no longer exists is still on the cooldown")
+	}
+}
+
+// Turning naming off has to clear what naming wrote. Without this a name from
+// before the switch was flipped sits on the pane forever, hiding the live
+// pane_title that is free and always current.
+func TestDisablingNamingClearsTheOldName(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	p := newPass(f)
+	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: nope\n"}}
+	p.Enabled = func() bool { return false }
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex", RemuxTask: "venue filter pagination"},
+	))
+	settle(t, p)
+
+	if got, wrote := f.tasks["%1"]; !wrote || got != "" {
+		t.Errorf("task = %q, want it cleared once naming is off", got)
 	}
 }

@@ -11,10 +11,18 @@
 #   ... run tests ...
 #   ./scripts/laptop-invariant.sh after
 #
-# The one deliberate exemption is the three @remux_* pane options. remux writes
-# @remux_task and @remux_state on its own initiative - that is the pane-naming
-# feature working, not damage - and @remux_title when Kevin renames a pane from
-# the phone. Everything else about a pane must be identical.
+# The three @remux_* pane options are the one thing remux may write outside the
+# scratch session: @remux_task and @remux_state on its own initiative - that is
+# the pane-naming feature working, not damage - and @remux_title when Kevin
+# renames a pane from the phone. Everything else about a pane must be identical.
+#
+# They are not simply filtered out. A check that cannot fail on the writes it
+# was extended for proves less than the one it replaced, so they get their own
+# snapshot instead: every change to them is printed, and a value outside what
+# remux is allowed to write is a failure. The glyph vocabulary and the title
+# length below are the writer's own limits (internal/titler/state.go and
+# title.go); a value outside them means the writer is wrong, which is exactly
+# the kind of damage this script exists to catch.
 #
 set -euo pipefail
 
@@ -51,19 +59,24 @@ tmux list-clients -F '#{client_tty} #{client_session} #{client_width}x#{client_h
   > "$DIR/$TAG.clients" || true
 sort -o "$DIR/$TAG.clients" "$DIR/$TAG.clients"
 
-# Every pane option outside the scratch session, minus the three remux owns.
+# Every pane option outside the scratch session, split into the three remux is
+# allowed to write and everything else.
+#
 # pane_title is deliberately not snapshotted: agents rewrite it on every
 # render, so it changes on its own and proves nothing.
 : > "$DIR/$TAG.options"
+: > "$DIR/$TAG.remux"
 while read -r sess pane; do
   [ "$sess" = "$SCRATCH" ] && continue
-  tmux show-options -p -t "$pane" \
-    | grep -v '^@remux_title' \
-    | grep -v '^@remux_task' \
-    | grep -v '^@remux_state' \
+  tmux show-options -p -t "$pane" > "$DIR/.opts" || true
+  grep -E '^@remux_(title|task|state)' "$DIR/.opts" \
+    | sed "s|^|$pane |" >> "$DIR/$TAG.remux" || true
+  grep -vE '^@remux_(title|task|state)' "$DIR/.opts" \
     | sed "s|^|$pane |" >> "$DIR/$TAG.options" || true
 done < <(tmux list-panes -a -F '#{session_name} #{pane_id}')
+rm -f "$DIR/.opts"
 sort -o "$DIR/$TAG.options" "$DIR/$TAG.options"
+sort -o "$DIR/$TAG.remux" "$DIR/$TAG.remux"
 
 if [ "$TAG" = "before" ]; then
   echo "snapshot saved  ($(wc -l < "$DIR/before.layout" | tr -d ' ') panes outside $SCRATCH)"
@@ -105,6 +118,43 @@ if ! diff -u "$DIR/before.options" "$DIR/after.options"; then
   echo "      Only @remux_title, @remux_task and @remux_state may be written." >&2
   fail=1
 fi
+
+# The exempted options. A change here is the feature working, so it is reported
+# rather than failed - but it is reported, because a write nobody sees is how
+# this check would have become decorative.
+if ! diff -q "$DIR/before.remux" "$DIR/after.remux" > /dev/null; then
+  echo "note: remux wrote its own pane options (allowed):"
+  diff -u "$DIR/before.remux" "$DIR/after.remux" | grep -E '^[+-]@|^[+-]%' | sed 's|^|      |' || true
+fi
+
+# What it wrote still has to be something remux is capable of writing. A glyph
+# outside the vocabulary, a title past the length clean() enforces, or an
+# option on a pane it has no business touching all mean the writer is wrong.
+while read -r pane opt value; do
+  # tmux quotes a value that contains a space, so "venue filter pagination"
+  # arrives with the quotes still on it.
+  value="${value#\"}"
+  value="${value%\"}"
+  case "$opt" in
+    @remux_state)
+      case "$value" in
+        '!'|'✳'|'✓'|'') ;;
+        *)
+          echo "FAIL: $pane has @remux_state $value, which is not one of ! ✳ ✓" >&2
+          fail=1
+          ;;
+      esac
+      ;;
+    @remux_task)
+      # Bytes, because clean()'s cap is a Go len() and so is a byte count.
+      n=$(printf '%s' "$value" | wc -c | tr -d ' ')
+      if [ "$n" -gt 48 ]; then
+        echo "FAIL: $pane has a $n-byte @remux_task; clean() caps it at 48" >&2
+        fail=1
+      fi
+      ;;
+  esac
+done < "$DIR/after.remux"
 
 if [ "$fail" -eq 0 ]; then
   echo "PASS: laptop untouched ($(wc -l < "$DIR/after.layout" | tr -d ' ') panes unchanged)"

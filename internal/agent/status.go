@@ -30,11 +30,14 @@ const (
 	Unknown Status = "unknown"
 )
 
-// tailLines is how much of the screen the classifier looks at. The state of a
+// TailLines is how much of the screen the classifier looks at. The state of a
 // TUI agent is always in the last few lines; looking further back picks up
 // stale prompts from earlier in the conversation and reports Waiting long
 // after the question was answered.
-const tailLines = 30
+//
+// Exported because the titler reads the screen for a name on the same bet and
+// wants the same window.
+const TailLines = 30
 
 var shells = map[string]bool{
 	"zsh": true, "bash": true, "fish": true, "sh": true,
@@ -173,7 +176,7 @@ func Classify(cmd, title, screen string) Status {
 		return Shell
 	}
 
-	lines := tail(StripANSI(screen), tailLines)
+	lines := Tail(StripANSI(screen), TailLines)
 	joined := strings.Join(lines, "\n")
 
 	waiting := matchAny(waitingRe, lines, joined) || numberedMenu(lines)
@@ -220,8 +223,8 @@ func matchAny(pats []*regexp.Regexp, lines []string, joined string) bool {
 	return false
 }
 
-// tail returns the last n non-empty-trailing lines of s.
-func tail(s string, n int) []string {
+// Tail returns the last n non-empty-trailing lines of s.
+func Tail(s string, n int) []string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	// Trailing blank lines carry no state and would push the real content
 	// out of the window.
