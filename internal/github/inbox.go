@@ -221,13 +221,19 @@ func (c *Client) Inbox(ctx context.Context, viewer string) (Inbox, error) {
 	for _, n := range data.Review.Nodes {
 		take(n.item(ig), &in.NeedsYou)
 	}
-	for _, n := range data.Mine.Nodes {
-		if it := n.item(ig); it.blocked() {
+	// Built once per node, not once per pass: the two loops below ask
+	// different questions of the same item.
+	mine := make([]InboxItem, len(data.Mine.Nodes))
+	for i, n := range data.Mine.Nodes {
+		mine[i] = n.item(ig)
+	}
+	for _, it := range mine {
+		if it.blocked() {
 			take(it, &in.NeedsYou)
 		}
 	}
-	for _, n := range data.Mine.Nodes {
-		take(n.item(ig), &in.YourPRs)
+	for _, it := range mine {
+		take(it, &in.YourPRs)
 	}
 	for _, n := range data.Assigned.Nodes {
 		take(n.item(ig), &in.Assigned)

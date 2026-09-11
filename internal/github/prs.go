@@ -54,9 +54,12 @@ func (c *Client) PRs(ctx context.Context, full string, limit int) ([]PR, error) 
 		return nil, fmt.Errorf("gh pr list %s: bad json: %w", full, err)
 	}
 
+	// Hoisted: Ignored reaches into the server for the check list and copies
+	// a slice, and it cannot change while this loop runs.
+	ig := c.ignored()
 	prs := make([]PR, len(raw))
 	for i, g := range raw {
-		prs[i] = g.pr(c.ignored())
+		prs[i] = g.pr(ig)
 	}
 	sort.SliceStable(prs, func(i, j int) bool { return prs[i].Updated.After(prs[j].Updated) })
 	return prs, nil
