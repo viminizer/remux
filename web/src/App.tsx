@@ -3,7 +3,7 @@ import { api, ApiError } from './api'
 import { Socket } from './ws'
 import { isGitHub, useRoute } from './router'
 import type { Route } from './router'
-import { useSettings, saveSnapshot, loadSnapshot } from './store'
+import { useSettings, queueSnapshot, flushSnapshot, loadSnapshot } from './store'
 import type { Conn, GhBadge, Health, Pane, Session, SnapMeta } from './types'
 import { displayCommand, flatten, paneTitle } from './types'
 
@@ -248,6 +248,9 @@ export default function App() {
   // ── pane subscription ───────────────────────────────────────────────────
 
   useEffect(() => {
+    // Whatever the pane we are leaving had queued is written now, under its
+    // own id, before the new pane starts overwriting it.
+    flushSnapshot()
     if (!currentId) {
       sock.current?.subscribe(null)
       return
@@ -264,9 +267,13 @@ export default function App() {
 
   // Keep the last screen of every pane opened, so a dead connection still
   // shows the last thing the agent said.
+  //
+  // Queued, not written. This runs on every frame - `lines` is in the deps and
+  // a working agent produces up to 2.5 a second - and the write parses and
+  // stringifies the whole snapshot store synchronously. See queueSnapshot.
   useEffect(() => {
     if (!currentId || !live || !lines.length) return
-    saveSnapshot({
+    queueSnapshot({
       pane: currentId,
       lines,
       title: current ? paneTitle(current) : currentId,
@@ -274,6 +281,23 @@ export default function App() {
       at: Date.now(),
     })
   }, [currentId, lines, live, current])
+
+  // A backgrounded phone is exactly when the cached screen stops being a
+  // convenience and starts being the only copy, so the queue is written out
+  // before the app can be frozen. pagehide covers the iOS case where
+  // visibilitychange is not guaranteed to arrive.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushSnapshot()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flushSnapshot)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flushSnapshot)
+      flushSnapshot()
+    }
+  }, [])
 
   // Land on something sensible on first load: whatever needs an answer, else
   // the first pane. It has to key off the route name, not off the absence of a
