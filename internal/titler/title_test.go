@@ -280,13 +280,20 @@ oops something unrelated
 }
 
 // The prompt carries what tells two panes in the same repo apart: each one's
-// own screen, and the name it already has for the SAME check.
+// own screen, and the name it already has for the SAME check. It also carries
+// the project, so the answer does not spend two of its five words repeating
+// what is already shown beside it.
 func TestPromptCarriesScreenAndCurrentName(t *testing.T) {
 	p := buildPrompt([]job{
-		{ID: "%1", Dir: "/Users/mac/dev/shortlist", Task: "venue filter", Screen: "\x1b[31mworking on auth\x1b[0m"},
+		{
+			ID: "%1", Dir: "/Users/mac/dev/shortlist", Task: "venue filter",
+			Project: "shortlist", Screen: "\x1b[31mworking on auth\x1b[0m",
+		},
 	})
 	for _, want := range []string{
 		"## Pane 1",
+		"project: shortlist",
+		"never repeat the project",
 		"/Users/mac/dev/shortlist",
 		"current name: venue filter",
 		"working on auth",

@@ -188,7 +188,7 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 		agents = append(agents, pane)
 	}
 	p.forget(live)
-	p.writeProjects(ctx, agents)
+	short := p.writeProjects(ctx, agents)
 
 	naming := p.Enabled == nil || p.Enabled()
 
@@ -251,7 +251,12 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 			p.writeTask(ctx, s.Pane, "")
 		case s.Captured && p.dueForNaming(s.Pane):
 			due = append(due, job{
-				ID: s.Pane.ID, Dir: s.Pane.Path, Task: s.Pane.RemuxTask, Screen: s.Screen,
+				ID: s.Pane.ID, Dir: s.Pane.Path, Task: s.Pane.RemuxTask,
+				// From this pass's map, not the pane's option: the option is
+				// what was on the pane when the tree was read, so a pane that
+				// has just changed directory would be told the old project.
+				Project: short[s.Pane.Repo],
+				Screen:  s.Screen,
 			})
 		}
 	}
@@ -287,7 +292,7 @@ func (p *Pass) forget(live map[string]bool) {
 //
 // The shortening needs the whole workspace at once, since what a name can drop
 // depends on what its siblings are called.
-func (p *Pass) writeProjects(ctx context.Context, agents []*tmux.Pane) {
+func (p *Pass) writeProjects(ctx context.Context, agents []*tmux.Pane) map[string]string {
 	repos := make([]string, 0, len(agents))
 	seen := map[string]bool{}
 	for _, pane := range agents {
@@ -303,6 +308,7 @@ func (p *Pass) writeProjects(ctx context.Context, agents []*tmux.Pane) {
 		// directory is not a project just because it has a name.
 		p.writeProject(ctx, pane, short[pane.Repo])
 	}
+	return short
 }
 
 func (p *Pass) writeProject(ctx context.Context, pane *tmux.Pane, want string) {

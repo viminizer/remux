@@ -42,10 +42,11 @@ const maxTitle = 48
 // job is one pane's worth of question, copied out of the tree so the model
 // call can outlive the tick that started it.
 type job struct {
-	ID     string
-	Dir    string
-	Task   string // what the pane is called now, for the SAME check
-	Screen string
+	ID      string
+	Dir     string
+	Task    string // what the pane is called now, for the SAME check
+	Project string // the short repo name, shown beside the task rather than in it
+	Screen  string
 }
 
 // dueForNaming decides whether to spend a model call on this pane.
@@ -250,6 +251,17 @@ Rules:
 - 3 to 5 words
 - lowercase, no punctuation, no quotes
 - name the work, not the tool: "venue filter pagination", not "claude code session"
+- be specific. A pr or issue number, a file, a feature, an error, a repo area:
+  "review pr 269", "fix token expiry test". "feature work", "development work"
+  and "next issue" name nothing and leave two panes looking identical, which is
+  the whole problem this is here to solve.
+- never name the pane's state. "idle", "waiting", "done" and "awaiting task" are
+  not names - the glyph beside the name already says that, and twenty panes all
+  called idle are as useless as twenty called claude code. An agent that has
+  finished is named after what it finished.
+- never repeat the project. It is shown next to the name already, so a pane in
+  "shortlist" wants "review pr 269", not "shortlist review pr 269" - those are
+  two of five words spent saying what the reader can already see.
 - SAME is only for a pane that already has a current name below, and only when
   that name still describes the work. It is not a way to decline.
 - a pane with no current name must be given one. Use whatever the screen shows -
@@ -260,6 +272,9 @@ Rules:
 `)
 	for i, j := range due {
 		fmt.Fprintf(&b, "## Pane %d\n", i+1)
+		if j.Project != "" {
+			fmt.Fprintf(&b, "project: %s\n", j.Project)
+		}
 		if j.Dir != "" {
 			fmt.Fprintf(&b, "directory: %s\n", j.Dir)
 		}

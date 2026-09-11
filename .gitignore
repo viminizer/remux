@@ -24,3 +24,8 @@
 # node
 /web/node_modules/
 /web/.test-build/
+
+# Worktrees this tool creates, and anything else it keeps here. They are
+# checkouts of this very repo - committing one nests a repository inside
+# itself, which git only warns about after the fact.
+/.claude/
