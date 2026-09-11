@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -431,4 +432,76 @@ func settleUntil(d time.Duration, ok func() bool) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return ok()
+}
+
+// The sweep is the workspace's, not the connection's.
+//
+// Every WebSocket used to run its own tree tick: its own Tree() call, its own
+// ActivityGate, its own captures. A second phone doubled the work and the
+// gate's saving was per connection instead of per workspace - and WatchPanes
+// was already reading the same tree on the same interval for the namer, so one
+// phone meant two sweeps of 27 panes and two phones meant three.
+//
+// What proves it is sharing is the pointer: callers inside the window get the
+// very tree the first one published, not an equal copy of it.
+func TestWorkspaceIsSweptOnceForEveryone(t *testing.T) {
+	tm, _ := scratchPane(t)
+	srv := NewServer(config.Default(), tm, nil)
+	ctx := context.Background()
+
+	first := srv.Workspace(ctx, time.Hour)
+	if first == nil {
+		t.Fatal("no tree")
+	}
+	if again := srv.Workspace(ctx, time.Hour); again != first {
+		t.Error("a second caller swept the workspace again instead of reading what was published")
+	}
+
+	// Concurrent arrivals coalesce on the same published answer rather than
+	// each starting a sweep of their own.
+	var wg sync.WaitGroup
+	trees := make([]*tmux.Tree, 8)
+	for i := range trees {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			trees[i] = srv.Workspace(ctx, time.Hour)
+		}()
+	}
+	wg.Wait()
+	for i, tr := range trees {
+		if tr != first {
+			t.Errorf("caller %d got its own sweep", i)
+		}
+	}
+
+	// And a tree older than the caller will accept is re-read, or the drawer
+	// would freeze.
+	if fresh := srv.Workspace(ctx, time.Nanosecond); fresh == first {
+		t.Error("a stale tree was handed back instead of refreshed")
+	}
+}
+
+// Every pane carries a verdict on the very first sweep, with no connection and
+// no timer involved. WatchPanes depends on this: it is what the namer reads.
+func TestWorkspaceClassifiesEveryPane(t *testing.T) {
+	tm, pane := scratchPane(t)
+	srv := NewServer(config.Default(), tm, nil)
+
+	tree := srv.Workspace(context.Background(), time.Hour)
+	if tree == nil {
+		t.Fatal("no tree")
+	}
+	found := false
+	for _, p := range tree.Panes() {
+		if p.Status == "" {
+			t.Errorf("pane %s has no status", p.ID)
+		}
+		if p.ID == pane {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the scratch pane %s is not in the tree", pane)
+	}
 }
