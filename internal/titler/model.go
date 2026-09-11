@@ -142,14 +142,22 @@ func firstLine(s string) string {
 // Kevin comes back, within one interval. He was not reading it while he slept.
 const awayAfter = 15 * time.Minute
 
-// away reports whether the laptop has been untouched for longer than
-// awayAfter.
+// HIDAway reports whether this Mac's keyboard and mouse have been untouched
+// for longer than awayAfter.
+//
+// It answers one question - "is he at this machine" - and that is not the same
+// as "is anyone reading this", which is the question the naming pass actually
+// has. remux exists for the times Kevin is away from the laptop and using the
+// phone, so on its own this gate switches the feature off at precisely the
+// moment he wants it. main.go composes it with api.Server.Watching for that
+// reason; this stays the backstop it was written to be, for an agent grinding
+// unattended with nobody looking at all.
 //
 // It fails open on purpose. Every way this can go wrong - ioreg missing, the
 // output reshaped by an OS update, a number that will not parse - means "I do
 // not know", and the cost of guessing "away" wrongly is a feature that
 // silently stops working. The cost of guessing "here" wrongly is a few cents.
-func away() bool {
+func HIDAway() bool {
 	idle, ok := hidIdle()
 	return ok && idle > awayAfter
 }
@@ -162,7 +170,7 @@ func hidIdle() (time.Duration, bool) {
 	// -r is not optional. Without it `-d 1` truncates the registry one level
 	// below Root and never reaches IOHIDSystem at all: the command prints a
 	// single "+-o Root" line with no properties, HIDIdleTime is never found,
-	// and away() returns false forever - which silently deleted the only cost
+	// and HIDAway returns false forever - which silently deleted the only cost
 	// control this feature has. `ioreg -c IOHIDSystem -r -d 1` is the form
 	// that prints the key.
 	out, err := exec.CommandContext(ctx, "ioreg", "-c", "IOHIDSystem", "-r", "-d", "1").Output()

@@ -68,6 +68,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.CloseNow()
 
+	// A live socket is the signal the naming pass uses to decide Kevin is
+	// reading, so it has to be balanced on every exit from this handler.
+	s.addSocket(1)
+	defer s.addSocket(-1)
+
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 

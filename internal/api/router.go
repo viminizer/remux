@@ -41,6 +41,28 @@ type Server struct {
 	// paneRepos is the repo each pane is checked out in, kept fresh by
 	// WatchPanes so no request has to touch the filesystem.
 	paneRepos map[string][]string
+	// sockets is how many phones have the app open right now. See Watching.
+	sockets int
+}
+
+// Watching reports whether anyone is looking at the workspace through remux.
+//
+// One live WebSocket is exactly that and nothing weaker: the phone opens it
+// when the app comes to the front and sends "unsub" and drops it when the
+// screen goes off, which is the whole battery story. A push subscription would
+// not do - that is registered once when the app is installed and stays
+// registered for months, so it answers "could we notify him", not "is he
+// reading this".
+func (s *Server) Watching() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sockets > 0
+}
+
+func (s *Server) addSocket(n int) {
+	s.mu.Lock()
+	s.sockets += n
+	s.mu.Unlock()
 }
 
 func NewServer(cfg *config.Config, tm *tmux.Client, web http.Handler) *Server {

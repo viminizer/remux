@@ -178,6 +178,15 @@ func run(cfg *config.Config, local bool) error {
 	// WatchPanes goroutine every couple of seconds and the settings handler
 	// writes it, so the read has to take the same lock as the write.
 	namer.Enabled = srv.NamePanes
+	// Away means "nobody is reading this", not "he is not at this keyboard".
+	// The HID timer alone answers the second, and answering only that turned
+	// the naming off exactly when it is most wanted: measured on this laptop,
+	// a stretch of working entirely from the phone left HIDIdleTime climbing
+	// past two and a half hours with every pane unnamed. remux is the tool for
+	// being away from the Mac, so a phone with the app open has to count as
+	// being here. The HID timer stays as the backstop it was written to be -
+	// an agent grinding overnight with nobody looking at all.
+	namer.Away = func() bool { return !srv.Watching() && titler.HIDAway() }
 	srv.OnTree = namer.OnTree
 
 	go srv.GH.Run(ctx)

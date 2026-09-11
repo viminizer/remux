@@ -77,7 +77,7 @@ func (p *Pass) startNaming(ctx context.Context, due []job) {
 	if len(due) == 0 {
 		return
 	}
-	// The CAS comes first because it is free and away() is not. A model call
+	// The CAS comes first because it is free and the away check is not. A model call
 	// takes up to modelTimeout and the tree polls every two seconds, so while
 	// one batch is in flight there are dozens of ticks, and any pane going
 	// stale during that window makes due non-empty. Reading ioreg on every one

@@ -377,3 +377,58 @@ func TestSnapMetaSurvivesAPaneTheTreeHasNotSeen(t *testing.T) {
 		t.Errorf("meta.cmd is empty for %s: paneMeta did not fall back to a fetch", fresh)
 	}
 }
+
+// Watching is what tells the naming pass Kevin is reading, so it has to track
+// the socket and not outlive it.
+//
+// The signal it replaced was this Mac's HID idle timer, which answers "is he at
+// this keyboard" - and remux is the tool for the times he is not. Measured on
+// the real laptop, a stretch of working from the phone left HIDIdleTime past
+// two and a half hours with every pane unnamed. A socket that leaked a count
+// on close would fail the opposite way and keep paying for names nobody reads,
+// so both directions are checked.
+func TestWatchingFollowsTheLiveSocket(t *testing.T) {
+	tm := tmux.New()
+	if _, err := tm.Tree(context.Background()); err != nil {
+		t.Skipf("no tmux: %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.TreeMS = 60000
+	srv := NewServer(cfg, tm, nil)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	if srv.Watching() {
+		t.Fatal("watching with no socket open")
+	}
+
+	ws, _ := dial(t, ts)
+	if !settleUntil(2*time.Second, srv.Watching) {
+		t.Fatal("a live socket did not count as watching")
+	}
+
+	// A second phone, so the count is a count and not a flag.
+	ws2, _ := dial(t, ts)
+	ws.CloseNow()
+	time.Sleep(300 * time.Millisecond)
+	if !srv.Watching() {
+		t.Error("stopped watching while a second socket was still open")
+	}
+
+	ws2.CloseNow()
+	if !settleUntil(2*time.Second, func() bool { return !srv.Watching() }) {
+		t.Error("still watching after every socket closed; the count leaked")
+	}
+}
+
+func settleUntil(d time.Duration, ok func() bool) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if ok() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ok()
+}

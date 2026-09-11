@@ -63,7 +63,7 @@ type Pass struct {
 	// It is a field for the same reason Enabled is: the real implementation
 	// reads this Mac's HID idle timer, so without a seam every naming test
 	// passes or fails on whether anyone happened to touch the keyboard in the
-	// last fifteen minutes - and the suite quietly depended on away() being
+	// last fifteen minutes - and the suite quietly depended on HIDAway being
 	// broken.
 	Away func() bool
 
@@ -82,7 +82,7 @@ type Pass struct {
 	awayAt  time.Time       // when it was asked
 }
 
-// awayFor is how long one away() answer is reused.
+// awayFor is how long one Away answer is reused.
 //
 // Nothing marks the cooldown while nobody is at the desk - a pane is marked
 // when its question is asked, and no question is asked - so due stays
@@ -100,11 +100,11 @@ func (p *Pass) isAway() bool {
 	}
 	p.mu.Unlock()
 
-	// Outside the lock: away() execs ioreg with a 3s timeout, and report() on
+	// Outside the lock: the default Away execs ioreg with a 3s timeout, and report() on
 	// the background naming goroutine wants this same mutex to record a write.
 	ask := p.Away
 	if ask == nil {
-		ask = away
+		ask = HIDAway
 	}
 	v := ask()
 
