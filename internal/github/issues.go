@@ -222,7 +222,11 @@ func (c *Client) issuesMine(ctx context.Context, owner, name, viewer string) (Is
 	}
 
 	seen := map[int]bool{}
-	var page IssuePage
+	// Not `var page IssuePage`: a nil slice marshals as null, and the phone
+	// reads null as "still loading" - so a repo with nothing of Kevin's in it
+	// spins the skeleton forever instead of showing the empty state. Yours is
+	// the tab a repo opens on, so that is the common case.
+	page := IssuePage{Issues: []Issue{}}
 	for _, conn := range []gqlIssueConn{data.Repository.Assigned, data.Repository.Created} {
 		for _, n := range conn.Nodes {
 			if seen[n.Number] {
