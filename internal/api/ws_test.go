@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/viminizer/remux/internal/agent"
 	"github.com/viminizer/remux/internal/config"
 	"github.com/viminizer/remux/internal/tmux"
 )
@@ -476,24 +477,50 @@ func TestWorkspaceIsSweptOnceForEveryone(t *testing.T) {
 	}
 
 	// And a tree older than the caller will accept is re-read, or the drawer
-	// would freeze.
-	if fresh := srv.Workspace(ctx, time.Nanosecond); fresh == first {
+	// would freeze. Checked for nil first, or a refresh that simply failed
+	// would pass this by returning nothing.
+	fresh := srv.Workspace(ctx, time.Nanosecond)
+	if fresh == nil {
+		t.Fatal("the refresh produced no tree")
+	}
+	if fresh == first {
 		t.Error("a stale tree was handed back instead of refreshed")
 	}
 }
 
-// Every pane carries a verdict on the very first sweep, with no connection and
-// no timer involved. WatchPanes depends on this: it is what the namer reads.
-func TestWorkspaceClassifiesEveryPane(t *testing.T) {
+// A watcher gets verdicts; nobody watching gets the tree and no captures.
+//
+// The captures are the expensive half - agent.IsShell's complement takes in
+// vim, htop, less, tail and every dev server, and a dev server trips the
+// activity gate on every tick. Only the drawer's status dot reads the result,
+// so with no phone on the other end there is nothing to compute them for. The
+// namer still needs the tree, and still gets it.
+func TestWorkspaceClassifiesOnlyForAWatcher(t *testing.T) {
 	tm, pane := scratchPane(t)
 	srv := NewServer(config.Default(), tm, nil)
+	ctx := context.Background()
 
-	tree := srv.Workspace(context.Background(), time.Hour)
-	if tree == nil {
+	idle := srv.Workspace(ctx, time.Nanosecond)
+	if idle == nil {
+		t.Fatal("no tree with nobody watching; the namer would starve")
+	}
+	for _, p := range idle.Panes() {
+		if !agent.IsShell(p.Command) && p.Status != "" {
+			t.Errorf("pane %s was classified with nobody watching", p.ID)
+		}
+	}
+
+	srv.addSocket(1)
+	defer srv.addSocket(-1)
+
+	// The published tree has no verdicts on it, so a phone arriving must get a
+	// fresh sweep rather than that one - even though it is seconds old.
+	watched := srv.Workspace(ctx, time.Hour)
+	if watched == nil {
 		t.Fatal("no tree")
 	}
 	found := false
-	for _, p := range tree.Panes() {
+	for _, p := range watched.Panes() {
 		if p.Status == "" {
 			t.Errorf("pane %s has no status", p.ID)
 		}

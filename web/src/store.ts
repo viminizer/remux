@@ -192,7 +192,9 @@ function readSnapshots(): Record<string, Snapshot> {
   }
 }
 
-export function saveSnapshot(s: Snapshot) {
+// Unexported on purpose: queueSnapshot is the only way in, so the per-frame
+// localStorage write this replaced cannot come back one import at a time.
+function saveSnapshot(s: Snapshot) {
   try {
     const all = readSnapshots()
     all[s.pane] = s

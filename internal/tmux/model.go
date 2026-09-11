@@ -338,9 +338,10 @@ type previewEntry struct {
 }
 
 type previewCache struct {
-	mu  sync.Mutex
-	ttl time.Duration
-	m   map[string]previewEntry
+	mu    sync.Mutex
+	ttl   time.Duration
+	m     map[string]previewEntry
+	swept time.Time
 }
 
 var previews = &previewCache{ttl: 1500 * time.Millisecond, m: map[string]previewEntry{}}
@@ -355,22 +356,31 @@ func (pc *previewCache) get(id string) (string, bool) {
 	return e.text, true
 }
 
-// put stores one screen and drops every entry that has expired.
+// put stores one screen, and every so often drops what has expired.
 //
 // The sweep is what keeps this bounded. Without it the map held 40 lines of
 // screen for every pane the process had ever seen, and remux runs as a
 // LaunchAgent for weeks - so a pane killed in the morning was still costing
 // memory at midnight. An expired entry is already unreachable, since get
-// refuses anything past the TTL, so nothing is lost by removing it. The map
-// is one entry per live pane and the walk is a few dozen comparisons.
+// refuses anything past the TTL, so nothing is lost by removing it.
+//
+// Once per TTL rather than on every write, because Previews calls this from a
+// pool of eight and each call holds the lock. Walking the map every time would
+// put those eight in a queue behind an O(n) loop in the middle of the capture
+// path - small, but the wrong direction for a cache that exists to make
+// captures cheaper. One walk per TTL bounds the map just as well: nothing can
+// expire faster than that.
 func (pc *previewCache) put(id, text string) {
 	now := time.Now()
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	for k, e := range pc.m {
-		if now.Sub(e.at) > pc.ttl {
-			delete(pc.m, k)
+	if now.Sub(pc.swept) > pc.ttl {
+		for k, e := range pc.m {
+			if now.Sub(e.at) > pc.ttl {
+				delete(pc.m, k)
+			}
 		}
+		pc.swept = now
 	}
 	pc.m[id] = previewEntry{text: text, at: now}
 }

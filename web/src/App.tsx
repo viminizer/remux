@@ -43,6 +43,14 @@ export default function App() {
   const [lastReached, setLastReached] = useState<number | null>(null)
 
   const [lines, setLines] = useState<string[]>([])
+  // Which pane the lines in hand belong to.
+  //
+  // On a pane change React renders with the new id and the previous pane's
+  // lines - the setLines below has not landed yet - so the effect that caches
+  // the screen would file one pane's output under another pane's name. A ref
+  // rather than state: it is written on the same commit it is read, and it must
+  // not cause a render of its own.
+  const linesPane = useRef<string | null>(null)
   const [meta, setMeta] = useState<SnapMeta | null>(null)
   const [gone, setGone] = useState<string | null>(null)
   const [live, setLive] = useState(false) // is the current screen from the server?
@@ -183,6 +191,7 @@ export default function App() {
       },
       onSnap: (pane, snapLines, snapMeta) => {
         setGone((g) => (g === pane ? null : g))
+        linesPane.current = pane
         setLines(snapLines)
         setMeta(snapMeta)
         setLive(true)
@@ -252,12 +261,14 @@ export default function App() {
     // own id, before the new pane starts overwriting it.
     flushSnapshot()
     if (!currentId) {
+      linesPane.current = null
       sock.current?.subscribe(null)
       return
     }
     // Show the cached screen at once, clearly marked stale, rather than an
     // empty box while the first snapshot is in flight.
     const cached = loadSnapshot(currentId)
+    linesPane.current = currentId
     setLines(cached?.lines ?? [])
     setMeta(null)
     setLive(false)
@@ -273,6 +284,10 @@ export default function App() {
   // stringifies the whole snapshot store synchronously. See queueSnapshot.
   useEffect(() => {
     if (!currentId || !live || !lines.length) return
+    // These lines are still the pane we just navigated away from. Filing them
+    // under the new id would show one pane's output under another pane's name
+    // the next time the app opened offline.
+    if (linesPane.current !== currentId) return
     queueSnapshot({
       pane: currentId,
       lines,

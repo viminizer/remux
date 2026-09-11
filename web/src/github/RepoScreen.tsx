@@ -244,13 +244,6 @@ function IssuesTab({
 // ── pull requests ─────────────────────────────────────────────────────────
 
 /**
- * The whole PR list is fetched once and filtered here.
- *
- * A PR list is short - 22 is the largest across Kevin's repos - so holding all
- * of it makes every filter instant instead of a round trip, and the counts on
- * the chips are true rather than guesses.
- */
-/**
  * The last PR list fetched, so switching tabs does not buy it again.
  *
  * PRsTab is conditionally rendered, so tapping Issues unmounts it and tapping
@@ -272,6 +265,13 @@ function cachedPRs(repo: string): PR[] | null {
   return prCache.prs
 }
 
+/**
+ * The whole PR list is fetched once and filtered here.
+ *
+ * A PR list is short - 22 is the largest across Kevin's repos - so holding all
+ * of it makes every filter instant instead of a round trip, and the counts on
+ * the chips are true rather than guesses.
+ */
 function PRsTab({
   repo,
   viewer,
@@ -298,8 +298,13 @@ function PRsTab({
     api
       .githubPRs(repo)
       .then((r) => {
+        // Inside the guard, not beside it. A slow fetch for a repo you have
+        // already navigated away from would otherwise land last and overwrite
+        // the entry for the repo actually on screen, leaving that one to pay
+        // the 6-15 s again on the very next toggle.
+        if (cancelled) return
         prCache = { repo, prs: r.prs, at: Date.now() }
-        if (!cancelled) setPRs(r.prs)
+        setPRs(r.prs)
       })
       .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : String(e)))
     return () => {
