@@ -250,6 +250,28 @@ function IssuesTab({
  * of it makes every filter instant instead of a round trip, and the counts on
  * the chips are true rather than guesses.
  */
+/**
+ * The last PR list fetched, so switching tabs does not buy it again.
+ *
+ * PRsTab is conditionally rendered, so tapping Issues unmounts it and tapping
+ * PRs mounts a fresh one - and the fetch behind it is `gh pr list`, which
+ * internal/github/prs.go measures at 6-15 s on a big repo. That was paid on
+ * every toggle.
+ *
+ * One entry, not a map: you look at one repo at a time, so opening another is
+ * the natural moment to drop it. The TTL matches the GitHub poller's own
+ * interval - long enough to cover a person going back and forth between the two
+ * tabs, short enough that a list left on screen does not go quietly stale.
+ */
+let prCache: { repo: string; prs: PR[]; at: number } | null = null
+const PR_CACHE_MS = 60000
+
+function cachedPRs(repo: string): PR[] | null {
+  if (!prCache || prCache.repo !== repo) return null
+  if (Date.now() - prCache.at > PR_CACHE_MS) return null
+  return prCache.prs
+}
+
 function PRsTab({
   repo,
   viewer,
@@ -260,16 +282,25 @@ function PRsTab({
   onOpen: (n: number) => void
 }) {
   const [filter, setFilter] = useState<PRFilter>('all')
-  const [prs, setPRs] = useState<PR[] | null>(null)
+  const [prs, setPRs] = useState<PR[] | null>(() => cachedPRs(repo))
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
+    const have = cachedPRs(repo)
+    if (have) {
+      setPRs(have)
+      setErr(null)
+      return
+    }
     let cancelled = false
     setPRs(null)
     setErr(null)
     api
       .githubPRs(repo)
-      .then((r) => !cancelled && setPRs(r.prs))
+      .then((r) => {
+        prCache = { repo, prs: r.prs, at: Date.now() }
+        if (!cancelled) setPRs(r.prs)
+      })
       .catch((e) => !cancelled && setErr(e instanceof Error ? e.message : String(e)))
     return () => {
       cancelled = true
