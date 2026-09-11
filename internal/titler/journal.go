@@ -27,13 +27,17 @@ const kept = 24
 
 // Run is one batched model call - the unit the money is actually spent in.
 type Run struct {
-	At    int64    `json:"at"`    // unix ms, so the phone can say "2 min ago"
-	MS    int64    `json:"ms"`    // wall time, ~3s of which is CLI startup
-	Tier  string   `json:"tier"`  // the runner that answered; empty when none did
-	Panes int      `json:"panes"` // how many went into the one prompt
-	Chars int      `json:"chars"` // prompt size: the closest free stand-in for cost
-	Names []Named  `json:"names"`
-	Notes []string `json:"notes"` // one line per tier that failed, in order
+	At    int64   `json:"at"`    // unix ms, so the phone can say "2 min ago"
+	MS    int64   `json:"ms"`    // wall time, ~3s of which is CLI startup
+	Tier  string  `json:"tier"`  // the runner that answered; empty when none did
+	Panes int     `json:"panes"` // how many went into the one prompt
+	Chars int     `json:"chars"` // prompt size: the closest free stand-in for cost
+	Names []Named `json:"names"`
+	// Cleared counts panes the model said had nothing on them to name. A run
+	// that clears stale names rather than writing new ones has done its job,
+	// and without this it reads in the journal as a run that did nothing.
+	Cleared int      `json:"cleared"`
+	Notes   []string `json:"notes"` // one line per tier that failed, in order
 }
 
 // Named is one pane that came out of a run with a new name on it.

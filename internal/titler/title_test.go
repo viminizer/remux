@@ -295,12 +295,19 @@ func TestPromptCarriesScreenAndCurrentName(t *testing.T) {
 		"project: shortlist",
 		"never repeat the project",
 		"/Users/mac/dev/shortlist",
-		"current name: venue filter",
+		"current name, written from an older screen: venue filter",
 		"working on auth",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q:\n%s", want, p)
 		}
+	}
+	// The screen is the evidence and the current name is a prior, so the name
+	// comes second. Read first, it is taken as the answer: on the live
+	// workspace every pane but the empty ones came back byte-identical to the
+	// name it already had.
+	if strings.Index(p, "working on auth") > strings.LastIndex(p, "current name") {
+		t.Error("current name is above the screen; that is what the model answers with")
 	}
 	if strings.Contains(p, "\x1b[") {
 		t.Error("prompt still carries ANSI escapes; that is tokens spent on colour codes")
@@ -600,5 +607,120 @@ func TestANamedQuietPaneIsNotRecaptured(t *testing.T) {
 
 	if len(f.captured) != before {
 		t.Errorf("recaptured a named quiet pane (%d -> %d)", before, len(f.captured))
+	}
+}
+
+// NONE is the answer for a pane with nothing on it, and the point of it is
+// that the model stops inventing. Before it existed a freshly cleared pane in
+// a busy project came back named after the pane above it in the same batch.
+func TestNoneClearsAStaleName(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+	f.screens["%2"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: review pr 269\n2: NONE\n"}
+	p := newPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex", Path: "/Users/mac/dev/shortlist"},
+		&tmux.Pane{ID: "%2", Command: "codex", Path: "/Users/mac/dev/shortlist", RemuxTask: "fix issue 270"},
+	))
+	settle(t, p)
+
+	if got := f.tasks["%2"]; got != "" {
+		t.Errorf("NONE left %q on a pane with nothing on it", got)
+	}
+	n := p.Report()
+	if len(n.Runs) != 1 || n.Runs[0].Cleared != 1 {
+		t.Fatalf("run did not record the clear: %+v", n.Runs)
+	}
+	if n.Wrote != 1 {
+		t.Errorf("clearing counted as a name written: wrote = %d", n.Wrote)
+	}
+}
+
+// NONE on a pane that is already blank is the common case - it must not fall
+// through to the screen fallback, which is the path that used to guess.
+func TestNoneDoesNotFallBackToTheScreen(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = "❯ now lets do 270\n"
+
+	r := &fakeRunner{label: "fake", out: "1: none\n"}
+	p := newPass(f)
+	p.Chain = []Runner{r}
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{ID: "%1", Command: "codex"},
+	))
+	settle(t, p)
+
+	if got, wrote := f.tasks["%1"]; wrote && got != "" {
+		t.Errorf("NONE fell back to the screen and wrote %q", got)
+	}
+	if c := p.Report().Runs[0].Cleared; c != 0 {
+		t.Errorf("a pane that had no name counted as cleared: %d", c)
+	}
+}
+
+func TestIsNone(t *testing.T) {
+	for in, want := range map[string]bool{
+		"NONE":                        true,
+		"none":                        true,
+		"none.":                       true,
+		`"none"`:                      true,
+		"none - nothing on screen":    true,
+		"none of the tests are green": false,
+		"nonexistent route fix":       false,
+		"":                            false,
+	} {
+		if got := isNone(in); got != want {
+			t.Errorf("isNone(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// The bug this guards against did not look like a bug. Names came back
+// well-formed and about the wrong thing, because on a wide pane the whole
+// screen budget was spent on the rules and status bar at the bottom and the
+// model never saw a line the agent had written.
+func TestWideScreensStillReachRealWork(t *testing.T) {
+	rule := strings.Repeat("─", 195)
+	screen := strings.Join([]string{
+		"  Take api 128 next, it finishes the rule you just built",
+		"",
+		"※ recap: picking the critical work left before the demo",
+		"",
+		rule,
+		"❯ ",
+		rule,
+		"  Opus 5 | seoulwomen-docs | 15% of 1000k tokens",
+		"  129 and 215 are done",
+		"  -- INSERT -- bypass permissions on",
+	}, "\n")
+
+	got := tailScreen(screen)
+	if !strings.Contains(got, "recap: picking the critical work") {
+		t.Errorf("the one line that says what the pane is doing did not survive:\n%s", got)
+	}
+	if strings.Contains(got, rule) {
+		t.Error("a full-width rule made it into the prompt; that is 195 characters of the budget")
+	}
+	// The status bar draws its meter out of the same block characters the
+	// rules use, and it is the only place the project and the last request
+	// appear.
+	if !strings.Contains(got, "129 and 215 are done") {
+		t.Errorf("the status bar was dropped with the furniture:\n%s", got)
+	}
+}
+
+func TestTailScreenStillObeysTheBudget(t *testing.T) {
+	long := strings.Repeat("this is a line of an agent talking about its work\n", 200)
+	got := tailScreen(long)
+	if len(got) > maxScreenChars {
+		t.Errorf("tailScreen returned %d chars, over the %d budget", len(got), maxScreenChars)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(got), "about its work") {
+		t.Error("kept the head instead of the tail; the newest lines are the point")
 	}
 }

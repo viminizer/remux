@@ -600,3 +600,75 @@ old binary, so:
 
 Nothing else. `gh` is already logged in, and there is no new permission to
 grant.
+
+# The names were wrong, and the prompt was not why
+
+Kevin's report was that the titler names every pane but most of the names do
+not describe the job being done. Reading the twenty-two live panes against
+their names, three separate things were wrong, and only one of them was the
+wording.
+
+## The screen budget was being spent on furniture
+
+`maxScreenChars` bounds one pane's contribution to the batched prompt, and it
+was spent from the bottom of the screen. What is at the bottom of these panes
+is not work. It is two full-width rules around the composer, a status bar, and
+a hint line.
+
+On a 195-column pane each rule costs 195 characters. Pane 7 is 195 columns, and
+its entire 1200-character allowance reached no further than its own status bar
+- the model was handed a project name, a directory, an empty composer, and
+nothing else, then asked what the agent was working on. It answered with the
+name of the pane above it in the batch: "scout issue 190" became "implement
+issue 190" on a pane in a different repo.
+
+`tailScreen` now drops blank and rule-only lines before the budget is applied.
+Whole-line only, so the status bar survives - it draws its token meter out of
+the same block characters, but it has words beside it, and it is the only place
+the last request appears.
+
+This made the prompt smaller in tokens while carrying far more work. A
+195-character run of U+2500 is not free; ripping it out paid for the budget
+going from 1200 to 1500. Measured on the live workspace the whole prompt moved
+31.0KB to 32.3KB, and its non-ASCII count fell to 652 characters.
+
+## The current name was being read as the answer
+
+`current name:` was printed above the screen. Ahead of the evidence it reads as
+the answer, and the model copied it: on a live run every pane but the two empty
+ones came back byte-identical to the name it already had, stale ones included.
+It now comes after the screen, labelled as written from an older screen, and
+the rules ask for it to be checked rather than kept.
+
+## A pane with nothing on it was named anyway
+
+The prompt said a pane with no name must be given one, and a rough name beats
+none. For a screen with work on it that is right. For a freshly cleared session
+it forced a guess, and the guess came from the neighbours: `%24`, showing a
+banner and `/clear` and nothing else, was named "fix issue 270" - which is what
+`%14` beside it was doing. Two panes reading identically is the problem this
+feature exists to solve.
+
+`NONE` is the narrow hatch for that one case, and it clears the name rather
+than leaving it, because a specific name on a pane cleared an hour ago is the
+kind of wrong that gets believed. It costs something: an unnamed pane is
+captured on every tick and asked about every `askEvery`, where a named one is
+not. That is the price of not inventing, and blank panes are few.
+
+`Run.Cleared` counts them, so the journal shows a run that refused to guess
+instead of showing a run that did nothing.
+
+## Verified against the twenty-two live panes
+
+One run of the real chain on the real workspace, checked pane by pane against
+what was on the screens:
+
+- **8 names corrected**, every one of them stale in the same way - they named
+  work the screen showed as finished. "issues 129 215" became "start api 128",
+  which is what the recap line two rows up had been saying all along. "resolve
+  pr 39385 conflicts" became "get routing decision", on a screen that says the
+  conflicts are fully answered and what is still open is an unanswered design
+  question.
+- **2 panes correctly refused.** Both were cleared sessions. Both had been
+  carrying a confident wrong name.
+- **The rest held.** No pane that was right was made worse.

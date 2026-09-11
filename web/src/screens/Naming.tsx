@@ -225,7 +225,15 @@ function Runs({ n }: { n: Naming }) {
               {/* The common case once a workspace has settled, and without a
                   line of its own it reads as a run that failed: the model
                   looked at every pane and said every name was still right. */}
-              {r.tier && !(r.names ?? []).length && (
+              {/* A cleared pane is a pane the model refused to guess at, which
+                  is the answer we want from an empty screen - but it leaves
+                  nothing on the pane, so this line is the only trace of it. */}
+              {r.cleared > 0 && (
+                <div className="run-name run-quiet">
+                  {r.cleared} with nothing on screen, unnamed
+                </div>
+              )}
+              {r.tier && !(r.names ?? []).length && !r.cleared && (
                 <div className="run-name run-quiet">every name still fits</div>
               )}
             </div>

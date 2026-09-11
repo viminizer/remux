@@ -274,6 +274,8 @@ export interface NamingRun {
   panes: number
   /** Prompt size in characters - the closest free stand-in for cost. */
   chars: number
+  /** Panes the model said had nothing on them to name, so their name was cleared. */
+  cleared: number
   names: NamedPane[] | null
   /** One line per tier that failed, in the order they were tried. */
   notes: string[] | null
