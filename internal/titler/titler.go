@@ -66,6 +66,14 @@ type Pass struct {
 	// last fifteen minutes - and the suite quietly depended on HIDAway being
 	// broken.
 	Away func() bool
+	// AwayFor is how long one Away answer is reused. Zero means the default.
+	//
+	// A seam for the same reason Away is. The cache is what bounds ioreg to
+	// one fork per ten seconds overnight, and it also means a transition takes
+	// up to that long to notice - fine when Kevin picks up the phone and the
+	// names appear a few seconds later, impossible to test against without
+	// sleeping ten seconds per case.
+	AwayFor time.Duration
 
 	gate *tmux.ActivityGate
 
@@ -74,12 +82,30 @@ type Pass struct {
 	naming atomic.Bool
 	asked  *cooldown
 
-	mu      sync.Mutex
-	failed  map[string]bool // panes whose last write errored, so it is logged once
-	backoff time.Duration   // current wait after a chain that failed at every tier
-	retryAt time.Time       // nothing is asked before this
-	wasAway bool            // last away answer
-	awayAt  time.Time       // when it was asked
+	mu        sync.Mutex
+	failed    map[string]bool // panes whose last write errored, so it is logged once
+	backoff   time.Duration   // current wait after a chain that failed at every tier
+	retryAt   time.Time       // nothing is asked before this
+	wasAway   bool            // last away answer
+	awayAt    time.Time       // when it was asked
+	couldName bool            // whether naming was possible on the previous pass
+}
+
+// namingJustOpened reports the pass on which naming became possible - the
+// switch flipped on, or Kevin came back to something that is reading.
+//
+// It asks the away check only when the switch is on, so a workspace with
+// naming turned off never forks ioreg at all. The first pass answers false
+// whatever the state: the gate is empty then, so every pane is already offered
+// and there is nothing to make stale.
+func (p *Pass) namingJustOpened(enabled bool) bool {
+	can := enabled && len(p.Chain) > 0 && !p.isAway()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	opened := can && !p.couldName
+	p.couldName = can
+	return opened
 }
 
 // awayFor is how long one Away answer is reused.
@@ -92,8 +118,13 @@ type Pass struct {
 const awayFor = 10 * time.Second
 
 func (p *Pass) isAway() bool {
+	reuse := p.AwayFor
+	if reuse == 0 {
+		reuse = awayFor
+	}
+
 	p.mu.Lock()
-	if time.Since(p.awayAt) < awayFor {
+	if !p.awayAt.IsZero() && time.Since(p.awayAt) < reuse {
 		v := p.wasAway
 		p.mu.Unlock()
 		return v
@@ -157,6 +188,23 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 	p.forget(live)
 
 	naming := p.Enabled == nil || p.Enabled()
+
+	// Naming has just become possible, so every pane is made stale once.
+	//
+	// The gate offers a pane when its window moves and not again until it
+	// moves next. If naming was impossible at that moment - the switch off, or
+	// nobody looking - the pane is skipped, and a pane that has since gone
+	// quiet is never offered again. That loses precisely the set worth naming:
+	// the agents that finished hours ago and are sitting there waiting.
+	//
+	// Measured on the real workspace, with the presence gate live: of
+	// twenty-one agent panes, the three still writing output got named and the
+	// other eighteen - every one of them idle for hours - stayed blank
+	// permanently. Forget is what the ws poller already calls on "resume", for
+	// the same reason: a consumer whose cached verdicts are worthless.
+	if p.namingJustOpened(naming) {
+		p.gate.Forget()
+	}
 
 	var due []job
 	for _, s := range p.gate.Capture(ctx, p.Tmux, agents) {

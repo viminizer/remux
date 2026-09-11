@@ -440,3 +440,77 @@ func TestDisablingNamingClearsTheOldName(t *testing.T) {
 		t.Errorf("task = %q, want it cleared once naming is off", got)
 	}
 }
+
+// A pane that went quiet while nobody was looking still gets named when Kevin
+// comes back.
+//
+// This is the shape of the real failure, measured on the live workspace: of
+// twenty-one agent panes, the three still writing output were named and the
+// other eighteen stayed blank forever. The gate offers a pane when its window
+// moves; if naming is impossible at that instant the pane is skipped, and a
+// pane that has since gone quiet is never offered again - which is exactly the
+// set worth naming.
+func TestPanesQuietWhileAwayAreNamedOnReturn(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	r := &fakeRunner{label: "fake", out: "1: venue filter pagination\n"}
+	p := New(f)
+	p.Chain = []Runner{r}
+
+	away := true
+	p.Away = func() bool { return away }
+	p.AwayFor = time.Nanosecond // no reuse, so the return is seen at once
+
+	// Two passes while away. The first offers the pane because the gate has
+	// never seen it; the second does not, and from here it never would again.
+	quiet := int64(100)
+	for i := 0; i < 2; i++ {
+		p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+		settle(t, p)
+	}
+	if r.count() != 0 {
+		t.Fatalf("asked a model %d times while away", r.count())
+	}
+
+	// He comes back. The pane has produced nothing in the meantime, so its
+	// window activity is unchanged - the gate alone would skip it.
+	away = false
+	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+
+	if got := f.tasks["%1"]; got != "venue filter pagination" {
+		t.Errorf("task = %q; a pane that went quiet while away was never named", got)
+	}
+}
+
+// The re-read happens once per return, not on every pass, or coming back would
+// mean recapturing every pane in the workspace every two seconds.
+func TestReturningReReadsOnlyOnce(t *testing.T) {
+	f := newFake()
+	f.screens["%1"] = busyScreen
+
+	p := New(f)
+	p.Chain = []Runner{&fakeRunner{label: "fake", out: "1: SAME\n"}}
+	away := true
+	p.Away = func() bool { return away }
+	p.AwayFor = time.Nanosecond
+
+	quiet := int64(100)
+	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+
+	away = false
+	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+	afterReturn := len(f.captured)
+
+	// Still here, still quiet: nothing more to read.
+	p.OnTree(context.Background(), tree(quiet, &tmux.Pane{ID: "%1", Command: "codex"}))
+	settle(t, p)
+
+	if len(f.captured) != afterReturn {
+		t.Errorf("captured again on a quiet pass after returning (%d -> %d); "+
+			"the latch is re-firing", afterReturn, len(f.captured))
+	}
+}
