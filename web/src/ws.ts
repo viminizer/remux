@@ -31,7 +31,7 @@ export class Socket {
     this.h = h
     document.addEventListener('visibilitychange', this.onVisibility)
     window.addEventListener('online', this.onOnline)
-    window.addEventListener('offline', () => this.h.onConn('offline'))
+    window.addEventListener('offline', this.onOffline)
   }
 
   connect() {
@@ -154,11 +154,17 @@ export class Socket {
     this.connect()
   }
 
+  // A bound field rather than an inline arrow, for the same reason as the two
+  // above: close() can only remove a listener it still has a reference to. An
+  // inline one outlives the socket and keeps reporting on a dead handler set.
+  private onOffline = () => this.h.onConn('offline')
+
   close() {
     this.closed = true
     this.clearTimer()
     document.removeEventListener('visibilitychange', this.onVisibility)
     window.removeEventListener('online', this.onOnline)
+    window.removeEventListener('offline', this.onOffline)
     this.ws?.close()
   }
 }
