@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/viminizer/remux/internal/agent"
 )
 
 // Repo is one watched repository as the Repos screen draws it.
@@ -324,7 +326,7 @@ const commentBudget = 600
 func trimComment(author, body string, at time.Time) Comment {
 	c := Comment{Author: author, Body: strings.TrimSpace(body), At: at}
 	if len(c.Body) > commentBudget {
-		c.Body = strings.TrimSpace(c.Body[:commentBudget])
+		c.Body = strings.TrimSpace(agent.TruncBytes(c.Body, commentBudget))
 		c.Trimmed = true
 	}
 	return c

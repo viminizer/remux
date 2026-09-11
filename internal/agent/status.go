@@ -9,6 +9,7 @@ package agent
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // Status is what the badge in the UI shows.
@@ -269,4 +270,28 @@ func Label(s Status) string {
 		return "shell"
 	}
 	return "unknown"
+}
+
+// TruncBytes cuts s down to at most n bytes without splitting a rune in half.
+//
+// Every budget in this app is a byte budget, because the thing being protected
+// is the size of what goes over the wire or into a file. Slicing to that number
+// directly leaves a dangling byte whenever the character on the boundary is
+// multi-byte - Kevin writes Korean, so that is three bytes and two thirds of it
+// survives. json.Marshal turns the remains into U+FFFD and strconv.Quote spells
+// it \xed, both of which are worse to read than the character that was cut.
+//
+// Backing up is the whole fix: at most three bytes are given up, and the result
+// is always valid UTF-8.
+func TruncBytes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
