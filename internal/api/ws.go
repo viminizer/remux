@@ -366,8 +366,17 @@ func (p *poller) pollTree(ctx context.Context) {
 		return
 	}
 	p.mu.Lock()
+	same := tree == p.tree && p.hasTree
 	p.tree = tree
 	p.mu.Unlock()
+	// The very tree we hashed last tick. Connections poll on the interval the
+	// shared sweep refreshes on, so this is the ordinary case, not a corner -
+	// and marshalling 27 panes to rediscover a hash we already have is the
+	// same duplicated work this change removed one layer up. hasTree is in the
+	// test so a forced resend after a resume still goes out.
+	if same {
+		return
+	}
 
 	b, err := json.Marshal(tree)
 	if err != nil {

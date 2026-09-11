@@ -39,24 +39,34 @@ type workspace struct {
 	pub  sync.RWMutex
 	tree *tmux.Tree
 	at   time.Time
+	// classified records whether the published tree carries verdicts. It can
+	// be false: a sweep with nobody watching skips the captures, and a phone
+	// arriving afterwards must not be handed that tree with a drawer full of
+	// blank status dots.
+	classified bool
 }
 
 func newWorkspace() *workspace {
 	return &workspace{gate: tmux.NewActivityGate(), status: map[string]string{}}
 }
 
-// published returns the last tree and how old it is.
-func (w *workspace) published() (*tmux.Tree, time.Duration) {
+// fresh returns the published tree when it is younger than maxAge, and carries
+// verdicts if the caller needs them.
+func (w *workspace) fresh(maxAge time.Duration, needStatus bool) *tmux.Tree {
 	w.pub.RLock()
 	defer w.pub.RUnlock()
-	if w.tree == nil {
-		return nil, 0
+	if w.tree == nil || time.Since(w.at) >= maxAge {
+		return nil
 	}
-	return w.tree, time.Since(w.at)
+	if needStatus && !w.classified {
+		return nil
+	}
+	return w.tree
 }
 
 // Workspace returns the shared tree, refreshing it if what is published is
-// older than maxAge.
+// older than maxAge - or if a phone is watching and what is published has no
+// verdicts on it.
 //
 // The refresh is here rather than only on the timer so the first frame after a
 // connect is immediate. Waiting for the next shared tick would have shown the
@@ -65,7 +75,10 @@ func (w *workspace) published() (*tmux.Tree, time.Duration) {
 // shown it nothing ever.
 func (s *Server) Workspace(ctx context.Context, maxAge time.Duration) *tmux.Tree {
 	w := s.ws
-	if tree, age := w.published(); tree != nil && age < maxAge {
+	// Read once: a socket opening between the two checks below would send us
+	// down one path with the other's answer.
+	watching := s.Watching()
+	if tree := w.fresh(maxAge, watching); tree != nil {
 		return tree
 	}
 
@@ -73,21 +86,22 @@ func (s *Server) Workspace(ctx context.Context, maxAge time.Duration) *tmux.Tree
 	defer w.one.Unlock()
 	// Somebody else may have refreshed it while we waited for the lock, and
 	// that answer is as good as the one we were about to fetch.
-	if tree, age := w.published(); tree != nil && age < maxAge {
+	if tree := w.fresh(maxAge, watching); tree != nil {
 		return tree
 	}
-	return s.refreshWorkspace(ctx)
+	return s.refreshWorkspace(ctx, watching)
 }
 
 // refreshWorkspace reads the workspace, classifies every pane, and publishes
-// the result. The caller must hold w.one.
+// the result. The caller must hold w.one, which is what makes the gate and the
+// carry-forward map below safe without a lock of their own.
 //
 // Deliberately cheap enough to sit on a connection's path: a tree read plus the
 // captures the gate did not rule out. The pane/repo matching is not here and
 // must not be - it touches the filesystem, and a directory macOS has not
 // granted access to blocks rather than fails. That stays on WatchPanes, where
 // one background goroutine is the only thing that can be left waiting.
-func (s *Server) refreshWorkspace(ctx context.Context) *tmux.Tree {
+func (s *Server) refreshWorkspace(ctx context.Context, classify bool) *tmux.Tree {
 	w := s.ws
 	tree, err := s.Tmux.Tree(ctx)
 	if err != nil {
@@ -95,37 +109,64 @@ func (s *Server) refreshWorkspace(ctx context.Context) *tmux.Tree {
 	}
 
 	panes := tree.Panes()
-	live := make([]*tmux.Pane, 0, len(panes))
+	alive := make(map[string]bool, len(panes))
 	for _, pn := range panes {
-		if !agent.IsShell(pn.Command) {
-			live = append(live, pn)
-		}
+		alive[pn.ID] = true
 	}
-	stale := map[string]bool{}
-	for _, id := range w.gate.Changed(live) {
-		stale[id] = true
-	}
-	ids := make([]string, 0, len(stale))
-	for _, pn := range live {
-		if stale[pn.ID] {
-			ids = append(ids, pn.ID)
-		}
-	}
-	screens := s.Tmux.Previews(ctx, ids, tmux.PreviewLines)
 
-	// A shell is classified from its command alone, so it never needs a
-	// screen; everything else either has a fresh one or keeps the verdict it
-	// had.
+	// The captures are the expensive half and only a phone reads what they
+	// produce: pane.Status is the drawer's status dot and nothing else
+	// consumes it - the namer classifies for itself, off its own gate and a
+	// much narrower set of panes. So with nobody watching this does the tree
+	// read the namer needs and skips the rest, which is what the per-connection
+	// poller used to achieve by simply not existing.
+	//
+	// It matters because agent.IsShell's complement is wide. vim, htop, less,
+	// tail and `npm run dev` are none of them, and a dev server writes to its
+	// window on every tick, so it passes the gate every time - the most
+	// expensive kind of pane to sweep for a verdict nobody is going to read.
+	if classify {
+		live := make([]*tmux.Pane, 0, len(panes))
+		var unknown []*tmux.Pane
+		for _, pn := range panes {
+			if agent.IsShell(pn.Command) {
+				continue
+			}
+			live = append(live, pn)
+			// The gate is keyed by window, so a pane that appears in a window
+			// that has been quiet is not offered - and with no verdict cached
+			// it would publish a pane with no status at all, until something
+			// happened to write to that window. always is how the gate takes
+			// "I have never had an answer for this one".
+			if _, had := w.status[pn.ID]; !had {
+				unknown = append(unknown, pn)
+			}
+		}
+		for _, sc := range w.gate.CaptureWith(ctx, s.Tmux, live, unknown) {
+			// A capture that failed says nothing about the pane. Classifying
+			// the empty string gives Unknown, and storing that would mark a
+			// working pane with a shrug that the gate then refuses to
+			// reconsider until its window next moves. Left absent instead, it
+			// is retried on the next sweep through unknown above.
+			if !sc.Captured {
+				continue
+			}
+			w.status[sc.Pane.ID] = string(agent.Classify(sc.Pane.Command, sc.Pane.Title, sc.Screen))
+		}
+	}
+
 	for _, pn := range panes {
-		if agent.IsShell(pn.Command) || stale[pn.ID] {
-			pn.Status = string(agent.Classify(pn.Command, pn.Title, screens[pn.ID]))
+		// A shell is classified from its command alone - Classify
+		// short-circuits before it looks at a screen - so it never needed one.
+		if agent.IsShell(pn.Command) {
+			pn.Status = string(agent.Classify(pn.Command, pn.Title, ""))
 			w.status[pn.ID] = pn.Status
 			continue
 		}
 		pn.Status = w.status[pn.ID]
 	}
 	for id := range w.status {
-		if tree.Pane(id) == nil {
+		if !alive[id] {
 			delete(w.status, id)
 		}
 	}
@@ -136,8 +177,8 @@ func (s *Server) refreshWorkspace(ctx context.Context) *tmux.Tree {
 	// on a path that must not block.
 	s.mu.Lock()
 	byPane := make(map[string]string, len(panes))
-	for repo, panes := range s.paneRepos {
-		for _, id := range panes {
+	for repo, ids := range s.paneRepos {
+		for _, id := range ids {
 			byPane[id] = repo
 		}
 	}
@@ -149,7 +190,7 @@ func (s *Server) refreshWorkspace(ctx context.Context) *tmux.Tree {
 	// Published last, and never mutated afterwards: readers marshal this very
 	// tree, so anything writing to it after this point would be a race.
 	w.pub.Lock()
-	w.tree, w.at = tree, time.Now()
+	w.tree, w.at, w.classified = tree, time.Now(), classify
 	w.pub.Unlock()
 	return tree
 }

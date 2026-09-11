@@ -249,6 +249,11 @@ func (s *Server) watchPanes(ctx context.Context, every time.Duration) {
 		s.mu.Unlock()
 	}
 
+	// Read-only, and it has to stay that way: this is the published tree and
+	// every connection is marshalling it on its own goroutine. A namer that
+	// wrote a field back onto a pane here would be an unguarded write against
+	// N readers - the kind -race only catches when the timing happens to line
+	// up. Anything a pass wants to keep belongs in its own state.
 	if s.OnTree != nil {
 		s.OnTree(ctx, tree)
 	}
