@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Pane } from '../types'
 import type { Issue, PR, Repo } from './types'
@@ -162,18 +162,32 @@ function IssuesTab({
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Which request is still the one we want. Every reply reads this before it
+  // touches state, and leaving a filter bumps it.
+  //
+  // The rest of the screen uses a `cancelled` flag scoped to its effect, but
+  // that cannot work here: "Load 30 more" starts a request from a click, with
+  // no effect around it. Tapping Yours, All, Yours faster than the requests
+  // return is enough to land the middle reply last, on top of the list it does
+  // not belong to.
+  const seq = useRef(0)
+
   const load = useCallback(
     async (f: IssueFilter, after?: string) => {
+      const mine = seq.current
       setBusy(true)
       setErr(null)
       try {
         const page = await api.githubIssues(repo, f, after)
+        if (seq.current !== mine) return
         setIssues((prev) => (after ? [...(prev ?? []), ...page.issues] : page.issues))
         setNext(page.next)
       } catch (e) {
+        if (seq.current !== mine) return
         setErr(e instanceof Error ? e.message : String(e))
       } finally {
-        setBusy(false)
+        // The request that replaces this one owns the spinner from here.
+        if (seq.current === mine) setBusy(false)
       }
     },
     [repo],
@@ -183,6 +197,9 @@ function IssuesTab({
     setIssues(null)
     setNext(undefined)
     void load(filter)
+    return () => {
+      seq.current++
+    }
   }, [filter, load])
 
   const shown = issues?.length ?? 0

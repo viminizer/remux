@@ -7,7 +7,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "esbuild src/ansi.ts --outfile=.test-build/ansi.js --format=esm --log-level=error && node --test test/ansi.test.js"
+    "test": "esbuild src/ansi.ts src/ws.ts --outdir=.test-build --format=esm --log-level=error && node --test test/*.test.js"
   },
   "dependencies": {
     "react": "^18.3.1",
