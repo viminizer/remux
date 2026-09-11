@@ -89,6 +89,24 @@ button,input,textarea,select{font-family:inherit}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.dot.working::after{animation:none;opacity:.4}}
 
+/* The drawer row's status mark. Same colour vocabulary as .dot, and the same
+   three characters the tmux status line shows on the Mac.
+
+   flex:0 0 auto because .row-t span sets overflow:hidden for the title's
+   ellipsis, and without it the mark is a flex item that can be squeezed to
+   nothing by a long name - which is the one row where you most want to see
+   that it is blocked. Tabular width keeps the names starting at the same x
+   down the column, so the list still scans as a column. */
+.glyph{
+  flex:0 0 auto;width:9px;text-align:center;
+  font-size:12px;line-height:1;font-weight:700;
+}
+.glyph.waiting{color:var(--peach)}
+.glyph.working{color:var(--blue)}
+.glyph.idle{color:var(--green)}
+.glyph.shell{color:var(--s2)}
+.glyph.stale{color:var(--ov0)}
+
 /* ── stale banner (offline) ───────────────────────────────── */
 .stale-bar{
   display:none;flex-direction:column;gap:0;

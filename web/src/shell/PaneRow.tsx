@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { Pane } from '../types'
 import { displayCommand, paneTitle, statusLabel } from '../types'
-import { StatusDot } from '../components/StatusDot'
+import { StatusGlyph } from '../components/StatusGlyph'
 
 /**
  * One row per pane.
@@ -65,7 +65,7 @@ export function PaneRow({
         onPointerLeave={cancel}
       >
         <div className="row-t">
-          <StatusDot status={pane.status} />
+          <StatusGlyph pane={pane} />
           <span>{paneTitle(pane)}</span>
         </div>
         <div className="row-s">

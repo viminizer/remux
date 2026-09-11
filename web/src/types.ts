@@ -227,6 +227,25 @@ export function statusLabel(s: Status | undefined): string {
 }
 
 /** The mock's dot classes; 'busy' renders as the spinning "working" dot. */
+/**
+ * The glyph vocabulary, shared with the laptop.
+ *
+ * These are the same three characters remux writes into the @remux_state pane
+ * option for the tmux status line, so a pane reads the same on the phone as it
+ * does on the Mac. Only "!" is meant to catch the eye: across twenty agent
+ * panes the costly question is not what each is doing, it is which of them is
+ * waiting on an answer.
+ *
+ * A shell gets nothing, and neither does a pane nothing matched - a glyph
+ * there would be a confident guess about a screen we could not read.
+ */
+export function statusGlyph(s: Status | undefined): string {
+  if (s === 'waiting') return '!'
+  if (s === 'busy') return '✳'
+  if (s === 'idle') return '✓'
+  return ''
+}
+
 export function dotClass(s: Status | undefined): string {
   if (s === 'busy') return 'working'
   if (s === 'waiting' || s === 'idle' || s === 'shell') return s
