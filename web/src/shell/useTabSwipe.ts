@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { claim } from './tabSwipe'
+import { SLOP, claim, isStrip } from './tabSwipe'
 
 /**
  * Swipe sideways to change tab, on the two screens that have tabs.
@@ -74,6 +74,7 @@ export function useTabSwipe({
     let x0 = 0
     let y0 = 0
     let want: 'prev' | 'next' = 'next'
+    let strip: HTMLElement | null = null
     let lastX = 0
     let lastT = 0
     let vx = 0
@@ -81,10 +82,7 @@ export function useTabSwipe({
     const down = (e: PointerEvent) => {
       // Touch only, like the drawer: a mouse drag is a text selection.
       if (e.pointerType !== 'touch' || !e.isPrimary || !live.current.enabled) return
-      // A drag that starts on the filter chips belongs to the chips. Same
-      // question useDrawerSwipe asks, and it has to be asked here too -
-      // otherwise scrolling the chips changes tab underneath them.
-      if (scrollsSideways(e.target, el)) return
+      strip = stripAt(e.target, el)
       mode = 'undecided'
       id = e.pointerId
       x0 = lastX = e.clientX
@@ -104,6 +102,15 @@ export function useTabSwipe({
           return
         }
         if (Math.abs(dx) < AXIS) return
+        // A strip of chips under the finger owns the drag while it still has
+        // room to move that way, which is the rule useDrawerSwipe uses for
+        // mirror mode. Asked in the direction of travel, not at pointerdown:
+        // a strip scrolled to its end has nothing left to give and the tab
+        // should get the rest of the gesture.
+        if (strip && roomToward(strip, dx)) {
+          mode = 'drop'
+          return
+        }
         const c = claim(dx, live.current.index, live.current.count)
         if (c === 'pass') {
           // Nowhere to go this way. Leave the event alone so the drawer can
@@ -164,16 +171,37 @@ export function useTabSwipe({
   return setRoot
 }
 
-/** True if the touch started inside something that scrolls sideways itself. */
-function scrollsSideways(target: EventTarget | null, stop: HTMLElement): boolean {
+/**
+ * The sideways-scrolling strip the touch started in, if any.
+ *
+ * "Strip" is doing real work here, and getting it wrong is what made the whole
+ * gesture dead on a phone. The first version asked the same question
+ * useDrawerSwipe's scrollerAt asks - does an ancestor scroll sideways - and on
+ * these screens the answer is yes far too often. `.list` and `.screen-body`
+ * set overflow-y:auto, and CSS forces the other axis to compute to auto with
+ * it, so the vertical list reports overflow-x:auto too. The moment one issue
+ * title is a pixel wider than the phone, every swipe in the list was handed to
+ * a scroller that exists only as a rounding artifact. It worked on a wide
+ * window and did nothing on the device, which is exactly the report.
+ *
+ * A real horizontal strip - the filter chips - has room across and none down.
+ * A list that scrolls vertically is never one, whatever its computed
+ * overflow-x says.
+ */
+function stripAt(target: EventTarget | null, stop: HTMLElement): HTMLElement | null {
   for (let n = target as Element | null; n instanceof HTMLElement; n = n.parentElement) {
-    if (n === stop) return false
-    if (n.scrollWidth > n.clientWidth) {
+    if (n === stop) return null
+    if (isStrip(n.scrollWidth - n.clientWidth, n.scrollHeight - n.clientHeight)) {
       const ox = getComputedStyle(n).overflowX
-      if (ox === 'auto' || ox === 'scroll') return true
+      if (ox === 'auto' || ox === 'scroll') return n
     }
   }
-  return false
+  return null
+}
+
+/** Whether the strip can still scroll the way the finger is going. */
+function roomToward(el: HTMLElement, dx: number): boolean {
+  return dx > 0 ? el.scrollLeft > SLOP : el.scrollLeft < el.scrollWidth - el.clientWidth - SLOP
 }
 
 /**

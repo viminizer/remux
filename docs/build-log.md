@@ -744,3 +744,43 @@ ignores anything that is not a finger:
   rather than assumed.
 - a swipe starting on the filter chips, forced to overflow, does not change tab
 - a mostly-vertical drag does not change tab
+
+## The swipe shipped dead on the phone
+
+It worked in a wide desktop window and did nothing on the device, which is the
+shape of bug worth writing down.
+
+`useTabSwipe` asked, at pointerdown, whether the touch had started inside
+something that scrolls sideways - the filter chips - and bowed out if so. That
+is the same question `scrollerAt` asks for the drawer, and on these screens it
+has the wrong answer far too often.
+
+`.list` and `.screen-body` set `overflow-y:auto`. CSS forces the other axis to
+compute to `auto` along with it, so **a vertical list reports `overflow-x:auto`
+too**. The moment one issue title is a pixel wider than the screen the list has
+horizontal overflow as well, and every swipe inside it was handed to a scroller
+that exists only as a rounding artifact. On a phone that is the normal state.
+On a wide window it never happens, so it tested clean.
+
+Measured: at 390px the inbox list reports 115px of horizontal overflow next to
+1036px of vertical. Reproduced on the desktop by appending one 120%-wide child
+to the list - the swipe stops working, remove it and it works again.
+
+What separates the two is room across and none down, which is `isStrip`, and it
+is a pure function with a test for exactly this case. The strip is also now
+asked in the direction of travel rather than at pointerdown, so chips scrolled
+to their end hand the rest of the gesture to the tab - the same rule
+`useDrawerSwipe` uses for mirror mode.
+
+### A second reason it looked broken
+
+The tab under test was serving `index-DfMZQpw4.js` while the server had moved
+on. The service worker is network-first and calls `skipWaiting` and
+`clients.claim`, so it is built to pick up a new shell - but a load that lands
+while the Mac is unreachable, which is exactly what a `remux restart` is, falls
+back to the cached shell and pins the old bundle until the next successful
+load.
+
+Nothing is wrong with the worker. Settings already compares `__BUILD_VERSION__`
+against the version the server reports and offers the update, which is the
+thing to look at when a shipped change appears to have done nothing.
