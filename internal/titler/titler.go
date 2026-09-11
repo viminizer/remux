@@ -95,6 +95,7 @@ type Pass struct {
 	// spends money is also the only part that keeps a history of itself.
 	runs  []Run
 	calls int
+	chars int
 	wrote int
 	fails int
 }

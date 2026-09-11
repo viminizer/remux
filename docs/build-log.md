@@ -305,7 +305,10 @@ footer "Connected" - reconnect via the backoff, no reload.
   log holds failures only, so "is it actually running" had no answer short of
   reading `remux.log` over ssh. It serves a ring buffer of the last 24 runs
   from memory - tier, duration, prompt size, every name written and where it
-  came from - shown under the switch on the Settings screen.
+  came from. It has a screen of its own, reached from the switch in Settings:
+  it started as a block under that switch and outgrew it the same day, for the
+  reason the key pad did - the sections around it are fixed and this one grows
+  with every call.
 - **Live Go tests create their own window** inside `remux-test` rather than
   sharing one. Go runs packages' tests in parallel and a shared scratch pane
   had two suites typing into each other.

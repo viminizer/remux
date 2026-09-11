@@ -303,6 +303,11 @@ export interface Naming {
   calls: number
   wrote: number
   failed: number
+  /**
+   * Every character ever sent to a model by this process. Not a bill, but the
+   * only number here that grows with what the feature costs.
+   */
+  chars: number
   /** Newest first. */
   runs: NamingRun[] | null
 }

@@ -69,6 +69,10 @@ type Naming struct {
 	Calls  int `json:"calls"`  // model calls since remux started
 	Wrote  int `json:"wrote"`  // names actually written to a pane
 	Failed int `json:"failed"` // calls where every tier failed
+	// Chars is every character ever sent to a model by this process. It is
+	// not a bill, but it is the only number here that grows with what the
+	// feature costs, and it is free to keep.
+	Chars int `json:"chars"`
 
 	Runs []Run `json:"runs"` // newest first
 }
@@ -96,6 +100,7 @@ func (p *Pass) Report() Naming {
 		Calls:   p.calls,
 		Wrote:   p.wrote,
 		Failed:  p.fails,
+		Chars:   p.chars,
 		Runs:    make([]Run, 0, len(p.runs)),
 	}
 	if d := time.Until(p.retryAt); d > 0 {
@@ -113,6 +118,7 @@ func (p *Pass) record(r Run) {
 	defer p.mu.Unlock()
 	p.calls++
 	p.wrote += len(r.Names)
+	p.chars += r.Chars
 	if r.Tier == "" {
 		p.fails++
 	}

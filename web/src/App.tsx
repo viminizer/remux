@@ -26,6 +26,7 @@ import { SendToPaneSheet } from './github/SendToPaneSheet'
 import { useGitHub } from './github/useGitHub'
 import type { InboxItem } from './github/types'
 import { KeyPadScreen } from './screens/KeyPadScreen'
+import { NamingScreen } from './screens/Naming'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
 import { HoldButton } from './components/HoldButton'
 import { Toaster, toast } from './components/Toast'
@@ -757,6 +758,7 @@ export default function App() {
             onEnableNotifications={onEnablePush}
             onBack={() => go({ name: 'pane', pane: lastPane.current })}
             onKeyPad={() => go({ name: 'keypad' })}
+            onNaming={() => go({ name: 'naming' })}
             onCheck={checkNow}
             onUpdate={pullNewBuild}
           />
@@ -766,6 +768,8 @@ export default function App() {
             patch={patch}
             onBack={() => go({ name: 'settings' })}
           />
+        ) : route.name === 'naming' ? (
+          <NamingScreen onBack={() => go({ name: 'settings' })} />
         ) : !panes.length ? (
           <NoTmux onCreate={() => setSheet('new')} />
         ) : gone ? (

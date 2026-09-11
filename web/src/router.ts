@@ -3,9 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 /**
  * Hash routing, deliberately shallow.
  *
- * `#/p/%14` is the only real route, plus `#/settings` and the key pad screen
- * hanging off it. Anything deeper would be navigation the drawer already does
- * in one tap.
+ * `#/p/%14` is the only real route, plus `#/settings` and the two screens
+ * hanging off it - the key pad and the naming journal. Anything deeper would
+ * be navigation the drawer already does in one tap.
  *
  * The GitHub screen is the one place with depth, because a repo really does
  * contain issues and an issue really is a thing you open. Those routes carry
@@ -16,6 +16,7 @@ export type Route =
   | { name: 'pane'; pane: string | null }
   | { name: 'settings' }
   | { name: 'keypad' }
+  | { name: 'naming' }
   | { name: 'gh' }
   | { name: 'ghRepo'; repo: string; tab: 'issues' | 'prs' }
   | { name: 'ghItem'; repo: string; number: number; kind: 'issue' | 'pr' }
@@ -29,6 +30,7 @@ function parse(hash: string): Route {
   const h = hash.replace(/^#/, '')
   if (h === '/settings') return { name: 'settings' }
   if (h === '/keypad') return { name: 'keypad' }
+  if (h === '/naming') return { name: 'naming' }
 
   if (h === '/gh') return { name: 'gh' }
 
@@ -62,6 +64,8 @@ function href(r: Route): string {
       return '#/settings'
     case 'keypad':
       return '#/keypad'
+    case 'naming':
+      return '#/naming'
     case 'gh':
       return '#/gh'
     case 'ghRepo':

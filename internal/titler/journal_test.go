@@ -31,6 +31,9 @@ func TestARunRecordsWhatItWroteAndWhichTierWroteIt(t *testing.T) {
 	if len(n.Runs) != 1 {
 		t.Fatalf("kept %d runs", len(n.Runs))
 	}
+	if n.Chars != n.Runs[0].Chars {
+		t.Errorf("chars total = %d, want the one run's %d", n.Chars, n.Runs[0].Chars)
+	}
 	run := n.Runs[0]
 	if run.Tier != "fake" {
 		t.Errorf("tier = %q, want the runner that answered", run.Tier)
