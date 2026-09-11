@@ -193,30 +193,29 @@ func (s *Server) panesByRepo(*http.Request) map[string][]string {
 	return s.paneRepos
 }
 
-// WatchPanes reads the workspace on a timer until ctx is cancelled, and hands
-// the tree to everything that wants the whole workspace regularly.
+// WatchPanes drives the shared workspace pass on a timer, and does the work
+// that has to keep happening with nobody looking.
 //
-// This is remux's only unconditional pass over every pane. The per-connection
+// This is remux's only unconditional loop over every pane. The per-connection
 // poller stops when the phone disconnects and the push watcher only ticks when
-// a subscription exists, so anything that has to keep working with nobody
-// looking belongs here - and belongs here rather than in a loop of its own,
-// because the tree read is already happening and #32 was exactly the cost of
+// a subscription exists, so anything that must keep working while nobody is
+// watching belongs here - and belongs here rather than in a loop of its own,
+// because the sweep is already happening and #32 was exactly the cost of
 // sweeping the same panes twice.
 //
-// It recomputes the pane/repo mapping off the request path on purpose - see
-// panesByRepo. If a probe blocks, this goroutine is the only thing that waits,
-// and the matcher abandons that directory rather than retrying it every tick.
+// The sweep itself moved to workspace.go, where the connections share it. What
+// stays here is the pane/repo matching, and it stays for the reason it was
+// lifted off the request path to begin with: it reads the filesystem, and a
+// directory macOS has not granted this process access to blocks rather than
+// fails. This goroutine is the only thing that can afford to be left waiting.
 func (s *Server) WatchPanes(ctx context.Context, every time.Duration) {
-	if s.Match == nil && s.OnTree == nil {
-		return
-	}
 	if every <= 0 {
 		every = 5 * time.Second
 	}
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		s.watchPanes(ctx)
+		s.watchPanes(ctx, every)
 		select {
 		case <-ctx.Done():
 			return
@@ -225,32 +224,26 @@ func (s *Server) WatchPanes(ctx context.Context, every time.Duration) {
 	}
 }
 
-func (s *Server) watchPanes(ctx context.Context) {
-	tree, err := s.Tmux.Tree(ctx)
-	if err != nil {
+func (s *Server) watchPanes(ctx context.Context, every time.Duration) {
+	// A tree a connection refreshed a moment ago is as good as one of our
+	// own, which is the whole point of sharing the pass.
+	tree := s.Workspace(ctx, every)
+	if tree == nil {
 		return
 	}
 
 	if s.Match != nil {
-		paths := make(map[string]string, len(tree.Panes()))
-		for _, p := range tree.Panes() {
+		panes := tree.Panes()
+		paths := make(map[string]string, len(panes))
+		for _, p := range panes {
 			paths[p.ID] = p.Path
 		}
+		// Probing happens here and the answer is stamped onto the next
+		// sweep's tree rather than this one - the tree above is already
+		// published and other goroutines are reading it, so writing to it
+		// now would be a race. One tick of lag on a pane that has just
+		// changed directory is the price, and a repo does not move.
 		byRepo := s.Match.Panes(paths)
-
-		// Stamp each pane with its repo on the way past. The matcher has just
-		// resolved every one of these directories and its answers are cached,
-		// so this is a map lookup - and it saves the naming pass either
-		// reaching into the api package or walking the filesystem itself,
-		// which is the thing that must not happen on a shared loop.
-		for repo, ids := range byRepo {
-			for _, id := range ids {
-				if pane := tree.Pane(id); pane != nil {
-					pane.Repo = repo
-				}
-			}
-		}
-
 		s.mu.Lock()
 		s.paneRepos = byRepo
 		s.mu.Unlock()

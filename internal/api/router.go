@@ -41,7 +41,10 @@ type Server struct {
 	Naming func() titler.Naming
 
 	startedAt time.Time
-	mu        sync.Mutex
+	// ws is the shared pass over every pane - one tree read and one set of
+	// captures for the whole process, however many phones are connected.
+	ws *workspace
+	mu sync.Mutex
 	// paneRepos is the repo each pane is checked out in, kept fresh by
 	// WatchPanes so no request has to touch the filesystem.
 	paneRepos map[string][]string
@@ -70,7 +73,7 @@ func (s *Server) addSocket(n int) {
 }
 
 func NewServer(cfg *config.Config, tm *tmux.Client, web http.Handler) *Server {
-	return &Server{Cfg: cfg, Tmux: tm, Web: web, startedAt: time.Now()}
+	return &Server{Cfg: cfg, Tmux: tm, Web: web, startedAt: time.Now(), ws: newWorkspace()}
 }
 
 // Handler builds the full route table.

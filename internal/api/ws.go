@@ -77,13 +77,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	c := &conn{ws: ws}
-	p := &poller{
-		srv:    s,
-		conn:   c,
-		lines:  s.Cfg.Lines,
-		gate:   tmux.NewActivityGate(),
-		status: map[string]string{},
-	}
+	p := &poller{srv: s, conn: c, lines: s.Cfg.Lines}
 
 	go p.loop(ctx)
 
@@ -133,9 +127,6 @@ type poller struct {
 	hasPane  bool
 	hasTree  bool
 
-	gate   *tmux.ActivityGate
-	status map[string]string // last verdict per pane, for the ones not recaptured
-
 	// ghSummary is the last GitHub badge line sent, so an unchanged one
 	// costs nothing.
 	ghSummary ghSummary
@@ -163,10 +154,12 @@ func (p *poller) forceNext() {
 	p.mu.Lock()
 	p.force, p.hasPane, p.hasTree = true, false, false
 	p.mu.Unlock()
-	// "resume" means the phone was away and does not trust what it has. The
-	// gate would otherwise skip every quiet window and hand back verdicts from
-	// before the screen went off.
-	p.gate.Forget()
+	// The gate belongs to the workspace now and has been running whether or
+	// not this phone was connected, so the verdicts waiting here are already
+	// current. This used to call gate.Forget(): the gate was per connection
+	// and had been skipping quiet windows the whole time the screen was off.
+	// Calling it on a shared gate would force a full recapture for every other
+	// phone as well.
 }
 
 // paneMeta returns the tree entry for one pane, reusing the tree pollTree
@@ -365,47 +358,15 @@ func (p *poller) pollGitHub(ctx context.Context) {
 }
 
 func (p *poller) pollTree(ctx context.Context) {
-	tree, err := p.srv.Tmux.Tree(ctx)
-	if err != nil {
+	// One shared sweep, however many phones are connected - see workspace.go.
+	// The hash-and-diff below stays per connection, because what each phone
+	// has already been sent is the one thing that is genuinely its own.
+	tree := p.srv.Workspace(ctx, p.srv.Cfg.TreePoll())
+	if tree == nil {
 		return
 	}
 	p.mu.Lock()
 	p.tree = tree
-	p.mu.Unlock()
-
-	panes := tree.Panes()
-	live := make([]*tmux.Pane, 0, len(panes))
-	for _, pn := range panes {
-		if !agent.IsShell(pn.Command) {
-			live = append(live, pn)
-		}
-	}
-	stale := map[string]bool{}
-	for _, id := range p.gate.Changed(live) {
-		stale[id] = true
-	}
-	ids := make([]string, 0, len(stale))
-	for _, pn := range live {
-		if stale[pn.ID] {
-			ids = append(ids, pn.ID)
-		}
-	}
-	screens := p.srv.Tmux.Previews(ctx, ids, tmux.PreviewLines)
-
-	p.mu.Lock()
-	for _, pn := range panes {
-		if agent.IsShell(pn.Command) || stale[pn.ID] {
-			pn.Status = string(agent.Classify(pn.Command, pn.Title, screens[pn.ID]))
-			p.status[pn.ID] = pn.Status
-			continue
-		}
-		pn.Status = p.status[pn.ID]
-	}
-	for id := range p.status {
-		if tree.Pane(id) == nil {
-			delete(p.status, id)
-		}
-	}
 	p.mu.Unlock()
 
 	b, err := json.Marshal(tree)
