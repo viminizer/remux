@@ -90,7 +90,17 @@ func (s *Server) handleGitHubRefresh(w http.ResponseWriter, r *http.Request) {
 // muting a row changes the number in the drawer at the same moment it clears
 // the list - which is the whole point of muting it.
 func (s *Server) ghBase() gh.Snapshot {
-	return applyMutes(s.GH.Snapshot(), s.mutes())
+	return s.ApplyMutes(s.GH.Snapshot())
+}
+
+// ApplyMutes lifts the muted rows out of a snapshot handed in from outside.
+//
+// Exported for the push watcher, which hangs off the poller and so receives
+// the raw snapshot rather than asking for one. Without this it notified about
+// rows that had been muted - the mute cleared the list and the phone buzzed
+// anyway, which is the opposite of what muting is for.
+func (s *Server) ApplyMutes(snap gh.Snapshot) gh.Snapshot {
+	return applyMutes(snap, s.mutes())
 }
 
 // applyMutes moves dismissed rows out of the three inbox lists and into

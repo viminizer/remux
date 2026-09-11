@@ -137,7 +137,10 @@ func run(cfg *config.Config, local bool) error {
 	if srv.Push != nil && !local {
 		ghw := push.NewGitHubWatcher(srv.Push)
 		ghw.Enabled = srv.NotifyCI
-		srv.GH.OnSnapshot = ghw.OnSnapshot
+		// Through ApplyMutes, not the raw snapshot. Every other reader goes
+		// through ghBase, so a muted row is gone from the screen and from the
+		// drawer badge; the watcher used to keep notifying about it.
+		srv.GH.OnSnapshot = func(snap gh.Snapshot) { ghw.OnSnapshot(srv.ApplyMutes(snap)) }
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
