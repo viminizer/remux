@@ -2,6 +2,8 @@ package tmux
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -657,4 +659,61 @@ func paneByID(t *testing.T, c *Client, id string) *Pane {
 		t.Fatalf("pane %s vanished", id)
 	}
 	return p
+}
+
+// stubTmux writes a tmux that records its argv one line per call and succeeds.
+//
+// A real tmux would do, but set-buffer creates a server-wide named buffer, and
+// nothing in this package may write to the laptop's server outside the scratch
+// session.
+func stubTmux(t *testing.T) (*Client, func() string) {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "argv")
+	bin := filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return &Client{Bin: bin, Timeout: 5 * time.Second}, func() string {
+		b, err := os.ReadFile(log)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
+// The forbidden list guards the command word. It must not read the text Kevin
+// typed on his phone.
+//
+// run used to scan every argument, and SendText passes the text as
+// `set-buffer -- <text>`, so sending "source" to a pane came back as a refusal
+// to disturb the laptop. These are all ordinary words to type at a shell.
+func TestSendTextAllowsForbiddenWordsAsText(t *testing.T) {
+	c, argv := stubTmux(t)
+	ctx := context.Background()
+
+	for _, text := range []string{"source", "attach", "-C", "select-pane", "resize-pane"} {
+		if err := c.SendText(ctx, "%0", text, false); err != nil {
+			t.Errorf("SendText(%q) = %v; ordinary text must not be refused", text, err)
+		}
+	}
+	for _, want := range []string{"set-buffer", "paste-buffer", "source", "select-pane"} {
+		if !strings.Contains(argv(), want) {
+			t.Errorf("%q never reached tmux; argv was:\n%s", want, argv())
+		}
+	}
+}
+
+// The guard itself still holds where it matters: the command word.
+func TestForbiddenCommandWordStillRefusedBeforeExec(t *testing.T) {
+	c, argv := stubTmux(t)
+	if _, err := c.run(context.Background(), "attach-session", "-t", "%0"); err == nil ||
+		!strings.Contains(err.Error(), "disturb the laptop") {
+		t.Fatalf("attach-session was not refused, got %v", err)
+	}
+	if argv() != "" {
+		t.Errorf("a refused command still reached tmux: %s", argv())
+	}
 }
