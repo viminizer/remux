@@ -409,6 +409,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .row.alert .row-s{color:var(--peach)}
+/* The task, when a name Kevin typed is holding the title. Dimmer than the
+   command beside it: the row already has a name, and this is the answer to
+   "yes, but what is it doing now" - worth reading, not worth reading first. */
+.row-task{color:var(--ov0)}
+.row.alert .row-task{color:inherit}
 /* Written for a div originally, so it needs the button reset. */
 .drawer-foot{
   flex:0 0 auto;width:100%;border:0;border-top:1px solid var(--s0);padding:10px 12px;

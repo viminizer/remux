@@ -33,6 +33,16 @@ export function PaneRow({
 }) {
   const hold = useRef<{ timer?: number; x: number; y: number }>({ x: 0, y: 0 })
 
+  // A name Kevin typed wins the title, and that used to be the end of it - the
+  // task remux read off the screen never appeared, so a label like "remux1"
+  // chosen once went on masking the live work for good. Showing it here costs
+  // nothing and loses nothing: the name he chose still leads the row.
+  //
+  // Only when it is actually masked. When the task *is* the title, repeating it
+  // in the subtitle is noise.
+  const task = (pane.remuxTask ?? '').trim()
+  const masked = task !== '' && task !== paneTitle(pane)
+
   const cancel = () => {
     clearTimeout(hold.current.timer)
     hold.current.timer = undefined
@@ -70,6 +80,7 @@ export function PaneRow({
         </div>
         <div className="row-s">
           {displayCommand(pane.command)} · {statusLabel(pane.status)}
+          {masked && <span className="row-task"> · {task}</span>}
         </div>
       </button>
       <button
