@@ -107,11 +107,21 @@ func (m *Matcher) Repo(dir string) string {
 
 	repo, ok := resolveWithin(dir, m.probe())
 
+	now := time.Now()
 	m.mu.Lock()
 	if m.cache == nil {
 		m.cache = map[string]entry{}
 	}
-	m.cache[dir] = entry{repo: repo, at: time.Now(), blocked: !ok}
+	// Drop what has expired on the way past. An entry older than the TTL is
+	// already dead - Repo re-resolves it and Blocked ignores it - so this
+	// loses nothing and keeps a process that runs for weeks from holding an
+	// entry for every directory a pane has ever sat in.
+	for k, e := range m.cache {
+		if now.Sub(e.at) > m.ttl() {
+			delete(m.cache, k)
+		}
+	}
+	m.cache[dir] = entry{repo: repo, at: now, blocked: !ok}
 	m.mu.Unlock()
 	return repo
 }
