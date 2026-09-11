@@ -210,6 +210,50 @@ export function loadSnapshot(pane: string): Snapshot | null {
   return readSnapshots()[pane] ?? null
 }
 
+/**
+ * How long the cached screen is allowed to lag behind the live one.
+ *
+ * saveSnapshot is not cheap: it parses the whole store, sorts its keys,
+ * stringifies it again and writes it to localStorage, all synchronously on the
+ * main thread. Calling it per frame meant doing that up to 2.5 times a second
+ * while an agent was producing output, on a few hundred KB.
+ *
+ * The cache is there so a dead connection still shows the last thing the agent
+ * said. It has never needed to be current to the frame - a few seconds stale is
+ * the same screen to a person reading it after the fact.
+ */
+const SNAP_DEBOUNCE_MS = 3000
+
+let pendingSnapshot: Snapshot | null = null
+let snapshotTimer: ReturnType<typeof setTimeout> | null = null
+
+/** queueSnapshot keeps the latest screen and writes it at most every few seconds. */
+export function queueSnapshot(s: Snapshot) {
+  pendingSnapshot = s
+  if (snapshotTimer === null) {
+    snapshotTimer = setTimeout(flushSnapshot, SNAP_DEBOUNCE_MS)
+  }
+}
+
+/**
+ * flushSnapshot writes whatever is queued right now.
+ *
+ * Called when the pane changes and when the app goes to the background, which
+ * are the two moments the debounce could otherwise lose a screen - and the
+ * second is the one that matters, because a phone whose screen goes off is
+ * exactly when the cache starts being the only copy.
+ */
+export function flushSnapshot() {
+  if (snapshotTimer !== null) {
+    clearTimeout(snapshotTimer)
+    snapshotTimer = null
+  }
+  if (!pendingSnapshot) return
+  const s = pendingSnapshot
+  pendingSnapshot = null
+  saveSnapshot(s)
+}
+
 /** "4 min ago" - the highest-value line on the offline screen. */
 export function ago(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
