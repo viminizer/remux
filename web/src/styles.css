@@ -73,6 +73,10 @@ button,input,textarea,select{font-family:inherit}
   margin:2px 0 0;font-size:11.5px;color:var(--ov1);font-family:var(--mono);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+/* The project, brighter than the session and the agent either side of it. Of
+   the three it is the one that says what you are looking at rather than where
+   it happens to be parked. */
+.tb-project{color:var(--text);font-weight:500}
 
 /* ── status dots ──────────────────────────────────────────── */
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;display:inline-block}

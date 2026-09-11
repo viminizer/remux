@@ -624,9 +624,12 @@ export default function App() {
   // Anything the scrim should dim and close on a tap outside.
   const scrimUp = drawerOpen || sheet !== 'none' || ghSheet !== 'none'
 
-  const sub = current
-    ? `${current.sessionName} · ${displayCommand(meta?.cmd ?? current.command)}`
-    : ''
+  // Passed as parts, not one string, so the top bar can pick the project out.
+  // It reads session · project · agent: which workspace, which repo inside it,
+  // which tool.
+  const session = current?.sessionName ?? ''
+  const project = current?.remuxProject ?? ''
+  const cmd = current ? displayCommand(meta?.cmd ?? current.command) : ''
 
   return (
     <div className="phone" ref={rootRef}>
@@ -771,7 +774,9 @@ export default function App() {
           <>
             <TopBar
               title={title}
-              sub={sub}
+              session={session}
+              project={project}
+              cmd={cmd}
               status={meta?.status ?? current?.status}
               stale={stale}
               onBurger={() => {
