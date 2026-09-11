@@ -672,3 +672,19 @@ what was on the screens:
 - **2 panes correctly refused.** Both were cleared sessions. Both had been
   carrying a confident wrong name.
 - **The rest held.** No pane that was right was made worse.
+
+## Idle panes keep their names, on purpose
+
+A pane that is already named and idle is never re-captured, so it is never
+re-asked, so its name freezes at whatever it was when the pane went quiet. That
+is exactly when a name goes stale, because the last thing an agent does is
+finish: `%7` still reads "issues 129 215" on a screen whose recap says the next
+thing is api#128.
+
+Kevin was asked and chose to leave it. A new name would cost a capture on every
+tick and a model call every `askEvery` for every finished pane on the laptop,
+for a name nobody is currently reading - and the glyph beside it already says
+the pane is done. The new prompt applies as panes move.
+
+Do not "fix" this by adding the unnamed panes' `always` treatment to named
+ones. It is the decision, not an oversight.
