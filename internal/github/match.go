@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -41,16 +40,20 @@ type Matcher struct {
 
 	mu    sync.Mutex
 	cache map[string]entry
-
-	// blocked records that a probe was refused or never came back, so the
-	// UI can say "grant Full Disk Access" instead of quietly showing no
-	// pane chips at all.
-	blocked atomic.Bool
 }
 
 type entry struct {
 	repo string // owner/name, empty for "not a GitHub checkout"
 	at   time.Time
+	// blocked records that this directory's probe was refused or never came
+	// back, so the UI can say "grant Full Disk Access" instead of quietly
+	// showing no pane chips at all.
+	//
+	// Per directory rather than one flag for the matcher, because a single
+	// flag only ever latched: one slow probe pinned the banner for the life
+	// of the process, telling Kevin to grant a permission he had granted.
+	// Held here, it is re-decided whenever the entry expires.
+	blocked bool
 }
 
 func NewMatcher() *Matcher {
@@ -74,7 +77,20 @@ func (m *Matcher) probe() time.Duration {
 // Blocked reports whether the filesystem refused a probe or never answered
 // one. On macOS that means this process has not been granted access to the
 // folders the repos live in.
-func (m *Matcher) Blocked() bool { return m.blocked.Load() }
+//
+// Only entries still inside the TTL count. An expired one says nothing about
+// now - and a pane that has since been closed is never probed again, so
+// counting it would leave the banner up for good.
+func (m *Matcher) Blocked() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.cache {
+		if e.blocked && time.Since(e.at) < m.ttl() {
+			return true
+		}
+	}
+	return false
+}
 
 // Repo returns "owner/name" for the checkout containing dir, or "" if dir is
 // not inside a git repository with a GitHub origin.
@@ -90,15 +106,12 @@ func (m *Matcher) Repo(dir string) string {
 	m.mu.Unlock()
 
 	repo, ok := resolveWithin(dir, m.probe())
-	if !ok {
-		m.blocked.Store(true)
-	}
 
 	m.mu.Lock()
 	if m.cache == nil {
 		m.cache = map[string]entry{}
 	}
-	m.cache[dir] = entry{repo: repo, at: time.Now()}
+	m.cache[dir] = entry{repo: repo, at: time.Now(), blocked: !ok}
 	m.mu.Unlock()
 	return repo
 }
