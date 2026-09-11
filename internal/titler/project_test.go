@@ -126,3 +126,105 @@ func TestProjectIsNotRewrittenUnchanged(t *testing.T) {
 		t.Errorf("rewrote an unchanged project: %q", f.projects["%1"])
 	}
 }
+
+// The pane list is the evidence. A pane sitting exactly at a directory that is
+// the ancestor of another pane's directory is that project's root, and saying
+// so costs no filesystem access - which is the point, because the case this
+// exists for is a LaunchAgent that is refused every read under ~/Desktop.
+func TestFallbackFindsTheRootFromSiblingPanes(t *testing.T) {
+	paths := map[string]string{
+		"%1": "/Users/mac/dev/course/shortlist",
+		"%2": "/Users/mac/dev/course/shortlist/server",
+		"%3": "/Users/mac/dev/saas/remux",
+	}
+	got := Fallback(paths)
+
+	if got["%2"] != "/Users/mac/dev/course/shortlist" {
+		t.Errorf("%%2 -> %q, want the shortlist root that %%1 sits at", got["%2"])
+	}
+	if got["%1"] != "/Users/mac/dev/course/shortlist" {
+		t.Errorf("%%1 -> %q, want its own directory", got["%1"])
+	}
+	// No sibling above it, so it is its own project.
+	if got["%3"] != "/Users/mac/dev/saas/remux" {
+		t.Errorf("%%3 -> %q, want its own directory", got["%3"])
+	}
+}
+
+// A pane parked at "/" is an ancestor of every other pane. Letting it count
+// would collapse the whole workspace into one nameless project, which is worse
+// than no prefix at all.
+func TestFallbackIgnoresRootAndEmpty(t *testing.T) {
+	paths := map[string]string{
+		"%1": "/",
+		"%2": "",
+		"%3": "/Users/mac/dev/saas/remux",
+	}
+	got := Fallback(paths)
+
+	if _, ok := got["%1"]; ok {
+		t.Errorf("a pane at / got project %q", got["%1"])
+	}
+	if _, ok := got["%2"]; ok {
+		t.Error("a pane with no directory got a project")
+	}
+	if got["%3"] != "/Users/mac/dev/saas/remux" {
+		t.Errorf("%%3 -> %q; / swallowed it", got["%3"])
+	}
+}
+
+// Two levels up, no further. A workspace root holding several repos must not
+// become the project for all of them.
+func TestFallbackDoesNotClimbToAWorkspaceRoot(t *testing.T) {
+	paths := map[string]string{
+		"%1": "/Users/mac/dev/workspace",
+		"%2": "/Users/mac/dev/workspace/api/src/handlers",
+	}
+	got := Fallback(paths)
+
+	if got["%2"] == "/Users/mac/dev/workspace" {
+		t.Error("climbed three levels to a workspace root; every repo under it " +
+			"would end up with the same prefix")
+	}
+}
+
+// The fallback feeds the same shortening the matcher's answers do, so a
+// directory path and an "owner/name" come out looking alike.
+func TestFallbackNamesShortenLikeRepos(t *testing.T) {
+	got := Short([]string{
+		"/Users/mac/dev/wed/seoul-wedding-api",
+		"/Users/mac/dev/wed/seoul-wedding-client",
+	})
+	if got["/Users/mac/dev/wed/seoul-wedding-api"] != "api" {
+		t.Errorf("-> %q, want %q", got["/Users/mac/dev/wed/seoul-wedding-api"], "api")
+	}
+	if got["/Users/mac/dev/wed/seoul-wedding-client"] != "client" {
+		t.Errorf("-> %q, want %q", got["/Users/mac/dev/wed/seoul-wedding-client"], "client")
+	}
+}
+
+// The matcher wins where it answers, and the fallback fills in only the panes
+// it left empty. Mixing the two per workspace instead of per pane would throw
+// away the repos that did resolve the moment one directory was unreadable.
+func TestMatcherWinsOverTheFallbackPerPane(t *testing.T) {
+	f := newFake()
+	p := New(f)
+
+	p.OnTree(context.Background(), tree(100,
+		&tmux.Pane{
+			ID: "%1", Command: "codex",
+			Repo: "viminizer/shortlist",
+			Path: "/Users/mac/dev/course/shortlist/server",
+		},
+		&tmux.Pane{ID: "%2", Command: "codex", Path: "/Users/mac/dev/saas/remux"},
+	))
+
+	// Resolved: the repo root, not the subdirectory it happens to sit in.
+	if got := f.projects["%1"]; got != "shortlist" {
+		t.Errorf("%%1 project = %q, want %q from the matcher", got, "shortlist")
+	}
+	// Unresolved: its own directory name.
+	if got := f.projects["%2"]; got != "remux" {
+		t.Errorf("%%2 project = %q, want %q from the path", got, "remux")
+	}
+}

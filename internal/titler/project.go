@@ -62,6 +62,62 @@ func Short(repos []string) map[string]string {
 	return out
 }
 
+// maxClimb is how far above a pane's own directory the fallback will look for
+// the project root.
+//
+// Two levels covers the case it exists for - an agent working in a
+// subdirectory of the repo it belongs to, like shortlist/server - without
+// letting a pane parked at "/" or at a workspace root swallow everything
+// beneath it into one project.
+const maxClimb = 2
+
+// Fallback picks a project directory for each pane from the paths alone, for
+// when the repo matcher cannot answer.
+//
+// It cannot answer more often than you would think: remux ships as a
+// LaunchAgent, and until macOS grants that binary Full Disk Access every read
+// of a .git/config under ~/Desktop is refused, so every pane comes back with no
+// repo at all. The prefix then vanishes entirely, which is a worse answer than
+// an approximate one.
+//
+// The trick is that the pane list is itself evidence. A pane sitting exactly at
+// a directory that is the ancestor of another pane's directory is almost
+// always that project's root - eight panes at shortlist and two at
+// shortlist/server say plainly where the project begins - and that costs no
+// filesystem access at all.
+//
+// It is a fallback and not the answer. Granting the permission can change what
+// a pane is called, which is the cost of having something to show in the
+// meantime.
+func Fallback(paths map[string]string) map[string]string {
+	at := make(map[string]bool, len(paths))
+	for _, dir := range paths {
+		if dir != "" && dir != "/" {
+			at[dir] = true
+		}
+	}
+
+	out := make(map[string]string, len(paths))
+	for pane, dir := range paths {
+		if dir == "" || dir == "/" {
+			continue
+		}
+		best := dir
+		for climb, d := 0, dir; climb < maxClimb; climb++ {
+			i := strings.LastIndexByte(d, '/')
+			if i <= 0 {
+				break
+			}
+			d = d[:i]
+			if at[d] {
+				best = d
+			}
+		}
+		out[pane] = best
+	}
+	return out
+}
+
 // leaf is the name half of "owner/name", or the whole string when there is no
 // owner.
 func leaf(repo string) string {

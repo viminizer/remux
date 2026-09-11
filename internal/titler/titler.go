@@ -255,7 +255,7 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 				// From this pass's map, not the pane's option: the option is
 				// what was on the pane when the tree was read, so a pane that
 				// has just changed directory would be told the old project.
-				Project: short[s.Pane.Repo],
+				Project: short[s.Pane.ID],
 				Screen:  s.Screen,
 			})
 		}
@@ -293,22 +293,59 @@ func (p *Pass) forget(live map[string]bool) {
 // The shortening needs the whole workspace at once, since what a name can drop
 // depends on what its siblings are called.
 func (p *Pass) writeProjects(ctx context.Context, agents []*tmux.Pane) map[string]string {
-	repos := make([]string, 0, len(agents))
-	seen := map[string]bool{}
+	// The matcher's answer where there is one, the paths where there is not.
+	//
+	// Under a LaunchAgent that macOS has not granted Full Disk Access there is
+	// never one: every .git/config read under ~/Desktop is refused, so every
+	// pane comes back with no repo and the prefix disappears entirely. The
+	// fallback is approximate - a pane in shortlist/server is called "server"
+	// where the matcher would say "shortlist" - and an approximate prefix beats
+	// no prefix while the permission is still ungranted.
+	//
+	// Per pane, not per workspace, so one unreadable directory does not throw
+	// away the repos that did resolve.
+	paths := make(map[string]string, len(agents))
 	for _, pane := range agents {
-		if pane.Repo != "" && !seen[pane.Repo] {
-			seen[pane.Repo] = true
-			repos = append(repos, pane.Repo)
+		if pane.Repo == "" {
+			paths[pane.ID] = pane.Path
 		}
 	}
-	short := Short(repos)
+	guessed := Fallback(paths)
 
+	keys := make(map[string]string, len(agents)) // pane -> what Short is keyed by
+	uniq := map[string]bool{}
+	var all []string
 	for _, pane := range agents {
-		// A pane outside any repo gets nothing rather than a guess. Its
-		// directory is not a project just because it has a name.
-		p.writeProject(ctx, pane, short[pane.Repo])
+		key := pane.Repo
+		if key == "" {
+			// The directory itself. Short reads the last path segment out of
+			// it exactly as it reads the name out of "owner/name".
+			key = guessed[pane.ID]
+		}
+		if key == "" {
+			continue
+		}
+		keys[pane.ID] = key
+		if !uniq[key] {
+			uniq[key] = true
+			all = append(all, key)
+		}
 	}
-	return short
+	short := Short(all)
+
+	// Keyed by pane on the way out, because that is what the caller has: it
+	// needs the project for a pane it is about to ask a model about, and
+	// whether that name came from the matcher or from a path is not its
+	// business.
+	byPane := make(map[string]string, len(agents))
+	for _, pane := range agents {
+		// A pane with neither a repo nor a directory gets nothing rather than
+		// a guess. Being somewhere is not the same as being in a project.
+		name := short[keys[pane.ID]]
+		byPane[pane.ID] = name
+		p.writeProject(ctx, pane, name)
+	}
+	return byPane
 }
 
 func (p *Pass) writeProject(ctx context.Context, pane *tmux.Pane, want string) {
