@@ -253,3 +253,56 @@ export function dotClass(s: Status | undefined): string {
   if (s === 'waiting' || s === 'idle' || s === 'shell') return s
   return 'stale'
 }
+
+/**
+ * What the pane namer has been doing.
+ *
+ * Naming is the one part of remux that spends money, and the only one that
+ * leaves no trace on the laptop: a glyph is either right or wrong in front of
+ * you, but a model call that never happened looks exactly like one that did
+ * and came back with nothing. This is the record of it - read-only, from a
+ * ring buffer in the server's memory.
+ */
+export interface NamingRun {
+  /** Epoch ms, for ago(). */
+  at: number
+  /** Wall time of the call. About 3s of any of these is CLI startup. */
+  ms: number
+  /** The tier that answered. Empty when every one of them failed. */
+  tier: string
+  /** How many panes went into the one prompt. */
+  panes: number
+  /** Prompt size in characters - the closest free stand-in for cost. */
+  chars: number
+  names: NamedPane[] | null
+  /** One line per tier that failed, in the order they were tried. */
+  notes: string[] | null
+}
+
+export interface NamedPane {
+  pane: string
+  project: string
+  title: string
+  /** "model", or "screen" for the fallback that reads the composer line. */
+  from: string
+}
+
+export interface Naming {
+  /** The Settings switch. */
+  enabled: boolean
+  /**
+   * What that switch would run. Empty means no CLI was found, which looks
+   * identical to "off" from the phone and is a completely different problem.
+   */
+  chain: string[] | null
+  working: boolean
+  /** Nobody is reading, so nothing is being asked. */
+  away: boolean
+  /** How long the chain is being left alone after failing at every tier. */
+  retryMs: number
+  calls: number
+  wrote: number
+  failed: number
+  /** Newest first. */
+  runs: NamingRun[] | null
+}

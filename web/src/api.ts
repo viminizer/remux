@@ -1,4 +1,4 @@
-import type { Health, NotifySettings, Tree } from './types'
+import type { Health, Naming, NotifySettings, Tree } from './types'
 import type {
   GitHubSnapshot,
   Issue,
@@ -124,6 +124,12 @@ export const api = {
 
   saveSettings: (v: NotifySettings) =>
     call<NotifySettings>('/api/settings', { method: 'PUT', body: JSON.stringify(v) }),
+
+  // A read of a ring buffer in memory, so it is cheap to poll while the
+  // Settings screen is open. Separate from settings because there is nothing
+  // here to configure - the switch above is the only control - and the
+  // settings PUT would otherwise have to round-trip a history it never writes.
+  naming: () => call<Naming>('/api/naming'),
 
   // ── GitHub ──────────────────────────────────────────────────────────
   //

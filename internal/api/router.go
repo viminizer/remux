@@ -14,6 +14,7 @@ import (
 	"github.com/viminizer/remux/internal/config"
 	gh "github.com/viminizer/remux/internal/github"
 	"github.com/viminizer/remux/internal/push"
+	"github.com/viminizer/remux/internal/titler"
 	"github.com/viminizer/remux/internal/tmux"
 )
 
@@ -35,6 +36,9 @@ type Server struct {
 	// the whole workspace on a timer and would otherwise start a second loop
 	// over the same panes. Optional; nil when nothing is hooked up.
 	OnTree func(context.Context, *tmux.Tree)
+	// Naming reports what the pane namer has been doing - see
+	// titler.Pass.Report. Optional, and nil in every test that does not care.
+	Naming func() titler.Naming
 
 	startedAt time.Time
 	mu        sync.Mutex
@@ -112,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	mux.HandleFunc("GET /api/naming", s.handleNaming)
 
 	mux.HandleFunc("GET /api/push/key", s.handlePushKey)
 	mux.HandleFunc("POST /api/push/subscribe", s.handlePushSubscribe)

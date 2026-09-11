@@ -191,6 +191,7 @@ func run(cfg *config.Config, local bool) error {
 	// an agent grinding overnight with nobody looking at all.
 	namer.Away = func() bool { return !srv.Watching() && titler.HIDAway() }
 	srv.OnTree = namer.OnTree
+	srv.Naming = namer.Report
 
 	go srv.GH.Run(ctx)
 	// The one always-on pass over the workspace. Pane/repo matching runs here

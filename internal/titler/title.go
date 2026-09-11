@@ -102,9 +102,17 @@ func (p *Pass) startNaming(ctx context.Context, due []job) {
 
 // name asks the chain, then writes what came back.
 func (p *Pass) name(ctx context.Context, due []job) {
-	titles := p.ask(ctx, due)
+	start := time.Now()
+	titles, run := p.ask(ctx, due)
+	defer func() {
+		run.At, run.MS = start.UnixMilli(), time.Since(start).Milliseconds()
+		run.Panes = len(due)
+		p.record(run)
+	}()
+
 	for _, j := range due {
 		title, answered := titles[j.ID]
+		from := fromModel
 
 		// SAME means "the name it has is still right", so it is only an
 		// answer when the pane has a name. On a pane that has none it is the
@@ -135,33 +143,49 @@ func (p *Pass) name(ctx context.Context, due []job) {
 				continue
 			}
 			title = lastUserLine(j.Screen)
+			from = fromScreen
 		}
 		if title == "" {
 			continue
 		}
-		p.writeTaskByID(ctx, j.ID, j.Task, clean(title))
+		title = clean(title)
+		if p.writeTaskByID(ctx, j.ID, j.Task, title) {
+			run.Names = append(run.Names, Named{
+				Pane: j.ID, Project: j.Project, Title: title, From: from,
+			})
+		}
 	}
 }
 
 // ask walks the chain until one runner answers with something that parses.
-func (p *Pass) ask(ctx context.Context, due []job) map[string]string {
+//
+// The half-built Run it returns is the record of the asking: which tier
+// answered, how big the prompt was, and a line for every tier that did not.
+// Those lines are the whole reason the journal is worth having - "claude:
+// exit status 1: not logged in" is the difference between a feature that is
+// broken and one that is merely switched off, and it is invisible from a pane.
+func (p *Pass) ask(ctx context.Context, due []job) (map[string]string, Run) {
 	prompt := buildPrompt(due)
+	run := Run{Chars: len(prompt)}
 	for _, r := range p.Chain {
 		out, err := r.Run(ctx, prompt)
 		if err != nil {
 			log.Printf("titler: %v", err)
+			run.Notes = append(run.Notes, err.Error())
 			continue
 		}
 		titles := parseAnswer(out, due)
 		if len(titles) == 0 {
 			log.Printf("titler: %s answered nothing usable", r.Name())
+			run.Notes = append(run.Notes, r.Name()+": answered nothing usable")
 			continue
 		}
 		p.chainWorked()
-		return titles
+		run.Tier = r.Name()
+		return titles, run
 	}
 	p.chainFailed()
-	return nil
+	return nil, run
 }
 
 // maxBackoff caps the wait after a chain that is failing at every tier.
@@ -396,11 +420,14 @@ func (p *Pass) writeTask(ctx context.Context, pane *tmux.Pane, want string) {
 	p.writeTaskByID(ctx, pane.ID, pane.RemuxTask, want)
 }
 
-func (p *Pass) writeTaskByID(ctx context.Context, paneID, have, want string) {
+// writeTaskByID reports whether the pane now carries want. A write that was
+// skipped because the name was already right counts: the journal is a record
+// of what the panes say, not of how many tmux calls it took to say it.
+func (p *Pass) writeTaskByID(ctx context.Context, paneID, have, want string) bool {
 	if have == want {
-		return
+		return true
 	}
-	p.report(ctx, paneID, p.Tmux.SetPaneTask(ctx, paneID, want))
+	return p.report(ctx, paneID, p.Tmux.SetPaneTask(ctx, paneID, want)) == nil
 }
 
 // ── cooldown ──────────────────────────────────────────────────────────────

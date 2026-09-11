@@ -298,6 +298,14 @@ footer "Connected" - reconnect via the backoff, no reload.
   back - several of your panes have those - so the window name is used instead.
 - **`GET`/`PUT /api/settings`** was added; it is not in the plan's API list.
   Without it the notification toggles could not work.
+- **`GET /api/naming`** was added, also not in the plan. Naming panes is the
+  only thing remux spends money on and the only thing it does with nothing to
+  look at: a model call that never happened, one that failed, and one that
+  found every name still correct all leave the panes exactly as they were. The
+  log holds failures only, so "is it actually running" had no answer short of
+  reading `remux.log` over ssh. It serves a ring buffer of the last 24 runs
+  from memory - tier, duration, prompt size, every name written and where it
+  came from - shown under the switch on the Settings screen.
 - **Live Go tests create their own window** inside `remux-test` rather than
   sharing one. Go runs packages' tests in parallel and a shared scratch pane
   had two suites typing into each other.

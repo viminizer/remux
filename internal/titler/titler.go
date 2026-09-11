@@ -90,6 +90,13 @@ type Pass struct {
 	wasAway   bool            // last away answer
 	awayAt    time.Time       // when it was asked
 	couldName bool            // whether naming was possible on the previous pass
+
+	// The journal - see journal.go for why the only part of remux that
+	// spends money is also the only part that keeps a history of itself.
+	runs  []Run
+	calls int
+	wrote int
+	fails int
 }
 
 // namingJustOpened reports the pass on which naming became possible - the
@@ -357,7 +364,10 @@ func (p *Pass) writeProject(ctx context.Context, pane *tmux.Pane, want string) {
 
 // report records the outcome of one option write, complaining at most once per
 // pane so a pane that cannot be written does not fill the log every pass.
-func (p *Pass) report(_ context.Context, paneID string, err error) {
+//
+// It hands the error back so a caller that cares - the naming run, which files
+// what it actually managed to write - does not have to check twice.
+func (p *Pass) report(_ context.Context, paneID string, err error) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err != nil {
@@ -365,7 +375,8 @@ func (p *Pass) report(_ context.Context, paneID string, err error) {
 			p.failed[paneID] = true
 			log.Printf("pane %s: %v", paneID, err)
 		}
-		return
+		return err
 	}
 	delete(p.failed, paneID)
+	return nil
 }

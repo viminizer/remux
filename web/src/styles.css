@@ -1270,3 +1270,24 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    and wrong here: a .screen is at 20, so the scrim was behind it, invisible
    and untappable, and Done or back were the only ways to close the sheet. */
 .scrim.over-screen{z-index:25}
+
+/* ── the naming journal, on the Settings screen ───────────────────────────
+   A log, so it is monospace and small: the value of twenty run lines is that
+   they scan as a column, which is exactly what a proportional font destroys.
+   It sits inside a settings card, so the rows have to be quieter than the
+   controls above them - dimmer, tighter, and no borders of their own. */
+.runs{padding:2px 12px 10px;display:flex;flex-direction:column;gap:10px}
+.run{font-family:var(--mono);font-size:11px;line-height:1.5}
+.run-head{display:flex;gap:8px;align-items:baseline;color:var(--ov1)}
+/* The timestamp is the one part you scan down, so it keeps a fixed column. */
+.run-when{color:var(--sub0);min-width:68px}
+.run-tier{color:var(--mauve)}
+.run-cost{margin-left:auto;color:var(--ov0)}
+.run-name{display:flex;gap:6px;align-items:baseline;padding-left:8px;color:var(--sub1)}
+.run-proj{color:var(--ov1)}
+/* A name that came off the screen rather than a model. Same pane, same look,
+   opposite meaning about whether the chain is alive. */
+.run-from{margin-left:auto;color:var(--peach);font-size:10px}
+.run-note{padding-left:8px;color:var(--red);word-break:break-word}
+.run-bad{color:var(--red)}
+.run-quiet{color:var(--ov0)}

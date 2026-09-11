@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/viminizer/remux/internal/config"
+	"github.com/viminizer/remux/internal/titler"
 )
 
 // The notification toggles have to live on the server, not just on the phone.
@@ -134,4 +135,22 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "settings", "", "notifications updated")
 	writeJSON(w, http.StatusOK, body)
+}
+
+// handleNaming answers what the pane namer has been doing.
+//
+// It is a read of a ring buffer in memory, so it is cheap enough to poll while
+// the Settings screen is open. Nothing here is configurable - the switch above
+// is the only control - which is why it is a separate route rather than more
+// fields on settings: the settings PUT would otherwise have to round-trip a
+// history it has no business writing.
+//
+// A nil Naming is the --local case and the test case, not an error. The phone
+// gets an empty report and shows the feature as off, which is what it is.
+func (s *Server) handleNaming(w http.ResponseWriter, r *http.Request) {
+	if s.Naming == nil {
+		writeJSON(w, http.StatusOK, titler.Naming{Chain: []string{}, Runs: []titler.Run{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Naming())
 }
