@@ -241,6 +241,32 @@ func TestApplyMutesLapsesWhenTheItemChanges(t *testing.T) {
 	}
 }
 
+// The push watcher hangs off the poller, so it is handed the raw snapshot
+// rather than asking for one. It has to go through the same mutes as every
+// other reader: muting a row used to clear it from the screen and leave the
+// phone buzzing about it, which is the opposite of what muting is for.
+func TestApplyMutesIsAvailableToTheWatcher(t *testing.T) {
+	_, srv := githubServer(t)
+	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	srv.mu.Lock()
+	srv.Cfg.Muted = map[string]time.Time{"viminizer/remux#42": at}
+	srv.mu.Unlock()
+
+	snap := gh.Snapshot{At: at, Inbox: gh.Inbox{NeedsYou: []gh.InboxItem{
+		{Repo: "viminizer/remux", Number: 42, Updated: at, Checks: gh.ChecksFail},
+		{Repo: "viminizer/remux", Number: 43, Updated: at, Checks: gh.ChecksFail},
+	}}}
+
+	got := srv.ApplyMutes(snap)
+	if len(got.Inbox.NeedsYou) != 1 || got.Inbox.NeedsYou[0].Number != 43 {
+		t.Errorf("a muted row reached the watcher: %+v", got.Inbox.NeedsYou)
+	}
+	if len(got.Muted) != 1 || got.Muted[0].Number != 42 {
+		t.Errorf("the muted row was dropped instead of lifted: %+v", got.Muted)
+	}
+}
+
 func TestGitHubMuteRoundTrip(t *testing.T) {
 	ts, srv := githubServer(t)
 
