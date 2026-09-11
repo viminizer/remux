@@ -66,11 +66,21 @@ func (c *Client) timeout() time.Duration {
 }
 
 // run executes a tmux command after checking it against the forbidden list.
+//
+// The check is on args[0] and nowhere else. It used to scan every argument,
+// which reads as defence in depth and is not: what makes a token dangerous is
+// being the command word, and the only things after it are targets, flags and
+// payloads. Scanning them refused ordinary data - SendText passes the typed
+// text as `set-buffer -- <text>`, so sending the word "source" to a pane came
+// back as a refusal to disturb the laptop. "source" is a word you type at a
+// shell.
+//
+// This holds because every call site here puts the command word first and none
+// of them chain commands with ";". A new one that does either would need this
+// check widened to match.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
-	for _, a := range args {
-		if forbidden[a] {
-			return "", fmt.Errorf("tmux: refusing to run %q: it would disturb the laptop", a)
-		}
+	if len(args) > 0 && forbidden[args[0]] {
+		return "", fmt.Errorf("tmux: refusing to run %q: it would disturb the laptop", args[0])
 	}
 	return c.exec(ctx, args...)
 }
