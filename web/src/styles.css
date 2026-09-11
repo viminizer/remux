@@ -413,6 +413,11 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
    command beside it: the row already has a name, and this is the answer to
    "yes, but what is it doing now" - worth reading, not worth reading first. */
 .row-task{color:var(--ov0)}
+/* The project. Brighter than the task beside it, because it is the fixed part
+   the eye uses to place the row - two panes in the same repo should look like
+   two panes in the same repo. */
+.row-project{color:var(--ov1)}
+.row.alert .row-project{color:inherit}
 .row.alert .row-task{color:inherit}
 /* Written for a div originally, so it needs the button reset. */
 .drawer-foot{

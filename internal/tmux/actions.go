@@ -215,6 +215,18 @@ func (c *Client) SetPaneTask(ctx context.Context, paneID, task string) error {
 	return c.setPaneOption(ctx, paneID, "@remux_task", task)
 }
 
+// SetPaneProject writes the short project name for one pane into
+// @remux_project.
+//
+// Separate from the task because the two move at completely different speeds.
+// A pane's project changes when it changes directory, which is close to never;
+// its task changes whenever the work does. Packing them into one string would
+// mean rewriting the whole name to correct either half, and a delimiter for
+// the status line to pull back apart.
+func (c *Client) SetPaneProject(ctx context.Context, paneID, project string) error {
+	return c.setPaneOption(ctx, paneID, "@remux_project", project)
+}
+
 // SetPaneState writes the agent verdict for one pane into @remux_state, so the
 // laptop's own tmux status line can show which panes are blocked.
 //

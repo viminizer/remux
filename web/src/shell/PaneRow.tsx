@@ -43,6 +43,15 @@ export function PaneRow({
   const task = (pane.remuxTask ?? '').trim()
   const masked = task !== '' && task !== paneTitle(pane)
 
+  // The project goes in the subtitle rather than in front of the name.
+  //
+  // The session heading above already narrows things down, the row is about
+  // two hundred pixels wide, and a prefix there would eat the words that
+  // actually tell two panes apart. The laptop's status line does prefix the
+  // name, and for the opposite reason: one pane is in view there with no
+  // heading over it, so the project is the only thing saying where you are.
+  const project = (pane.remuxProject ?? '').trim()
+
   const cancel = () => {
     clearTimeout(hold.current.timer)
     hold.current.timer = undefined
@@ -80,6 +89,7 @@ export function PaneRow({
         </div>
         <div className="row-s">
           {displayCommand(pane.command)} · {statusLabel(pane.status)}
+          {project && <span className="row-project"> · {project}</span>}
           {masked && <span className="row-task"> · {task}</span>}
         </div>
       </button>

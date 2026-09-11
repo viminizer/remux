@@ -420,11 +420,12 @@ func buildLine(title string) string { return buildLineWith("", title) }
 
 // buildLineWith takes both names: @remux_title, then pane_title last.
 func buildLineWith(remuxTitle, title string) string {
-	return buildLineFull(remuxTitle, "", "", title)
+	return buildLineFull(remuxTitle, "", "", "", title)
 }
 
-// buildLineFull adds @remux_task and @remux_state, which sit between the two.
-func buildLineFull(remuxTitle, remuxTask, remuxState, title string) string {
+// buildLineFull adds the other three @remux_* options, which sit between the
+// name and the program's own title.
+func buildLineFull(remuxTitle, remuxTask, remuxProject, remuxState, title string) string {
 	f := []string{
 		"$2", "saas", "1",
 		"@8", "8", "issue168", "1", "1788946490",
@@ -433,6 +434,7 @@ func buildLineFull(remuxTitle, remuxTask, remuxState, title string) string {
 		"0", "0", "0", "35713",
 		remuxTitle,
 		remuxTask,
+		remuxProject,
 		remuxState,
 		title,
 	}

@@ -19,6 +19,7 @@ type fakePanes struct {
 	captured [][]string        // one entry per Previews call
 	writes   map[string]string // pane -> last state written
 	tasks    map[string]string // pane -> last task written
+	projects map[string]string // pane -> last project written
 	order    []string          // panes whose state was written, in order
 	err      error
 	// uncapturable panes are left out of the Previews result, which is how a
@@ -31,6 +32,7 @@ func newFake() *fakePanes {
 		screens:      map[string]string{},
 		writes:       map[string]string{},
 		tasks:        map[string]string{},
+		projects:     map[string]string{},
 		uncapturable: map[string]bool{},
 	}
 }
@@ -73,6 +75,16 @@ func (f *fakePanes) SetPaneState(_ context.Context, paneID, state string) error 
 	}
 	f.writes[paneID] = state
 	f.order = append(f.order, paneID)
+	return nil
+}
+
+func (f *fakePanes) SetPaneProject(_ context.Context, paneID, project string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.projects[paneID] = project
 	return nil
 }
 

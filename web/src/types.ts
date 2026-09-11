@@ -8,6 +8,8 @@ export interface Pane {
   remuxTitle?: string
   /** What remux read the pane to be working on. See paneTitle. */
   remuxTask?: string
+  /** The short project name for the pane's repo. See PaneRow. */
+  remuxProject?: string
   /**
    * The one-glyph verdict remux wrote onto the pane, for the laptop's own tmux
    * status line to render. The drawer uses `status` instead - same

@@ -228,6 +228,19 @@ func (s *Server) watchPanes(ctx context.Context) {
 		}
 		byRepo := s.Match.Panes(paths)
 
+		// Stamp each pane with its repo on the way past. The matcher has just
+		// resolved every one of these directories and its answers are cached,
+		// so this is a map lookup - and it saves the naming pass either
+		// reaching into the api package or walking the filesystem itself,
+		// which is the thing that must not happen on a shared loop.
+		for repo, ids := range byRepo {
+			for _, id := range ids {
+				if pane := tree.Pane(id); pane != nil {
+					pane.Repo = repo
+				}
+			}
+		}
+
 		s.mu.Lock()
 		s.paneRepos = byRepo
 		s.mu.Unlock()

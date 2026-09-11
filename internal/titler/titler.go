@@ -37,6 +37,7 @@ type Panes interface {
 	Previews(ctx context.Context, paneIDs []string, n int) map[string]string
 	SetPaneState(ctx context.Context, paneID, state string) error
 	SetPaneTask(ctx context.Context, paneID, task string) error
+	SetPaneProject(ctx context.Context, paneID, project string) error
 }
 
 // Pass names every agent pane in the workspace, once per tree poll.
@@ -181,11 +182,13 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 			// options are already unset, so an ordinary shell costs nothing.
 			p.writeState(ctx, pane, "")
 			p.writeTask(ctx, pane, "")
+			p.writeProject(ctx, pane, "")
 			continue
 		}
 		agents = append(agents, pane)
 	}
 	p.forget(live)
+	p.writeProjects(ctx, agents)
 
 	naming := p.Enabled == nil || p.Enabled()
 
@@ -272,6 +275,41 @@ func (p *Pass) forget(live map[string]bool) {
 			delete(p.failed, id)
 		}
 	}
+}
+
+// writeProjects keeps @remux_project current for every agent pane.
+//
+// It runs outside the activity gate and costs nothing to do so: the repo comes
+// from the tree, which was read anyway, and a write only happens when the
+// value actually changes - which is when a pane changes directory, close to
+// never. It is also the half of the name that must not wait on the gate or on
+// anyone looking, because it needs no model and no screen.
+//
+// The shortening needs the whole workspace at once, since what a name can drop
+// depends on what its siblings are called.
+func (p *Pass) writeProjects(ctx context.Context, agents []*tmux.Pane) {
+	repos := make([]string, 0, len(agents))
+	seen := map[string]bool{}
+	for _, pane := range agents {
+		if pane.Repo != "" && !seen[pane.Repo] {
+			seen[pane.Repo] = true
+			repos = append(repos, pane.Repo)
+		}
+	}
+	short := Short(repos)
+
+	for _, pane := range agents {
+		// A pane outside any repo gets nothing rather than a guess. Its
+		// directory is not a project just because it has a name.
+		p.writeProject(ctx, pane, short[pane.Repo])
+	}
+}
+
+func (p *Pass) writeProject(ctx context.Context, pane *tmux.Pane, want string) {
+	if pane.RemuxProject == want {
+		return
+	}
+	p.report(ctx, pane.ID, p.Tmux.SetPaneProject(ctx, pane.ID, want))
 }
 
 // report records the outcome of one option write, complaining at most once per
