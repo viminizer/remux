@@ -1,7 +1,10 @@
 # build output
 /bin/
 /web/dist/
-/web/node_modules/
+# No trailing slash: in a worktree this is a symlink to the main checkout's
+# copy, and a trailing slash matches only a real directory - so the symlink
+# was not ignored, and it reached a commit.
+/web/node_modules
 
 # home-screen icons, drawn by scripts/gen-icons.py at build time
 /web/public/icon-*.png
