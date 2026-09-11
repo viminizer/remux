@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { claim, isStrip } from '../.test-build/shell/tabSwipe.js'
+import { axis, claim, isStrip } from '../.test-build/shell/tabSwipe.js'
 
 test('dragging left goes to the next tab', () => {
   assert.equal(claim(-40, 0, 2), 'next')
@@ -45,4 +45,24 @@ test('a row of chips is a strip', () => {
 
 test('sub-pixel overflow is not a strip', () => {
   assert.equal(isStrip(1, 0), false)
+})
+
+// The arc. A thumb swiping across a list does not travel in a straight line,
+// and its first few pixels are as likely to be down as across. Deciding on
+// that first sample, and for good, is what made the gesture work over the
+// warning bar and do nothing over the list.
+test('a swipe that opens with more down than across is not yet a scroll', () => {
+  assert.equal(axis(-5, -10), 'unsure')
+})
+
+test('the same swipe commits across once it has gone somewhere', () => {
+  assert.equal(axis(-30, -14), 'across')
+})
+
+test('a real scroll is given up', () => {
+  assert.equal(axis(2, 40), 'down')
+})
+
+test('nothing is decided before the gesture has travelled', () => {
+  assert.equal(axis(3, 4), 'unsure')
 })

@@ -39,3 +39,36 @@ export const SLOP = 2
 export function isStrip(hOver: number, vOver: number): boolean {
   return hOver > SLOP && vOver <= SLOP
 }
+
+// How far the finger travels before the gesture can commit to an axis. Below
+// this a drag is still ambiguous and nothing moves. Matches useDrawerSwipe.
+export const AXIS = 8
+
+// How much more vertical than horizontal a drag must be before it is given up
+// as a scroll. Strictly greater than 1, and that is the whole point: see axis.
+export const VERTICAL_BIAS = 2
+
+export type Axis = 'across' | 'down' | 'unsure'
+
+/**
+ * Which way a drag is going, once it has gone far enough to tell.
+ *
+ * The first version asked only whether dy was bigger than dx, and gave up for
+ * good the moment it was. That is a hair-trigger on a phone. A thumb swiping
+ * across a list travels in an arc, and its first few pixels are as likely to
+ * be down as across: a real failing swipe opened with 5px across and 10px
+ * down, was written off as a scroll, and then travelled 180 across and 18
+ * down. Swipes over the warning bar worked and swipes over the list did not,
+ * which is exactly the difference between a deliberate flick and a thumb.
+ *
+ * So a drag is only given up when it is clearly vertical, and while it is
+ * neither it stays unsure rather than being decided wrongly and for ever. The
+ * browser is deciding in parallel, and if it starts scrolling it cancels the
+ * pointer, which ends the gesture anyway - this only stops us giving up first.
+ */
+export function axis(dx: number, dy: number): Axis {
+  const [ax, ay] = [Math.abs(dx), Math.abs(dy)]
+  if (ax >= AXIS && ax > ay) return 'across'
+  if (ay >= AXIS && ay > ax * VERTICAL_BIAS) return 'down'
+  return 'unsure'
+}

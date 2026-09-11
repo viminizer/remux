@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { SLOP, claim, isStrip } from './tabSwipe'
+import { SLOP, axis, claim, isStrip } from './tabSwipe'
 
 /**
  * Swipe sideways to change tab, on the two screens that have tabs.
@@ -34,9 +34,6 @@ import { SLOP, claim, isStrip } from './tabSwipe'
  * is what the eye needs, and it costs one CSS keyframe.
  */
 
-// Matches useDrawerSwipe. Both hooks must commit at the same distance, or the
-// drawer decides on an earlier move than this one and takes the gesture.
-const AXIS = 8
 // How far a drag has to travel to count. A quarter of the screen is further
 // than a tap slips and closer than a two-handed swipe.
 const TRAVEL = 0.25
@@ -97,11 +94,14 @@ export function useTabSwipe({
       const dy = e.clientY - y0
 
       if (mode === 'undecided') {
-        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > AXIS) {
+        const going = axis(dx, dy)
+        if (going === 'down') {
           mode = 'drop' // a scroll, and the browser is already doing it
           return
         }
-        if (Math.abs(dx) < AXIS) return
+        // Still an arc that could go either way. Wait rather than guess: see
+        // the note on axis() for what guessing cost.
+        if (going === 'unsure') return
         // A strip of chips under the finger owns the drag while it still has
         // room to move that way, which is the rule useDrawerSwipe uses for
         // mirror mode. Asked in the direction of travel, not at pointerdown:

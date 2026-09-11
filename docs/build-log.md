@@ -784,3 +784,41 @@ load.
 Nothing is wrong with the worker. Settings already compares `__BUILD_VERSION__`
 against the version the server reports and offers the update, which is the
 thing to look at when a shipped change appears to have done nothing.
+
+## The arc
+
+Second report: swiping over the list did nothing, swiping over the warning bar
+worked. That split is the tell, and it is not about the list at all.
+
+The axis test gave up the moment `dy` was bigger than `dx`, and gave up for
+good:
+
+```js
+if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > AXIS) mode = 'drop'
+```
+
+A thumb swiping across a phone travels in an arc. Reproduced: a swipe whose
+first sample is 5px across and 10px down is written off as a scroll, and then
+goes on to travel 180 across and 18 down. A flat, deliberate flick - which is
+what you make over a bar of text you are not expecting to scroll - passes the
+same test on its first sample and works. Over a list, where the hand expects to
+scroll, the arc is pronounced and the first sample is vertical.
+
+So the failure was never about being inside the list. It was about how the
+gesture starts, and the list is where it starts badly.
+
+`axis()` now answers `across`, `down` or `unsure`, and only `down` gives up -
+at twice the horizontal travel, not a hair over it. While the drag is neither
+it stays `unsure` and nothing is decided. The browser is deciding in parallel
+and cancels the pointer if it starts scrolling, so waiting costs nothing and
+stops us calling it wrong first.
+
+Verified against the failing gesture, which now changes tab, and against a
+mostly-vertical drag, which still does not.
+
+### Still to do
+
+`useDrawerSwipe` has the identical test and so the identical hair-trigger. It
+was left alone: the drawer is pinned at this window size so the change could
+not be verified here, and shipping an unverifiable fix is what produced this
+entry and the one above it.
