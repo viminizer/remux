@@ -67,6 +67,11 @@ type Pass struct {
 	// last fifteen minutes - and the suite quietly depended on HIDAway being
 	// broken.
 	Away func() bool
+	// Ledger is where the month's bill accumulates across restarts. Nil
+	// disables it, which is what every test wants: naming is the one thing
+	// here that spends money, and a test should not be able to write to
+	// Kevin's real books by forgetting to set a field.
+	Ledger *Ledger
 	// AwayFor is how long one Away answer is reused. Zero means the default.
 	//
 	// A seam for the same reason Away is. The cache is what bounds ioreg to
@@ -101,6 +106,7 @@ type Pass struct {
 	chars int
 	wrote int
 	fails int
+	usd   float64
 }
 
 // namingJustOpened reports the pass on which naming became possible - the

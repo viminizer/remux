@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Naming } from '../types'
+import type { Naming, NamingSpend } from '../types'
 import { ago } from '../store'
 import { api } from '../api'
 
@@ -118,6 +118,7 @@ export function NamingScreen({ onBack }: { onBack: () => void }) {
           </div>
         )}
         {n && <Summary n={n} />}
+        {n?.spend && <Cost s={n.spend} chars={n.chars} />}
         {n && <Runs n={n} />}
       </div>
     </div>
@@ -154,18 +155,112 @@ function Summary({ n }: { n: Naming }) {
           </div>
           <div className="val">{n.wrote}</div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What the naming has cost.
+ *
+ * The number is read from the CLI, not estimated from prompt size. That is
+ * not fussiness: two calls with byte-identical prompts measured $0.0374 and
+ * $0.0030 on this laptop, because the first wrote the CLI's 18k-token system
+ * preamble into the prompt cache and the second read it back. Anything derived
+ * from characters cannot see that and is wrong by more than ten times, in the
+ * direction that makes an expensive feature look cheap.
+ *
+ * A month is the unit worth showing. It is the one Kevin is billed in, and it
+ * is long enough that a quiet afternoon does not read as the feature being
+ * free. It survives restarts for the same reason - the service restarts
+ * several times on a day he is working on it, and a total since boot answers
+ * for the last eleven minutes.
+ */
+function Cost({ s, chars }: { s: NamingSpend; chars: number }) {
+  const per = s.runs > 0 ? s.usd / s.runs : 0
+  const days = Math.max(1, Math.round(s.through))
+  return (
+    <div className="sec">
+      <h3>Cost</h3>
+      <div className="card">
         <div className="crow">
           <div className="lbl">
-            Sent to a model
-            {/* Not a bill. It is the only number here that grows with what the
-                feature costs, and it is free to keep. */}
-            <small>screens, in characters</small>
+            This month
+            <small>
+              {monthName(s.month)}, {days} {days === 1 ? 'day' : 'days'} in
+              {s.unmetered > 0 && ` · at least, ${s.unmetered} runs went unmetered`}
+            </small>
           </div>
-          <div className="val">{compact(n.chars)}</div>
+          <div className="val">{money(s.usd)}</div>
+        </div>
+
+        {/* Straight-line, and labelled as a projection rather than a total.
+            On the second of the month it is one day multiplied by thirty, so
+            the row above says how many days it is standing on. */}
+        <div className="crow">
+          <div className="lbl">
+            On track for
+            <small>if the rest of the month looks like the start of it</small>
+          </div>
+          <div className="val">{money(s.projected)}</div>
+        </div>
+
+        <div className="crow">
+          <div className="lbl">
+            Per call
+            <small>
+              {s.runs} {s.runs === 1 ? 'call' : 'calls'} · {compact(chars)} characters sent
+            </small>
+          </div>
+          <div className="val">{money(per)}</div>
+        </div>
+
+        {s.prevMonth && (
+          <div className="crow">
+            <div className="lbl">
+              {monthName(s.prevMonth)}
+              <small>the whole month</small>
+            </div>
+            <div className="val">{money(s.prevUsd ?? 0)}</div>
+          </div>
+        )}
+
+        {/* Worth saying once. The CLI reports list price, which is what these
+            calls would bill at - a Claude subscription covers them instead,
+            and then this is what the feature is worth rather than what it
+            costs. Either way it is the number that moves when naming does. */}
+        <div className="crow">
+          <div className="lbl dim">
+            <small>
+              List price, as the CLI reports it. A subscription covers these calls rather than
+              billing them.
+            </small>
+          </div>
         </div>
       </div>
     </div>
   )
+}
+
+/** "2026-09" -> "September". */
+function monthName(m: string): string {
+  const [y, mm] = m.split('-').map(Number)
+  if (!y || !mm) return m
+  return new Date(y, mm - 1, 1).toLocaleString(undefined, { month: 'long' })
+}
+
+/**
+ * Money, to as many places as the amount deserves.
+ *
+ * A per-call figure is a third of a cent, so two decimal places would print it
+ * as $0.00 and say the feature is free. A month's total is dollars, where the
+ * third place is noise.
+ */
+function money(n: number): string {
+  if (!(n > 0)) return '$0'
+  if (n >= 100) return `$${Math.round(n)}`
+  if (n >= 1) return `$${n.toFixed(2)}`
+  return `$${n.toFixed(3)}`
 }
 
 function Runs({ n }: { n: Naming }) {
@@ -204,7 +299,10 @@ function Runs({ n }: { n: Naming }) {
                 </span>
                 <span className="run-cost">
                   {r.panes} {r.panes === 1 ? 'pane' : 'panes'} · {(r.ms / 1000).toFixed(1)}s ·{' '}
-                  {compact(r.chars)}
+                  {/* The character count was only ever a stand-in for the
+                      bill, so it appears only where there is no bill to
+                      show - the codex tier, which reports nothing. */}
+                  {r.metered > 0 ? money(r.usd) : `${compact(r.chars)} chars`}
                 </span>
               </div>
               {(r.names ?? []).map((w) => (
