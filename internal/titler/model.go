@@ -73,6 +73,15 @@ const modelTimeout = 150 * time.Second
 // read" to "a second agent ran a tool". Naming a pane needs no tools at all,
 // so there is nothing to trade away.
 //
+// --skip-git-repo-check is what makes tier 3 reachable at all. Run cares that
+// its working directory is a repo it has been trusted with, and Run points
+// every tier at an empty temp directory on purpose - so codex refused every
+// call with "Not inside a trusted directory", or on older versions sat there
+// until the timeout killed it. Measured on this laptop: the same prompt exits
+// 1 from os.TempDir() without the flag and answers with it. The flag turns off
+// the repo requirement and nothing else; the empty working directory, the
+// read-only sandbox and the missing tools all stay.
+//
 // Tier 4 is not in this list. It is not a model at all - it is the last user
 // line off the pane's own screen - so it lives in title.go where the screen
 // is. What matters is that it cannot fail, so the chain always terminates and
@@ -83,7 +92,8 @@ func Chain() []Runner {
 			args: []string{"-p", "--tools", "", "--model", "haiku", "--output-format", "json"}},
 		&cmdRunner{label: "claude default", bin: "claude", json: true,
 			args: []string{"-p", "--tools", "", "--output-format", "json"}},
-		&cmdRunner{label: "codex", bin: "codex", args: []string{"exec", "--sandbox", "read-only"}},
+		&cmdRunner{label: "codex", bin: "codex",
+			args: []string{"exec", "--sandbox", "read-only", "--skip-git-repo-check"}},
 	}
 }
 

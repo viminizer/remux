@@ -154,3 +154,51 @@ func TestReportHasNoSpendWithoutALedger(t *testing.T) {
 		t.Errorf("spend = %+v, want nil with no ledger", n.Spend)
 	}
 }
+
+// TestChainArgsKeepEveryTierUsable guards the flags, because every one of them
+// is invisible until it is wrong.
+//
+// The codex tier spent months in the chain doing nothing: Run points it at an
+// empty temp directory, codex requires a repo it has been trusted with, and
+// the only trace was "signal: killed" in a log nobody reads. A tier that
+// cannot answer is worse than an absent one - the chain still pays the two
+// tiers above it and then waits out a timeout.
+func TestChainArgsKeepEveryTierUsable(t *testing.T) {
+	has := func(args []string, want string) bool {
+		for _, a := range args {
+			if a == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, r := range Chain() {
+		c, ok := r.(*cmdRunner)
+		if !ok {
+			t.Fatalf("%s is not a cmdRunner", r.Name())
+		}
+		switch c.bin {
+		case "claude":
+			// Without this there is no measured cost, only a guess from
+			// prompt size - which the cache makes wrong by ten times.
+			if !has(c.args, "--output-format") || !c.json {
+				t.Errorf("%s: not asking for the json envelope: %v", c.Name(), c.args)
+			}
+			// The prompt is built from the screens of other agents. Tools off
+			// is what keeps a crafted pane from reaching one.
+			if !has(c.args, "--tools") {
+				t.Errorf("%s: tools not disabled: %v", c.Name(), c.args)
+			}
+		case "codex":
+			if !has(c.args, "--skip-git-repo-check") {
+				t.Errorf("%s: would refuse to run from an empty directory: %v", c.Name(), c.args)
+			}
+			if !has(c.args, "read-only") {
+				t.Errorf("%s: sandbox not read-only: %v", c.Name(), c.args)
+			}
+		default:
+			t.Errorf("unknown tier %q - it needs its own flags checked here", c.bin)
+		}
+	}
+}
