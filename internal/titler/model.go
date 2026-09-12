@@ -3,6 +3,7 @@ package titler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,9 +13,31 @@ import (
 	"time"
 )
 
+// Answer is what one tier came back with: the text, and what the call cost.
+//
+// The cost is carried out of the runner rather than worked out later because
+// only the runner can know it. Two calls with byte-identical prompts measured
+// $0.0374 and $0.0030 here - the first wrote the CLI's 18k-token system
+// preamble into the prompt cache and the second read it back. Any estimate
+// built from prompt size is blind to that, and wrong by more than ten times in
+// the direction that matters.
+type Answer struct {
+	Text string
+	// USD is what the call cost at list price, as the CLI reported it.
+	// Meaningless unless Metered.
+	USD float64
+	// Metered is whether a number came back at all. A tier that cannot report
+	// one still costs money, and saying "0" would quietly understate the bill;
+	// the screen says "not metered" instead.
+	Metered bool
+	// Tokens, for the run detail. Cache reads are the bulk of a warm call and
+	// are what makes it cheap, so they are worth keeping apart from input.
+	In, Out, CacheRead, CacheWrite int
+}
+
 // Runner asks a model one question and returns what it said.
 type Runner interface {
-	Run(ctx context.Context, prompt string) (string, error)
+	Run(ctx context.Context, prompt string) (Answer, error)
 	Name() string
 }
 
@@ -56,8 +79,10 @@ const modelTimeout = 150 * time.Second
 // a pane is never left blank or, worse, stale but confident.
 func Chain() []Runner {
 	return []Runner{
-		&cmdRunner{label: "claude haiku", bin: "claude", args: []string{"-p", "--tools", "", "--model", "haiku"}},
-		&cmdRunner{label: "claude default", bin: "claude", args: []string{"-p", "--tools", ""}},
+		&cmdRunner{label: "claude haiku", bin: "claude", json: true,
+			args: []string{"-p", "--tools", "", "--model", "haiku", "--output-format", "json"}},
+		&cmdRunner{label: "claude default", bin: "claude", json: true,
+			args: []string{"-p", "--tools", "", "--output-format", "json"}},
 		&cmdRunner{label: "codex", bin: "codex", args: []string{"exec", "--sandbox", "read-only"}},
 	}
 }
@@ -66,6 +91,10 @@ type cmdRunner struct {
 	label string
 	bin   string
 	args  []string
+	// json says the CLI answers with claude's envelope rather than bare text.
+	// It is what buys the measured cost; codex has no equivalent, so tier 3
+	// reports its answer and no number.
+	json bool
 }
 
 func (r *cmdRunner) Name() string { return r.label }
@@ -73,10 +102,10 @@ func (r *cmdRunner) Name() string { return r.label }
 // Run feeds the prompt on stdin rather than as an argument. Both CLIs accept
 // either, and a workspace of twenty screens is far past the size where an
 // argument list is a sensible place to put text.
-func (r *cmdRunner) Run(ctx context.Context, prompt string) (string, error) {
+func (r *cmdRunner) Run(ctx context.Context, prompt string) (Answer, error) {
 	bin, err := lookPath(r.bin)
 	if err != nil {
-		return "", err
+		return Answer{}, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, modelTimeout)
@@ -93,13 +122,66 @@ func (r *cmdRunner) Run(ctx context.Context, prompt string) (string, error) {
 	cmd.Stdout, cmd.Stderr = &out, &errb
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s: %v: %s", r.label, err, firstLine(errb.String()))
+		return Answer{}, fmt.Errorf("%s: %v: %s", r.label, err, firstLine(errb.String()))
 	}
 	s := strings.TrimSpace(out.String())
 	if s == "" {
-		return "", fmt.Errorf("%s: empty output", r.label)
+		return Answer{}, fmt.Errorf("%s: empty output", r.label)
 	}
-	return s, nil
+	if !r.json {
+		return Answer{Text: s}, nil
+	}
+	a, err := parseEnvelope(s)
+	if err != nil {
+		return Answer{}, fmt.Errorf("%s: %v", r.label, err)
+	}
+	return a, nil
+}
+
+// envelope is the part of `claude -p --output-format json` this reads.
+//
+// Deliberately a subset. The real object has two dozen keys and gains more
+// with each release; naming a pane needs the answer, whether it failed, and
+// the bill. Everything else is left to be ignored by encoding/json.
+type envelope struct {
+	Result  string  `json:"result"`
+	IsError bool    `json:"is_error"`
+	CostUSD float64 `json:"total_cost_usd"`
+	Usage   struct {
+		Input      int `json:"input_tokens"`
+		Output     int `json:"output_tokens"`
+		CacheRead  int `json:"cache_read_input_tokens"`
+		CacheWrite int `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
+}
+
+// parseEnvelope turns the CLI's JSON into an Answer.
+//
+// A CLI that answers with something other than the envelope is a failure, not
+// a free call: falling back to treating the raw stdout as the title would put
+// a line of JSON on a pane, which is exactly the kind of confident wrong
+// answer tier 4 exists to avoid.
+func parseEnvelope(s string) (Answer, error) {
+	var e envelope
+	if err := json.Unmarshal([]byte(s), &e); err != nil {
+		return Answer{}, fmt.Errorf("unreadable json answer: %v", err)
+	}
+	if e.IsError {
+		return Answer{}, fmt.Errorf("reported an error: %s", firstLine(e.Result))
+	}
+	text := strings.TrimSpace(e.Result)
+	if text == "" {
+		return Answer{}, fmt.Errorf("json answer had no result")
+	}
+	return Answer{
+		Text:       text,
+		USD:        e.CostUSD,
+		Metered:    true,
+		In:         e.Usage.Input,
+		Out:        e.Usage.Output,
+		CacheRead:  e.Usage.CacheRead,
+		CacheWrite: e.Usage.CacheWrite,
+	}, nil
 }
 
 // lookPath finds a CLI that a login shell would find but a LaunchAgent would

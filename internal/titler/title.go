@@ -206,12 +206,17 @@ func (p *Pass) ask(ctx context.Context, due []job) (map[string]string, Run) {
 	run := Run{Chars: len(prompt)}
 	for _, r := range p.Chain {
 		out, err := r.Run(ctx, prompt)
+		// Billed before it is judged. A tier that answers with something
+		// unusable has still been paid for, and a run that falls through two
+		// tiers to reach a third costs all three - which is the case where
+		// knowing the number matters most.
+		run.add(out)
 		if err != nil {
 			log.Printf("titler: %v", err)
 			run.Notes = append(run.Notes, err.Error())
 			continue
 		}
-		titles := parseAnswer(out, due)
+		titles := parseAnswer(out.Text, due)
 		if len(titles) == 0 {
 			log.Printf("titler: %s answered nothing usable", r.Name())
 			run.Notes = append(run.Notes, r.Name()+": answered nothing usable")

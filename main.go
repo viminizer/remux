@@ -177,6 +177,14 @@ func run(cfg *config.Config, local bool) error {
 	// reach. The glyph half does not and has none.
 	namer := titler.New(tm)
 	namer.Chain = titler.Chain()
+	// The bill, kept across restarts. Without a config directory there is
+	// nowhere to keep it, and naming still works - the screen just cannot say
+	// what the month has cost.
+	if dir, err := config.EnsureDir(); err == nil {
+		namer.Ledger = titler.OpenLedger(titler.SpendPath(dir))
+	} else {
+		log.Printf("naming spend not recorded: %v", err)
+	}
 	// srv.NamePanes, not a closure over cfg.NamePanes: this is read from the
 	// WatchPanes goroutine every couple of seconds and the settings handler
 	// writes it, so the read has to take the same lock as the write.

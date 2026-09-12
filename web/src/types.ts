@@ -272,8 +272,23 @@ export interface NamingRun {
   tier: string
   /** How many panes went into the one prompt. */
   panes: number
-  /** Prompt size in characters - the closest free stand-in for cost. */
+  /** Prompt size in characters. */
   chars: number
+  /**
+   * What this run cost at list price, summed over every tier that billed -
+   * not only the one that answered.
+   */
+  usd: number
+  /**
+   * How many tiers reported a number. Zero on a run that answered means it
+   * cost something nobody counted, which is worth saying rather than showing
+   * as free.
+   */
+  metered: number
+  in?: number
+  out?: number
+  cacheRead?: number
+  cacheWrite?: number
   /** Panes the model said had nothing on them to name, so their name was cleared. */
   cleared: number
   names: NamedPane[] | null
@@ -305,11 +320,38 @@ export interface Naming {
   calls: number
   wrote: number
   failed: number
-  /**
-   * Every character ever sent to a model by this process. Not a bill, but the
-   * only number here that grows with what the feature costs.
-   */
+  /** Every character ever sent to a model by this process. */
   chars: number
+  /** What this process has spent. `spend` is the number that outlives it. */
+  usd: number
+  /** The bill, kept across restarts. Absent when there is nowhere to keep it. */
+  spend?: NamingSpend
   /** Newest first. */
   runs: NamingRun[] | null
+}
+
+/**
+ * The month's bill.
+ *
+ * Read from the CLI rather than estimated from prompt size. Two calls with
+ * byte-identical prompts measured $0.0374 and $0.0030 - the first wrote the
+ * CLI's system preamble into the prompt cache, the second read it back - so
+ * any figure derived from characters is wrong by more than ten times.
+ */
+export interface NamingSpend {
+  /** "2026-09". */
+  month: string
+  /** This month so far, at list price. */
+  usd: number
+  runs: number
+  /** Runs that billed without reporting a number, so `usd` is a floor. */
+  unmetered: number
+  /** `usd` extrapolated to the whole month on elapsed days. */
+  projected: number
+  /** How far into the month `usd` covers, in days. */
+  through: number
+  prevMonth?: string
+  prevUsd?: number
+  /** "list" - what the calls would bill at, which a subscription may cover. */
+  basis: string
 }

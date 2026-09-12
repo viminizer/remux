@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,9 @@ type fakeRunner struct {
 	label string
 	out   string
 	err   error
+	// usd is what this tier reports the call cost. Zero leaves the answer
+	// unmetered, which is the tier-3 shape.
+	usd float64
 
 	mu      sync.Mutex
 	calls   int
@@ -25,12 +29,15 @@ type fakeRunner struct {
 
 func (r *fakeRunner) Name() string { return r.label }
 
-func (r *fakeRunner) Run(_ context.Context, prompt string) (string, error) {
+func (r *fakeRunner) Run(_ context.Context, prompt string) (Answer, error) {
 	r.mu.Lock()
 	r.calls++
 	r.prompts = append(r.prompts, prompt)
 	r.mu.Unlock()
-	return r.out, r.err
+	if r.err != nil {
+		return Answer{}, r.err
+	}
+	return Answer{Text: r.out, USD: r.usd, Metered: r.usd > 0}, nil
 }
 
 func (r *fakeRunner) count() int {
@@ -808,5 +815,69 @@ func TestOneBatchIsCapped(t *testing.T) {
 	}
 	if left != len(panes)-maxBatch {
 		t.Errorf("%d of %d panes left out of the batch are still due", left, len(panes)-maxBatch)
+	}
+}
+
+// realEnvelope is trimmed from an actual `claude -p --output-format json` run
+// on this machine. Keeping the real shape matters: the object has two dozen
+// keys and gains more each release, and the point of the parser is that it
+// ignores all of them.
+const realEnvelope = `{"duration_api_ms":1929,"stop_reason":"end_turn",` +
+	`"session_id":"d0e014e0","total_cost_usd":0.037389,` +
+	`"usage":{"input_tokens":9,"cache_creation_input_tokens":18134,` +
+	`"cache_read_input_tokens":0,"output_tokens":35,"service_tier":"standard"},` +
+	`"permission_denials":[],"is_error":false,"num_turns":1,` +
+	`"result":"1: venue filter pagination","type":"result"}`
+
+func TestParseEnvelopeReadsTheAnswerAndTheBill(t *testing.T) {
+	a, err := parseEnvelope(realEnvelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Text != "1: venue filter pagination" {
+		t.Errorf("text = %q", a.Text)
+	}
+	if !a.Metered || a.USD != 0.037389 {
+		t.Errorf("usd = %v metered = %v, want 0.037389 metered", a.USD, a.Metered)
+	}
+	if a.CacheWrite != 18134 || a.Out != 35 {
+		t.Errorf("tokens = %+v", a)
+	}
+}
+
+func TestParseEnvelopeRefusesWhatIsNotOne(t *testing.T) {
+	// Falling back to the raw stdout would put a line of JSON, or a CLI's
+	// error page, on a pane as its name - a confident wrong answer, which is
+	// the one outcome tier 4 exists to avoid.
+	for _, in := range []string{
+		"1: venue filter pagination",
+		`{"is_error":true,"result":"Credit balance is too low"}`,
+		`{"is_error":false,"result":"   "}`,
+	} {
+		if a, err := parseEnvelope(in); err == nil {
+			t.Errorf("parseEnvelope(%q) = %+v, want an error", in, a)
+		}
+	}
+}
+
+func TestRunIsBilledForEveryTierThatAnswered(t *testing.T) {
+	// The expensive case: tier 1 answers with something unusable and tier 2
+	// has to be asked. Both were paid for. Charging only the tier that
+	// worked would understate exactly the runs worth knowing about.
+	junk := &fakeRunner{label: "junk", out: "I'm sorry, I can't help with that.", usd: 0.03}
+	good := &fakeRunner{label: "good", out: "1: token refresh race\n", usd: 0.002}
+
+	p := newPass(newFake())
+	p.Chain = []Runner{junk, good}
+	_, run := p.ask(context.Background(), []job{{ID: "%1", Screen: "working"}})
+
+	if run.Tier != "good" {
+		t.Fatalf("tier = %q, want good", run.Tier)
+	}
+	if math.Abs(run.USD-0.032) > 1e-9 {
+		t.Errorf("usd = %v, want 0.032 - both tiers billed", run.USD)
+	}
+	if run.Metered != 2 {
+		t.Errorf("metered = %d, want 2", run.Metered)
 	}
 }
