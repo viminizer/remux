@@ -226,7 +226,7 @@ Every mutating request is additionally logged with the caller's login and the tm
 
 ```
 GET    /api/health                          server, hostname, tmux version
-GET    /api/tree?preview=1                  full hierarchy + previews + agent status
+GET    /api/tree?preview=1                  full hierarchy + agent status
 GET    /api/panes/{id}/capture?lines=N      one-shot screen read
 POST   /api/panes/{id}/text                 {text, submit}    - bracketed paste
 POST   /api/panes/{id}/keys                 {keys:["Escape","Enter"]}
