@@ -35,12 +35,12 @@ The tmux layer refuses `attach-session`, `switch-client`, `kill-server`,
 `source-file` outright. The one deliberate exception is the pane menu's
 **Focus on laptop**, which you have to ask for by name.
 
-`scripts/laptop-invariant.sh before` / `after` proves it: it snapshots the
-active window and every pane's geometry, and fails if anything moved.
+`scripts/laptop-invariant.sh before` / `after` proves it: it snapshots every
+pane's geometry and fails if one vanished, changed size, or gained a client.
 
-The one thing remux writes to panes you are using is three user options -
-`@remux_title`, `@remux_task` and `@remux_state` (see **Pane names on the
-laptop**). A user option is inert: nothing renders it unless your tmux config
+The one thing remux writes to panes you are using is four user options -
+`@remux_title`, `@remux_task`, `@remux_state` and `@remux_project` (see **Pane
+names on the laptop**). A user option is inert: nothing renders it unless your tmux config
 asks for it, and no running program can be disturbed by it. The invariant
 script reports every one of those writes and fails if a value is outside what
 remux is allowed to write.
@@ -141,15 +141,16 @@ the Mac needs outbound access to the push service.
 
 ## Pane names on the laptop
 
-remux writes two user options onto each agent pane, so the laptop can read the
-same thing the phone does:
+remux writes three user options onto each agent pane, so the laptop can read
+the same thing the phone does:
 
 | option | what | cost |
 |---|---|---|
 | `@remux_state` | one glyph: `!` blocked on an answer, `✳` working, `✓` idle | free, from the classifier that already runs |
 | `@remux_task` | 3-5 words naming the work, read off the screen by a cheap model | a fraction of a cent, and only when the work changes |
+| `@remux_project` | the short repo name the pane is working in, at most 12 characters | free, worked out from the pane's own directory |
 
-Neither is rendered by tmux on its own. Put them in your status line to see
+None of them is rendered by tmux on its own. Put them in your status line to see
 them - this is the snippet the glyph exists for:
 
 ```tmux

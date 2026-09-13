@@ -3,26 +3,40 @@
 # Proves remux did not disturb the laptop.
 #
 # Snapshots the tmux workspace outside the remux-test scratch session, then
-# diffs the two snapshots. If the active window moved, a pane was resized, a
-# pane vanished, a window or session was renamed, a client attached, or any
-# pane option changed, this fails.
+# diffs the two snapshots. If a pane was resized, a pane vanished, a client
+# attached, or any pane option outside the four below changed, this fails.
 #
 #   ./scripts/laptop-invariant.sh before
 #   ... run tests ...
 #   ./scripts/laptop-invariant.sh after
 #
-# The three @remux_* pane options are the one thing remux may write outside the
-# scratch session: @remux_task and @remux_state on its own initiative - that is
-# the pane-naming feature working, not damage - and @remux_title when Kevin
-# renames a pane from the phone. Everything else about a pane must be identical.
+# The four @remux_* pane options are the one thing remux may write outside the
+# scratch session: @remux_task, @remux_state and @remux_project on its own
+# initiative - that is the pane-naming feature working, not damage - and
+# @remux_title when Kevin renames a pane from the phone. Everything else about
+# a pane must be identical.
 #
 # They are not simply filtered out. A check that cannot fail on the writes it
 # was extended for proves less than the one it replaced, so they get their own
 # snapshot instead: every change to them is printed, and a value outside what
-# remux is allowed to write is a failure. The glyph vocabulary and the title
-# length below are the writer's own limits (internal/titler/state.go and
-# title.go); a value outside them means the writer is wrong, which is exactly
-# the kind of damage this script exists to catch.
+# remux is allowed to write is a failure. The glyph vocabulary, the title
+# length and the project length below are the writer's own limits
+# (internal/titler/state.go, title.go and project.go); a value outside them
+# means the writer is wrong, which is exactly the kind of damage this script
+# exists to catch.
+#
+# That same argument is why the rest of the workspace is now split by what a
+# change means rather than by whether it changed at all. This machine is never
+# idle: Kevin opens a window and looks at another one, and a Claude Code pane
+# renames its own window to its version string with nobody at the keyboard.
+# None of that is remux, and failing on it taught the reader to scroll past
+# the gate - which is when a real violation goes through unread.
+#
+# So: a pane that vanished, a pane that changed size, a client that appeared,
+# a pane option outside the four - that is what remux damaging the laptop
+# looks like, and it still fails. A window renamed or added, a pane opened,
+# the cursor moved, a client leaving - printed as notes, because the laptop
+# does all of those to itself and none of them destroys anyone's work.
 #
 set -euo pipefail
 
@@ -59,7 +73,7 @@ tmux list-clients -F '#{client_tty} #{client_session} #{client_width}x#{client_h
   > "$DIR/$TAG.clients" || true
 sort -o "$DIR/$TAG.clients" "$DIR/$TAG.clients"
 
-# Every pane option outside the scratch session, split into the three remux is
+# Every pane option outside the scratch session, split into the four remux is
 # allowed to write and everything else.
 #
 # pane_title is deliberately not snapshotted: agents rewrite it on every
@@ -69,9 +83,9 @@ sort -o "$DIR/$TAG.clients" "$DIR/$TAG.clients"
 while read -r sess pane; do
   [ "$sess" = "$SCRATCH" ] && continue
   tmux show-options -p -t "$pane" > "$DIR/.opts" || true
-  grep -E '^@remux_(title|task|state)' "$DIR/.opts" \
+  grep -E '^@remux_(title|task|state|project)' "$DIR/.opts" \
     | sed "s|^|$pane |" >> "$DIR/$TAG.remux" || true
-  grep -vE '^@remux_(title|task|state)' "$DIR/.opts" \
+  grep -vE '^@remux_(title|task|state|project)' "$DIR/.opts" \
     | sed "s|^|$pane |" >> "$DIR/$TAG.options" || true
 done < <(tmux list-panes -a -F '#{session_name} #{pane_id}')
 rm -f "$DIR/.opts"
@@ -90,32 +104,71 @@ fi
 
 fail=0
 
-if ! diff -u "$DIR/before.active" "$DIR/after.active"; then
-  echo "FAIL: the laptop's active window or pane moved." >&2
-  echo "      Something called select-window, select-pane or switch-client." >&2
-  fail=1
+# The cursor. Kevin moves it by looking at something, and remux moving it is
+# the Focus feature doing what the phone asked. Neither costs anyone work, so
+# it is reported and not failed - but it is reported, because a switch-client
+# nobody asked for is still worth seeing next to whatever else this run did.
+if ! diff -q "$DIR/before.active" "$DIR/after.active" > /dev/null; then
+  echo "note: the active window moved: $(cat "$DIR/before.active") -> $(cat "$DIR/after.active")"
 fi
 
-if ! diff -u "$DIR/before.layout" "$DIR/after.layout"; then
-  echo "FAIL: pane geometry changed outside $SCRATCH." >&2
+# Panes. A pane cannot vanish or change size without someone losing something:
+# a killed pane takes its scrollback and its running agent with it, and a size
+# change means a client attached and renegotiated the whole session's geometry.
+# A pane that appeared is Kevin splitting a window.
+panes=$(awk 'FILENAME == ARGV[1] { b[$2] = $1 " " $3; next }
+             { a[$2] = $1 " " $3 }
+             END {
+               for (p in b) if (!(p in a)) print "FAIL", p, "vanished  (" b[p] ")"
+               for (p in a) if ((p in b) && a[p] != b[p]) print "FAIL", p, "changed   (" b[p] " -> " a[p] ")"
+               for (p in a) if (!(p in b)) print "note", p, "appeared  (" a[p] ")"
+             }' "$DIR/before.layout" "$DIR/after.layout" | sort)
+if printf '%s\n' "$panes" | grep -q '^FAIL'; then
+  echo "FAIL: a pane outside $SCRATCH vanished or changed size." >&2
   echo "      Either a client attached and renegotiated sizes, or a real pane was killed." >&2
+  printf '%s\n' "$panes" | sed -n 's|^FAIL |      |p' >&2
   fail=1
 fi
+printf '%s\n' "$panes" | sed -n 's|^note |note: pane |p'
 
-if ! diff -u "$DIR/before.windows" "$DIR/after.windows"; then
-  echo "FAIL: a window or session outside $SCRATCH was renamed, added, or made active." >&2
-  fail=1
+# Windows. A window cannot outlive its last pane, so a window that was killed
+# already failed above as a vanished pane. What is left here is renaming,
+# opening and which window a session has active - and the renaming is not even
+# done by a person: Claude Code panes rename their window to their version
+# string on their own.
+if ! diff -q "$DIR/before.windows" "$DIR/after.windows" > /dev/null; then
+  echo "note: windows outside $SCRATCH were renamed, opened or made active:"
+  diff -u "$DIR/before.windows" "$DIR/after.windows" | grep -E '^[+-][^+-]' | sed 's|^|      |' || true
 fi
 
-if ! diff -u "$DIR/before.clients" "$DIR/after.clients"; then
-  echo "FAIL: the set of attached tmux clients changed." >&2
+# Clients. An attach is the one direction that stays a hard failure, because
+# remux becoming a client is the single worst thing it could do - a client's
+# terminal size is what renegotiates every pane in the session. Kevin opening
+# a terminal mid-run trips this too, and that false alarm is worth keeping:
+# it is rare, and the thing it guards is not recoverable.
+#
+# FILENAME rather than the usual NR==FNR: an empty 'before' is the ordinary
+# state here - nobody has to be attached - and NR==FNR reads the second file
+# as the first when the first has no lines at all.
+clients=$(awk 'FILENAME == ARGV[1] { b[$1] = $2 " " $3; next }
+               { a[$1] = $2 " " $3 }
+               END {
+                 for (c in a) if (!(c in b)) print "FAIL", c, "attached  (" a[c] ")"
+                 for (c in b) if (!(c in a)) print "note", c, "detached  (" b[c] ")"
+                 for (c in a) if ((c in b) && a[c] != b[c]) print "note", c, "moved     (" b[c] " -> " a[c] ")"
+               }' "$DIR/before.clients" "$DIR/after.clients" | sort)
+if printf '%s\n' "$clients" | grep -q '^FAIL'; then
+  echo "FAIL: a tmux client attached outside $SCRATCH." >&2
   echo "      Something called attach-session or -CC." >&2
+  printf '%s\n' "$clients" | sed -n 's|^FAIL |      |p' >&2
   fail=1
 fi
+printf '%s\n' "$clients" | sed -n 's|^note |note: client |p'
 
 if ! diff -u "$DIR/before.options" "$DIR/after.options"; then
   echo "FAIL: a pane option changed outside $SCRATCH." >&2
-  echo "      Only @remux_title, @remux_task and @remux_state may be written." >&2
+  echo "      Only @remux_title, @remux_task, @remux_state and @remux_project" >&2
+  echo "      may be written." >&2
   fail=1
 fi
 
@@ -150,6 +203,14 @@ while read -r pane opt value; do
       n=$(printf '%s' "$value" | wc -c | tr -d ' ')
       if [ "$n" -gt 48 ]; then
         echo "FAIL: $pane has a $n-byte @remux_task; clean() caps it at 48" >&2
+        fail=1
+      fi
+      ;;
+    @remux_project)
+      # Same reasoning, against clamp()'s maxProject in project.go.
+      n=$(printf '%s' "$value" | wc -c | tr -d ' ')
+      if [ "$n" -gt 12 ]; then
+        echo "FAIL: $pane has a $n-byte @remux_project; clamp() caps it at 12" >&2
         fail=1
       fi
       ;;
