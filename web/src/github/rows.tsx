@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Pane } from '../types'
 import type { Checks, InboxItem, Issue, Label, PR } from './types'
-import { age, labelColor } from './types'
+import { age, labelColor, same } from './types'
 
 /**
  * The chips a row carries are the whole point of the two row types.
@@ -212,7 +212,7 @@ export function IssueRow({
   viewer?: string
   onOpen: () => void
 }) {
-  const mine = !!viewer && (issue.assignees ?? []).includes(viewer)
+  const mine = (issue.assignees ?? []).some((a) => same(a, viewer))
   return (
     <Row
       kind="issue"
@@ -239,7 +239,7 @@ export function IssueRow({
 
 /** One pull request row inside a repo: branch, checks, review, size. */
 export function PRRow({ pr, viewer, onOpen }: { pr: PR; viewer?: string; onOpen: () => void }) {
-  const who = viewer && pr.author === viewer ? 'you' : pr.author
+  const who = same(pr.author, viewer) ? 'you' : pr.author
   return (
     <Row
       kind="pr"

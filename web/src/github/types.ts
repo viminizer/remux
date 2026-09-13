@@ -187,3 +187,16 @@ export function labelColor(hex: string): string {
   const mix = (c: number) => Math.round(c * 0.72 + 40)
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
 }
+
+/**
+ * Whether two GitHub names are the same name.
+ *
+ * GitHub treats an owner, a repo and a login as case-insensitive, and the Go
+ * side folds case in every rule it owns - NormalizeWatchlist, applyMutes,
+ * muteKey, PR.Mine, Matcher.Repo. The screens have to agree with it, or a name
+ * that arrives spelled differently draws a repo header with no counts under it
+ * and a pull request of Kevin's own that says someone else opened it.
+ */
+export function same(a: string | undefined, b: string | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase()
+}

@@ -4,6 +4,7 @@ import { TabPager } from '../shell/TabPager'
 import { api } from '../api'
 import type { Pane } from '../types'
 import type { Issue, PR, Repo } from './types'
+import { same } from './types'
 import { EndNote, IssueRow, PRRow } from './rows'
 import { SkeletonRows } from './Skeleton'
 
@@ -339,8 +340,8 @@ function PRsTab({
     const all = prs ?? []
     return {
       all: all.length,
-      mine: all.filter((p) => viewer && p.author === viewer).length,
-      review: all.filter((p) => viewer && (p.reviewers ?? []).includes(viewer)).length,
+      mine: all.filter((p) => same(p.author, viewer)).length,
+      review: all.filter((p) => (p.reviewers ?? []).some((r) => same(r, viewer))).length,
       drafts: all.filter((p) => p.draft).length,
     }
   }, [prs, viewer])
@@ -349,9 +350,9 @@ function PRsTab({
     const all = prs ?? []
     switch (filter) {
       case 'mine':
-        return all.filter((p) => viewer && p.author === viewer)
+        return all.filter((p) => same(p.author, viewer))
       case 'review':
-        return all.filter((p) => viewer && (p.reviewers ?? []).includes(viewer))
+        return all.filter((p) => (p.reviewers ?? []).some((r) => same(r, viewer)))
       case 'drafts':
         return all.filter((p) => p.draft)
       default:

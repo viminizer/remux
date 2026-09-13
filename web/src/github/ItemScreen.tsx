@@ -3,7 +3,7 @@ import { api } from '../api'
 import type { Pane } from '../types'
 import { displayCommand, dotClass, statusLabel } from '../types'
 import type { Checks, Issue, PR } from './types'
-import { age } from './types'
+import { age, same } from './types'
 import { ChecksChip, LabelChip, ReviewChip } from './rows'
 import { SkeletonItem } from './Skeleton'
 
@@ -119,7 +119,7 @@ export function ItemScreen({
                   {(item.issue.labels ?? []).map((l) => (
                     <LabelChip key={l.name} label={l} />
                   ))}
-                  {viewer && (item.issue.assignees ?? []).includes(viewer) && (
+                  {(item.issue.assignees ?? []).some((a) => same(a, viewer)) && (
                     <span className="chip peach">assigned to you</span>
                   )}
                   {item.issue.comments > 0 && (

@@ -56,6 +56,16 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+/**
+ * "owner/name" as two path segments, each escaped on its own.
+ *
+ * encodeURIComponent on the whole string would escape the slash the routes
+ * split on, so the two halves are escaped separately and joined back. The
+ * server validates what it rebuilds either way; this is so a name it would
+ * reject arrives as a 400 rather than as a different URL.
+ */
+const repoPath = (repo: string) => repo.split('/').map(encodeURIComponent).join('/')
+
 export const api = {
   health: () => call<Health>('/api/health'),
   tree: (preview = true) => call<Tree>(`/api/tree${preview ? '?preview=1' : ''}`),
@@ -144,17 +154,17 @@ export const api = {
 
   githubIssues: (repo: string, filter: 'mine' | 'all', after?: string) =>
     call<IssuePage>(
-      `/api/github/repos/${repo}/issues?filter=${filter}` +
+      `/api/github/repos/${repoPath(repo)}/issues?filter=${filter}` +
         (after ? `&after=${encodeURIComponent(after)}` : ''),
     ),
 
-  githubPRs: (repo: string) => call<{ prs: PR[] }>(`/api/github/repos/${repo}/prs`),
+  githubPRs: (repo: string) => call<{ prs: PR[] }>(`/api/github/repos/${repoPath(repo)}/prs`),
 
   githubIssue: (repo: string, number: number) =>
-    call<Issue>(`/api/github/repos/${repo}/issues/${number}`),
+    call<Issue>(`/api/github/repos/${repoPath(repo)}/issues/${number}`),
 
   githubPR: (repo: string, number: number) =>
-    call<PR>(`/api/github/repos/${repo}/prs/${number}`),
+    call<PR>(`/api/github/repos/${repoPath(repo)}/prs/${number}`),
 
   githubPicker: (q: string) =>
     call<{ repos: PickerRepo[] }>(`/api/github/picker${q ? `?q=${encodeURIComponent(q)}` : ''}`),
@@ -166,7 +176,7 @@ export const api = {
     }),
 
   githubUnwatch: (repo: string) =>
-    call<{ repos: string[] }>(`/api/github/watch/${repo}`, { method: 'DELETE' }),
+    call<{ repos: string[] }>(`/api/github/watch/${repoPath(repo)}`, { method: 'DELETE' }),
 
   // Both answer with the whole snapshot, so the screen redraws from the
   // server's own view rather than guessing what the change did.
@@ -177,7 +187,7 @@ export const api = {
     }),
 
   githubUnmute: (repo: string, number: number) =>
-    call<GitHubSnapshot>(`/api/github/mute/${repo}/${number}`, { method: 'DELETE' }),
+    call<GitHubSnapshot>(`/api/github/mute/${repoPath(repo)}/${number}`, { method: 'DELETE' }),
 
   pushKey: () => call<{ publicKey: string; subscriptions: number }>('/api/push/key'),
 

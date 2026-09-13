@@ -25,6 +25,7 @@ import { AddRepoSheet } from './github/AddRepoSheet'
 import { SendToPaneSheet } from './github/SendToPaneSheet'
 import { useGitHub } from './github/useGitHub'
 import type { InboxItem } from './github/types'
+import { same } from './github/types'
 import { KeyPadScreen } from './screens/KeyPadScreen'
 import { NamingScreen } from './screens/Naming'
 import { BootSkeleton, NoTmux, NotAuthorized, PaneGone, StaleBar } from './screens/Messages'
@@ -742,7 +743,7 @@ export default function App() {
         ) : route.name === 'ghRepo' ? (
           <RepoScreen
             repo={route.repo}
-            meta={gh.repos.find((r) => r.full === route.repo)}
+            meta={gh.repos.find((r) => same(r.full, route.repo))}
             viewer={gh.viewer}
             tab={route.tab}
             panes={paneById}
