@@ -947,3 +947,119 @@ a margin. `modelTimeout` is 150s now. Holding the slot longer is close to free -
 naming is on a ninety-second cooldown anyway and one call in flight only delays
 the next batch by a tick - while being killed at the timeout is the most
 expensive outcome there is.
+
+## The titler was answering the wrong question
+
+Kevin: "i want my titler have a better titling strategy. it is a little shit
+right now."
+
+He was right, and the reason turned out not to be the prompt wording. It was
+the question the whole feature was built around.
+
+The prompt's leading rule was "the newest thing wins". On `%122` the newest
+thing was `❯ done, restart it`, so the pane came back named `restart remux
+service` - correct by the rules and useless for scanning, because the recap
+three lines above said the session was about a monthly cost card on the Naming
+screen. Same cause behind `commit #185 changes`, `push pane title fix` and
+`open pr to bump jq`. Every one of those is a step inside a job, not the job.
+
+Worse on a pane that had just finished. `%1` is Codex, and its entire 1200-char
+window was the completion report:
+
+```
+• PR #457 is ready for review and assigned to @JoonsungUm.
+› Ask Codex to do anything
+```
+
+So it transcribed the report: `pr 457 marked ready assigned`. `%5` hit the same
+screen shape and got the *identical name*. Two panes reading the same is the one
+failure this feature exists to prevent, and the design was manufacturing it.
+
+## One session, one problem
+
+The fact that reframed it came from Kevin, not from the code: he runs one
+session per problem, holds it from the first request until the work is merged
+and cleaned up, then clears it or opens a new one. He does not change goal
+halfway - he keeps context small on purpose, because output gets worse as it
+grows, and he compacts rather than restarting.
+
+So the goal of a pane is fixed in its first minute and does not move for hours.
+Implementing, opening the PR, fixing review comments and merging are one task
+wearing different clothes. And with twenty-six panes the point of a name is that
+it can be *learned* - one that changes every ninety seconds never can.
+
+Which makes the timer the wrong mechanism entirely. `askEvery` re-asked every
+pane forever with no exit: $14.76 across 432 runs in thirteen days, nearly all
+of it re-deciding a question with one answer, and every one of those calls
+another chance to replace a correct name with the current step.
+
+## Name once, then stop
+
+Two ideas replace the timer, and neither is a number someone guessed.
+
+The model can say when it is finished. `SAME` already means "the name it has is
+still right". Two of those in a row is the question being answered, and a
+settled pane leaves the rotation completely - `dueForNaming` returns false and
+it never enters a batch again. At rest, with every pane named and confirmed, the
+chain is not called at all.
+
+A new session announces itself for free. Both agents put their own name in
+`pane_title`, the tree poll already reads that field every two seconds, and it
+changes exactly when the session does - `Claude Code` becomes a generated title,
+Codex's title changes outright. Comparing the *normalised* form is what makes it
+usable: the raw string carries an animated spinner and moves several times a
+second, so `⠧ Fix GitHub issues | shortlist` and `⠹ Fix GitHub issues |
+shortlist` are the same session seconds apart.
+
+`normalizeTitle` strips the spinner, strips Codex's ` | <dir>` suffix only when
+it matches the pane's directory or project, lowercases, and returns empty for a
+placeholder - `Claude Code` before it has generated a title, or a bare directory
+name. Six of the twenty-six live panes show nothing but a directory and give no
+signal at all; those keep the old cooldown.
+
+## The agent's own title was free evidence all along
+
+`%1` had finished and its screen held nothing but the report - but Codex still
+knew what the session was for. Its `pane_title` read `Review PRs in Parallel`.
+The titler had never looked at it.
+
+For a Codex pane that is the only surviving record of the goal, because Codex
+prints no recap. Claude Code is the mirror image: it prints a recap and lets its
+title go stale. The two agents have opposite strengths and remux was using
+neither. The normalised title now goes into the prompt as `agent calls itself`,
+fenced exactly like the screen - it is written by the same untrusted program,
+one that reads issue text and web pages and puts what it finds in its own title.
+
+`maxScreenChars` goes 1500 to 3000 at the same time. Fifteen hundred is about
+seven lines of a 195-column pane; measured against the two panes above it was a
+third of what was on screen, and the request that states the goal is the first
+thing to scroll away.
+
+## What the live run caught
+
+Eight real panes through the new prompt. Two past-tense names became imperative
+- `merged pr 272` to `merge stale role claim fix`, `closed issue 299` to `fix
+issue 299` - four came back unchanged, and one correctly answered NONE.
+
+And four of those eight confirmations came back as the name *repeated word for
+word* rather than the keyword `SAME`. Under the design as written those panes
+would never have settled and the entire saving would never have arrived. A
+repeat is now read as the confirmation it is, which also makes the prompt rule
+asking for `SAME` a preference rather than a requirement.
+
+Testing that turned up one more character of difference between settled and
+never settling. `wordRe` has to allow a dot inside a word - `v0.3.62`,
+`config.json` - so it swallows the full stop at the end of a sentence too. A
+model answering `Review PR 269.` about a pane named `review pr 269` used to
+write the extra dot, which is a rename, which puts the pane back to the start.
+`clean` trims trailing punctuation off each word now. That used to be cosmetic.
+
+## What is not done
+
+Whether `pane_title` survives a `/compact` is unverified. Weak evidence that it
+does: `%81` is titled `✳ Issue 39` and that session was compacted. If it does
+not, a compaction unsettles the pane and costs one extra call - the summary is
+dense with the original goal, so the name that comes back should be the same
+one, which is why the prompt now says a compaction summary is the same session
+continuing and names the goal it describes rather than the work it lists as
+done.

@@ -85,8 +85,9 @@ type Pass struct {
 
 	// naming is held for the length of a model call, which runs off the tick
 	// so a slow CLI cannot stall the pane/repo refresher sharing this loop.
-	naming atomic.Bool
-	asked  *cooldown
+	naming  atomic.Bool
+	asked   *cooldown
+	settles *settler
 
 	mu        sync.Mutex
 	failed    map[string]bool // panes whose last write errored, so it is logged once
@@ -96,8 +97,11 @@ type Pass struct {
 	awayAt    time.Time       // when it was asked
 	couldName bool            // whether naming was possible on the previous pass
 
-	// settled is whether the first tree has been seen - see Pass.settle.
-	settled bool
+	// sawFirstTree is what Pass.holdNamedPanes uses to run once. Named
+	// "settled" until the settler arrived and took that word for a different
+	// idea - this one is about the process having started, not about a name
+	// having stopped moving.
+	sawFirstTree bool
 
 	// The journal - see journal.go for why the only part of remux that
 	// spends money is also the only part that keeps a history of itself.
@@ -165,10 +169,11 @@ func (p *Pass) isAway() bool {
 
 func New(tm Panes) *Pass {
 	return &Pass{
-		Tmux:   tm,
-		gate:   tmux.NewActivityGate(),
-		asked:  newCooldown(),
-		failed: map[string]bool{},
+		Tmux:    tm,
+		gate:    tmux.NewActivityGate(),
+		asked:   newCooldown(),
+		settles: newSettler(),
+		failed:  map[string]bool{},
 	}
 }
 
@@ -207,6 +212,23 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 	p.forget(live)
 	short := p.writeProjects(ctx, agents)
 
+	// Watch every agent's own title for a change, whether or not this pass
+	// captures the pane or names anything.
+	//
+	// This is the trigger that replaces the timer. Kevin ends a session by
+	// clearing it or opening a new one, and both agents rewrite pane_title
+	// when that happens - "Claude Code" becomes a generated title, Codex's
+	// title changes outright. Comparing the normalised form is what makes it
+	// usable: the raw string carries an animated spinner and changes several
+	// times a second.
+	//
+	// It runs off the tree, which was already read, so noticing a new session
+	// costs nothing at all. The model call only happens afterwards, if the
+	// pane is due.
+	for _, pane := range agents {
+		p.settles.observe(pane.ID, normalizeTitle(pane.Title, pane.Path, short[pane.ID]))
+	}
+
 	naming := p.Enabled == nil || p.Enabled()
 
 	// A restart is not a reason to rename the workspace.
@@ -221,7 +243,7 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 	// what they have until they do something, which is the same bargain idle
 	// panes already have (see the build log). A pane with no name is left
 	// alone here: naming those is the whole point of the first pass.
-	p.settle(agents, naming)
+	p.holdNamedPanes(agents, naming)
 
 	// Naming has just become possible, so every pane is made stale once.
 	//
@@ -283,6 +305,7 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 		case s.Captured && p.dueForNaming(s.Pane):
 			due = append(due, job{
 				ID: s.Pane.ID, Dir: s.Pane.Path, Task: s.Pane.RemuxTask,
+				Agent: normalizeTitle(s.Pane.Title, s.Pane.Path, short[s.Pane.ID]),
 				// From this pass's map, not the pane's option: the option is
 				// what was on the pane when the tree was read, so a pane that
 				// has just changed directory would be told the old project.
@@ -303,6 +326,7 @@ func (p *Pass) OnTree(ctx context.Context, tree *tmux.Tree) {
 // askEvery.
 func (p *Pass) forget(live map[string]bool) {
 	p.asked.keep(live)
+	p.settles.keep(live)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -409,13 +433,13 @@ func (p *Pass) report(_ context.Context, paneID string, err error) error {
 //
 // It runs only when naming is on, because a pass that starts switched off has
 // nothing to protect: the names are being cleared, not kept.
-func (p *Pass) settle(agents []*tmux.Pane, naming bool) {
+func (p *Pass) holdNamedPanes(agents []*tmux.Pane, naming bool) {
 	if !naming {
 		return
 	}
 	p.mu.Lock()
-	first := !p.settled
-	p.settled = true
+	first := !p.sawFirstTree
+	p.sawFirstTree = true
 	p.mu.Unlock()
 	if !first {
 		return
