@@ -177,8 +177,19 @@ func Save(c *Config) error {
 	return save(c)
 }
 
+// save replaces the config file atomically: a temp file in the same directory,
+// then a rename over the target.
+//
+// A plain os.WriteFile truncates before it writes, so a crash or a full disk in
+// between leaves a truncated config.json - and Load falls back to Default(),
+// which loses the pinned identity and the whole watchlist. This file is
+// rewritten on every settings change, every watch and every mute, so that
+// window is hit often enough to matter for a service that runs for weeks.
+// Rename within a directory is atomic, so a reader sees the old file or the
+// new one and never a half-written one.
 func save(c *Config) error {
-	if _, err := EnsureDir(); err != nil {
+	dir, err := EnsureDir()
+	if err != nil {
 		return err
 	}
 	p, err := path()
@@ -189,5 +200,29 @@ func save(c *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, append(b, '\n'), 0o600)
+
+	f, err := os.CreateTemp(dir, "config-*.json.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once the rename has succeeded
+	// The config directory holds real credentials, so the replacement has to
+	// arrive with the same owner-only mode the old file had.
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
 }

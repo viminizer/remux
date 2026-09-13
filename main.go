@@ -258,11 +258,14 @@ func serveTailnet(ctx context.Context, srv *api.Server, cfg *config.Config) erro
 		LC:         node.LC,
 		AllowLogin: cfg.AllowLogin,
 		OnPin: func(login string) {
-			cfg.AllowLogin = login
-			if err := config.Save(cfg); err != nil {
+			// Update, not Save: cfg carries whatever --port, --lines,
+			// --poll and --hostname this process was started with, and
+			// saving it would write those flags into the file for good.
+			if _, err := config.Update(func(c *config.Config) { c.AllowLogin = login }); err != nil {
 				log.Printf("could not persist the allowed identity: %v", err)
 				return
 			}
+			cfg.AllowLogin = login
 			fmt.Printf("\n  allowed identity pinned to %s (saved)\n", login)
 		},
 	}

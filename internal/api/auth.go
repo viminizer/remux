@@ -65,19 +65,24 @@ func (a *Auth) Check(ctx context.Context, remoteAddr string) (string, bool) {
 	login := who.LoginName
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.AllowLogin == "" {
+	pinned := a.AllowLogin == ""
+	if pinned {
 		// First allowed caller pins the identity, so the common
 		// single-user case needs no configuration.
 		a.AllowLogin = login
+	}
+	ok := strings.EqualFold(login, a.AllowLogin)
+	a.mu.Unlock()
+
+	// OnPin writes the config file. Doing that outside the lock keeps every
+	// concurrent request off the auth mutex for the length of a disk write.
+	if pinned {
 		log.Printf("auth: pinned allowed login to %s", login)
 		if a.OnPin != nil {
 			a.OnPin(login)
 		}
-		return login, true
 	}
-	return login, strings.EqualFold(login, a.AllowLogin)
+	return login, ok
 }
 
 // Allowed reports the pinned identity.
