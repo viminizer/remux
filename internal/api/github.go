@@ -465,22 +465,30 @@ func (s *Server) handleGitHubMute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	at := time.Now()
-	snap := s.GH.Snapshot()
-	for _, list := range [][]gh.InboxItem{snap.Inbox.NeedsYou, snap.Inbox.Assigned, snap.Inbox.YourPRs} {
-		for _, it := range list {
-			if strings.EqualFold(it.Repo, body.Repo) && it.Number == body.Number {
-				at = it.Updated
-			}
-		}
-	}
-
+	at := inboxUpdated(s.GH.Snapshot().Inbox, body.Repo, body.Number)
 	if err := s.setMute(muteKey(body.Repo, body.Number), at, true); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s.audit(r, "github", body.Repo+"#"+strconv.Itoa(body.Number), "muted")
 	writeJSON(w, http.StatusOK, s.githubSnapshot(r))
+}
+
+// inboxUpdated is a row's own timestamp from the server's snapshot, or now if
+// the row is not in it at all.
+//
+// The first match wins. A row can sit in more than one list, and it is the
+// same row - reading on to the end would mute it as of whichever copy the
+// iteration happened to see last.
+func inboxUpdated(in gh.Inbox, repo string, number int) time.Time {
+	for _, list := range [][]gh.InboxItem{in.NeedsYou, in.Assigned, in.YourPRs} {
+		for _, it := range list {
+			if strings.EqualFold(it.Repo, repo) && it.Number == number {
+				return it.Updated
+			}
+		}
+	}
+	return time.Now()
 }
 
 func (s *Server) handleGitHubUnmute(w http.ResponseWriter, r *http.Request) {

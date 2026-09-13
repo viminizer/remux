@@ -324,3 +324,24 @@ func TestSettingsNormalisesIgnoreChecks(t *testing.T) {
 		t.Error("the stored list does not match what it was set from")
 	}
 }
+
+// A row can sit in more than one inbox list. Muting it takes its timestamp
+// from the first one that has it, not from whichever copy the loop saw last.
+func TestInboxUpdatedTakesTheFirstMatch(t *testing.T) {
+	first := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	last := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	in := gh.Inbox{
+		NeedsYou: []gh.InboxItem{{Repo: "viminizer/remux", Number: 42, Updated: first}},
+		YourPRs:  []gh.InboxItem{{Repo: "viminizer/remux", Number: 42, Updated: last}},
+	}
+
+	if got := inboxUpdated(in, "viminizer/REMUX", 42); !got.Equal(first) {
+		t.Errorf("at = %v, want %v", got, first)
+	}
+
+	// A row the snapshot has never seen is muted as of now, not as of zero:
+	// a zero timestamp would let every future update through.
+	if got := inboxUpdated(in, "viminizer/remux", 99); got.IsZero() {
+		t.Error("an unknown row got the zero time")
+	}
+}
