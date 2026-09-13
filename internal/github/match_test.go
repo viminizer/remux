@@ -3,6 +3,7 @@ package github
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -129,20 +130,31 @@ func TestMatcherPanes(t *testing.T) {
 	}
 
 	m := NewMatcher()
-	got := m.Panes(map[string]string{
+	paths := map[string]string{
 		"%1": a,
 		"%2": a,
+		"%5": a,
 		"%3": b,
 		"%4": none,
-	})
+	}
+	got := m.Panes(paths)
 	if len(got) != 2 {
 		t.Fatalf("got %d repos, want 2: %v", len(got), got)
 	}
-	if len(got["viminizer/remux"]) != 2 {
-		t.Errorf("remux panes = %v, want 2", got["viminizer/remux"])
+	if len(got["viminizer/remux"]) != 3 {
+		t.Errorf("remux panes = %v, want 3", got["viminizer/remux"])
 	}
 	if len(got["viminizer/shortlist"]) != 1 {
 		t.Errorf("shortlist panes = %v, want 1", got["viminizer/shortlist"])
+	}
+
+	// The input is a map, so without a sort the pane chip names a different
+	// pane every poll. 40 passes is far more than enough to shake that out.
+	want := strings.Join(got["viminizer/remux"], " ")
+	for i := 0; i < 40; i++ {
+		if now := strings.Join(m.Panes(paths)["viminizer/remux"], " "); now != want {
+			t.Fatalf("pass %d gave %q, first pass gave %q", i, now, want)
+		}
 	}
 }
 

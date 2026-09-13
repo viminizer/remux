@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,12 +129,18 @@ func (m *Matcher) Repo(dir string) string {
 
 // Panes groups pane ids by repo, given each pane's current path. It is the
 // shape the Repos screen wants: repo -> the panes already working on it.
+//
+// The ids are sorted because the input is a map. The pane chip names the first
+// one, so an unsorted answer renamed the chip on every poll.
 func (m *Matcher) Panes(paths map[string]string) map[string][]string {
 	out := map[string][]string{}
 	for pane, dir := range paths {
 		if repo := m.Repo(dir); repo != "" {
 			out[repo] = append(out[repo], pane)
 		}
+	}
+	for _, panes := range out {
+		sort.Strings(panes)
 	}
 	return out
 }
