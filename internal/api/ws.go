@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/viminizer/remux/internal/agent"
+	gh "github.com/viminizer/remux/internal/github"
 	"github.com/viminizer/remux/internal/tmux"
 )
 
@@ -339,7 +340,7 @@ func (p *poller) pollGitHub(ctx context.Context) {
 		ErrorKind: snap.ErrorKind,
 	}
 	for _, it := range snap.Inbox.NeedsYou {
-		if it.Checks == "fail" {
+		if it.Checks == gh.ChecksFail {
 			next.Red++
 		}
 	}

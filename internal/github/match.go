@@ -281,7 +281,6 @@ func repoFromURL(u string) string {
 	// are stripped the same way.
 	rest = strings.TrimLeft(rest, ":/")
 	rest = strings.TrimSuffix(strings.TrimSuffix(rest, "/"), ".git")
-	rest = strings.TrimSuffix(rest, ".git")
 
 	owner, name, ok := strings.Cut(rest, "/")
 	if !ok {

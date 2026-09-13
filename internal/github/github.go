@@ -17,9 +17,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/url"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -203,9 +205,11 @@ func urlQuery(s string) string { return url.QueryEscape(s) }
 // is still there and still right for everything else, so it is decoded anyway:
 // one dead entry in the watchlist must not blank the screen.
 func (c *Client) graphql(ctx context.Context, query string, vars map[string]string, v any) error {
+	// Sorted, not map order: the command line ends up in the error a failed
+	// call returns, and one that differs run to run cannot be replayed.
 	args := []string{"api", "graphql", "-f", "query=" + query}
-	for k, val := range vars {
-		args = append(args, "-f", k+"="+val)
+	for _, k := range slices.Sorted(maps.Keys(vars)) {
+		args = append(args, "-f", k+"="+vars[k])
 	}
 
 	out, runErr := c.run(ctx, args...)
