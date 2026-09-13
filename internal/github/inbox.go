@@ -206,11 +206,10 @@ func (c *Client) Inbox(ctx context.Context, viewer string) (Inbox, error) {
 	var in Inbox
 	seen := map[string]bool{}
 	take := func(it InboxItem, into *[]InboxItem) {
-		key := it.Repo + "#" + strconv.Itoa(it.Number)
-		if seen[key] {
+		if seen[itemKey(it)] {
 			return
 		}
-		seen[key] = true
+		seen[itemKey(it)] = true
 		*into = append(*into, it)
 	}
 
@@ -243,6 +242,33 @@ func (c *Client) Inbox(ctx context.Context, viewer string) (Inbox, error) {
 		byRecency(*s)
 	}
 	return in, nil
+}
+
+// itemKey identifies a row across the buckets. A row belongs to exactly one of
+// them, and this is what says two rows are the same row.
+func itemKey(it InboxItem) string { return it.Repo + "#" + strconv.Itoa(it.Number) }
+
+// AddMentions merges the mentions from Notifications into Needs you.
+//
+// It is a method rather than an append at the call site because the dedupe is
+// the same rule Inbox() applies, and the two arrive from different requests.
+// Without it, a PR with a review requested from Kevin that he is also
+// @-mentioned on renders twice and counts twice in the badge.
+func (in *Inbox) AddMentions(mentions []InboxItem) {
+	seen := map[string]bool{}
+	for _, list := range [][]InboxItem{in.NeedsYou, in.Assigned, in.YourPRs} {
+		for _, it := range list {
+			seen[itemKey(it)] = true
+		}
+	}
+	for _, m := range mentions {
+		if seen[itemKey(m)] {
+			continue
+		}
+		seen[itemKey(m)] = true
+		in.NeedsYou = append(in.NeedsYou, m)
+	}
+	byRecency(in.NeedsYou)
 }
 
 func byRecency(items []InboxItem) {

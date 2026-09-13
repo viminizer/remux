@@ -239,8 +239,7 @@ func (p *Poller) read(ctx context.Context, prev Snapshot) Snapshot {
 	// a failure here is recorded and the snapshot still lands.
 	mentions, replies, nErr := p.Client.Notifications(ctx, next.Viewer)
 	if nErr == nil {
-		inbox.NeedsYou = append(inbox.NeedsYou, mentions...)
-		byRecency(inbox.NeedsYou)
+		inbox.AddMentions(mentions)
 		inbox.Replies = replies
 	}
 
