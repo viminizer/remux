@@ -202,7 +202,17 @@ disabled.
 
 ## 5. Committing
 
-Work directly on `main`. It is a private solo repo, and Kevin wants to wake up to progress on it.
+Never work in the main checkout. Every change - a phase, an issue fix, a review follow-up - gets
+its own git worktree and branch:
+
+```bash
+git worktree add .claude/worktrees/<task> -b <task>
+```
+
+Build and test inside the worktree. When it is verified, fast-forward `main` onto the branch, then
+remove the worktree and delete the branch. Another agent is often working in the main checkout at
+the same time: `git add -A` there would sweep up their uncommitted work, and in a worktree the only
+changes present are yours.
 
 - Commit when a phase exits, or when a self-contained fix is done. Use your judgment - somewhere
   around 6 to 15 commits for a night is healthy. One giant commit at 6am is not.
