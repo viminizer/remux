@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -405,11 +406,14 @@ func TestAuditLog(t *testing.T) {
 	_ = ts
 }
 
-// TestTruncateAndLastLineCutWholeCharacters guards the other two halves of
-// #44. Both budgets are byte counts, and both used to slice straight to them.
-// The audit log then carried \xed escapes where a Korean word had been, and
-// the drawer's one-line preview arrived on the phone with a broken tail.
-func TestTruncateAndLastLineCutWholeCharacters(t *testing.T) {
+// TestTruncateCutsWholeCharacters guards the other half of #44. The budget is
+// a byte count and used to slice straight to it, so the audit log carried
+// \xed escapes where a Korean word had been.
+//
+// #44's third case was lastLine, the drawer's one-line preview. It went with
+// the ungated capture sweep in handleTree (#50); agent.TruncBytes, which it
+// called, keeps its own test in internal/agent.
+func TestTruncateCutsWholeCharacters(t *testing.T) {
 	// 397..400 walks the boundary across all three bytes of the character.
 	for _, pad := range []int{397, 398, 399, 400} {
 		got := truncate(strings.Repeat("a", pad)+"한글", 400)
@@ -420,13 +424,36 @@ func TestTruncateAndLastLineCutWholeCharacters(t *testing.T) {
 			t.Errorf("truncate pad %d: lost the ellipsis", pad)
 		}
 	}
-	for _, pad := range []int{117, 118, 119, 120} {
-		got := lastLine("first line\n" + strings.Repeat("a", pad) + "한글")
-		if !utf8.ValidString(got) {
-			t.Errorf("lastLine pad %d: ends % x, not valid UTF-8", pad, got[len(got)-4:])
-		}
-		if len(got) > 120 {
-			t.Errorf("lastLine pad %d: %d bytes, over the 120 budget", pad, len(got))
-		}
+}
+
+// GET /api/tree?preview=1 must ask for verdicts on its own account.
+//
+// It is the first thing the app requests, before the WebSocket has connected,
+// so Watching() is false at exactly the moment the drawer needs status dots.
+// It used to solve that by sweeping capture-pane over every pane itself, with
+// no activity gate (#50). Now it reads the shared pass and tells it to
+// classify - which only works if the classify decision can come from the
+// caller rather than always from Watching().
+//
+// No tmux: the tree is published by hand and the refresh is pointed at a
+// binary that does not exist, so "nil" means "refused what was published".
+func TestTreeRequestNeedsVerdictsWithNoSocketOpen(t *testing.T) {
+	srv := NewServer(config.Default(), &tmux.Client{Bin: "remux-no-such-tmux"}, nil)
+	ctx := context.Background()
+
+	// The shape a sweep with nobody watching leaves behind: a tree, no
+	// verdicts on it.
+	srv.ws.pub.Lock()
+	srv.ws.tree, srv.ws.at, srv.ws.classified = &tmux.Tree{}, time.Now(), false
+	srv.ws.pub.Unlock()
+
+	if srv.Workspace(ctx, time.Hour) == nil {
+		t.Error("the poller with no socket open should take the unclassified tree; the namer needs it")
+	}
+	if srv.workspace(ctx, time.Hour, true) != nil {
+		t.Error("a tree request took a tree with no verdicts on it - the drawer would open blank")
+	}
+	if srv.workspace(ctx, time.Hour, false) == nil {
+		t.Error("/api/tree without preview asked for verdicts it was not going to use")
 	}
 }

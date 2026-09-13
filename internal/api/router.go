@@ -206,9 +206,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	version, err := s.Tmux.Version(r.Context())
 	tmuxOK := err == nil
 
-	tree, terr := s.Tmux.Tree(r.Context())
+	// The shared pass, not a tree read of its own. The app asks for health and
+	// the tree together on boot, and two independent reads of the same
+	// workspace one millisecond apart is the duplication workspace.go exists
+	// to remove. Never classifies on health's account: the pane count is all
+	// this wants.
 	panes := 0
-	if terr == nil {
+	if tree := s.Workspace(r.Context(), s.Cfg.TreePoll()); tree != nil {
 		panes = len(tree.Panes())
 	}
 
@@ -228,48 +232,30 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleTree returns the whole hierarchy, with agent status on every pane.
 //
-// Status needs the pane's screen, so ?preview=1 fetches the last 40 lines of
-// every pane in parallel and classifies from those. Without it the tree is one
-// exec and no captures.
+// ?preview=1 asks for the status verdicts, which need each pane's screen. It
+// used to get them by running capture-pane against every pane, on the request
+// path, with no activity gate - and the app asks for exactly this on boot,
+// before the socket is up, so opening it swept all ~27 panes at ~20 ms of CPU
+// each. That is the cost tmux.ActivityGate exists to avoid.
+//
+// So it reads the shared pass now, like everything else. The query parameter
+// still decides whether verdicts are wanted; the gate decides what is actually
+// captured to produce them, and a tree the socket poller fetched a moment ago
+// is handed over for free.
+//
+// The one thing it no longer returns is Pane.Preview, the last line of the
+// screen. Nothing reads it: the socket tree has never carried it, so the UI
+// could not depend on a field that appears once at boot and vanishes on the
+// first push. Putting it on the shared tree instead - #50's other option - was
+// the worse trade: the last line changes on every character of output, so it
+// would churn the poller's hash and push a tree to every phone on every tick.
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
-	tree, err := s.Tmux.Tree(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+	tree := s.workspace(r.Context(), s.Cfg.TreePoll(), r.URL.Query().Get("preview") != "")
+	if tree == nil {
+		writeErr(w, http.StatusInternalServerError, "cannot read tmux")
 		return
 	}
-	if r.URL.Query().Get("preview") != "" {
-		s.annotate(r, tree, true)
-	}
 	writeJSON(w, http.StatusOK, tree)
-}
-
-// annotate fills in Status (and optionally Preview) for every pane.
-func (s *Server) annotate(r *http.Request, tree *tmux.Tree, withPreview bool) {
-	panes := tree.Panes()
-	ids := make([]string, 0, len(panes))
-	for _, p := range panes {
-		ids = append(ids, p.ID)
-	}
-	screens := s.Tmux.Previews(r.Context(), ids, tmux.PreviewLines)
-	for _, p := range panes {
-		screen := screens[p.ID]
-		p.Status = string(agent.Classify(p.Command, p.Title, screen))
-		if withPreview {
-			p.Preview = lastLine(screen)
-		}
-	}
-}
-
-// lastLine is the one line of preview the drawer can actually show.
-func lastLine(screen string) string {
-	lines := strings.Split(strings.TrimRight(agent.StripANSI(screen), "\n"), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if t := strings.TrimSpace(lines[i]); t != "" {
-			t = agent.TruncBytes(t, 120)
-			return t
-		}
-	}
-	return ""
 }
 
 func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {

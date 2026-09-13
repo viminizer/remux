@@ -74,11 +74,20 @@ func (w *workspace) fresh(maxAge time.Duration, needStatus bool) *tmux.Tree {
 // timer running at all - which is every test that dials the socket - would have
 // shown it nothing ever.
 func (s *Server) Workspace(ctx context.Context, maxAge time.Duration) *tmux.Tree {
-	w := s.ws
 	// Read once: a socket opening between the two checks below would send us
 	// down one path with the other's answer.
-	watching := s.Watching()
-	if tree := w.fresh(maxAge, watching); tree != nil {
+	return s.workspace(ctx, maxAge, s.Watching())
+}
+
+// workspace is Workspace with the classify decision handed in.
+//
+// Watching answers "is a socket open", which is the right question for the
+// poller and the wrong one for GET /api/tree?preview=1: that request is
+// somebody looking, and the app makes it on boot before the socket has
+// connected. Such a caller says so rather than waiting to be inferred.
+func (s *Server) workspace(ctx context.Context, maxAge time.Duration, classify bool) *tmux.Tree {
+	w := s.ws
+	if tree := w.fresh(maxAge, classify); tree != nil {
 		return tree
 	}
 
@@ -86,10 +95,10 @@ func (s *Server) Workspace(ctx context.Context, maxAge time.Duration) *tmux.Tree
 	defer w.one.Unlock()
 	// Somebody else may have refreshed it while we waited for the lock, and
 	// that answer is as good as the one we were about to fetch.
-	if tree := w.fresh(maxAge, watching); tree != nil {
+	if tree := w.fresh(maxAge, classify); tree != nil {
 		return tree
 	}
-	return s.refreshWorkspace(ctx, watching)
+	return s.refreshWorkspace(ctx, classify)
 }
 
 // refreshWorkspace reads the workspace, classifies every pane, and publishes
