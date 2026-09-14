@@ -4,7 +4,7 @@
  * It used to be one row that scrolled sideways. That stopped scaling at about
  * eight chips on a phone: everything past the eighth needed a horizontal swipe
  * to a position you could not predict, and horizontal scroll gives no hint
- * anything is out there. There are 18 built-ins now, plus whatever has been
+ * anything is out there. There are 19 built-ins now, plus whatever has been
  * added on the key pad screen.
  *
  * So it is one eight-column grid, and the states differ only in how much of it
@@ -108,7 +108,7 @@ export const COLLAPSED = 6
  * permanent slot far less than ⏎ is: walking back through history is a thing
  * you do deliberately, with the pad already open.
  *
- * Eighteen chips over twenty cells, so the grid is 8 / 8 / 4 before any custom
+ * Nineteen chips over twenty-one cells, so the grid is 8 / 8 / 5 before any custom
  * chip is added and before hideOn drops any. Reordering this changes the
  * layout.
  */
@@ -135,6 +135,7 @@ export const CHIPS: Chip[] = [
   // since the two spell a skill call differently.
   { k: 'Left', label: '←', repeat: true },
   { k: 'Right', label: '→', repeat: true },
+  { k: 'S-Left', label: '⇧←', repeat: true },
   // Answers to an agent's prompt. Hidden only at a shell, where you would
   // type them; kept on `other`, because a digit is a count in vim and `y` is
   // yank, and those are real uses rather than leftovers.

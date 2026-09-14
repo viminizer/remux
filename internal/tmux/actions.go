@@ -15,6 +15,7 @@ import (
 var KeyAllowlist = map[string]bool{
 	"Enter": true, "Escape": true, "Tab": true, "BTab": true,
 	"Up": true, "Down": true, "Left": true, "Right": true,
+	"S-Left": true,
 	"Home": true, "End": true, "PageUp": true, "PageDown": true,
 	"BSpace": true, "Space": true,
 	"C-c": true, "C-d": true, "C-u": true, "C-r": true,

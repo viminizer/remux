@@ -40,6 +40,7 @@ func TestIDValidation(t *testing.T) {
 func TestNormalizeKey(t *testing.T) {
 	for in, want := range map[string]string{
 		"Esc": "Escape", "S-Tab": "BTab", "Enter": "Enter", "C-c": "C-c", "y": "y",
+		"S-Left": "S-Left",
 	} {
 		got, err := NormalizeKey(in)
 		if err != nil || got != want {

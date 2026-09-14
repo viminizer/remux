@@ -159,7 +159,7 @@ tmux send-keys -t %14 Enter                     # only if submit=true
 
 Single-line text skips the bracketing and just uses `-l`.
 
-**Keys** come from a fixed allowlist, never passed through raw: `Enter Escape Tab BTab Up Down Left
+**Keys** come from a fixed allowlist, never passed through raw: `Enter Escape Tab BTab Up Down Left S-Left
 Right Home End PageUp PageDown BSpace Space C-c C-d C-u C-r C-l C-a C-e M-Enter` plus digits `1-9`
 and `y`/`n` for menu answers.
 

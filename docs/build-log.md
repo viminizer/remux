@@ -1108,3 +1108,31 @@ Final verification in the isolated issue worktree:
 
 No configuration defaults or dependencies changed. Real push delivery was not
 tested; this fix verifies shared polling and notification decisions locally.
+
+## 2026-09-15 - Shift+Left keypad button
+
+Added `⇧←` beside the arrows in the expanded keypad for Codex follow-up
+questions. It sends the single tmux key `S-Left`, now in the backend allowlist.
+Like the arrows, it keeps the keypad open and supports repeated presses. It
+also appears automatically in Settings' built-in chip controls.
+
+Verification:
+
+- `go test ./internal/tmux -run '^TestNormalizeKey$' -count=1` failed on
+  `S-Left` before the allowlist change and passed after it.
+- `go test ./... -count=1`, `go vet ./...`, `go build ./...`, `npm test` and
+  `npm run build` in `web`, and `./scripts/build.sh` passed. The stripped
+  binary measured 22,742,136 bytes.
+- A temporary API test, `TestShiftLeftManualWire`, sent `S-Left` through the
+  keys endpoint to a raw-input reader in a scratch pane. It received
+  `1b5b313b3244` (`ESC [ 1 ; 2 D`), the Shift+Left sequence. The temporary
+  test was removed after validation.
+- An isolated browser harness rendered the real KeyPad component and API
+  client at 390px width. Tapping `⇧←` produced a POST with
+  `{"keys":["S-Left"]}`, kept the pad open, fit in the viewport, and was
+  disabled offline. The request was intercepted; it reached no live pane.
+- The laptop invariant passed before/after the live tests with all 27 panes
+  unchanged. `remux-test` already existed, so it was preserved; the tests
+  removed their own temporary windows. Browser and Vite sessions were stopped.
+
+The installed service was not restarted during verification.
