@@ -11,7 +11,7 @@ import (
 	"github.com/viminizer/remux/internal/tmux"
 )
 
-// Watcher polls every pane and fires a notification when one starts waiting.
+// Watcher reads the shared classified workspace and notifies on transitions.
 //
 // Two rules keep it quiet enough to live with:
 //
@@ -21,10 +21,13 @@ import (
 //   - It only runs while at least one subscription is registered, so the
 //     idle-cost story holds when the phone is not using the app.
 type Watcher struct {
-	Tmux     *tmux.Client
-	Store    *Store
-	Interval time.Duration
-	Cooldown time.Duration
+	// Workspace returns a fresh tree with status verdicts even when no phone
+	// is connected. Its owner shares the tree, captures and activity gate
+	// with the API; the watcher only keeps notification history.
+	Workspace func(context.Context) *tmux.Tree
+	Store     *Store
+	Interval  time.Duration
+	Cooldown  time.Duration
 
 	// NotifyDone also fires on busy -> idle, for long tasks. Off by default:
 	// it is the chattier of the two signals.
@@ -32,22 +35,19 @@ type Watcher struct {
 	// NotifyWaiting gates the primary signal.
 	NotifyWaiting func() bool
 
-	gate *tmux.ActivityGate
-
 	mu       sync.Mutex
 	last     map[string]agent.Status
 	lastSent map[string]time.Time
 }
 
-func NewWatcher(tm *tmux.Client, store *Store) *Watcher {
+func NewWatcher(workspace func(context.Context) *tmux.Tree, store *Store) *Watcher {
 	return &Watcher{
-		Tmux:     tm,
-		Store:    store,
-		Interval: 5 * time.Second,
-		Cooldown: 5 * time.Minute,
-		gate:     tmux.NewActivityGate(),
-		last:     map[string]agent.Status{},
-		lastSent: map[string]time.Time{},
+		Workspace: workspace,
+		Store:     store,
+		Interval:  5 * time.Second,
+		Cooldown:  5 * time.Minute,
+		last:      map[string]agent.Status{},
+		lastSent:  map[string]time.Time{},
 	}
 }
 
@@ -72,41 +72,23 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
-// tick re-reads only the panes that can have changed, and compares each
-// verdict with the previous one.
-//
-// Two panes never need capturing. A shell is classified from its command
-// alone - agent.Classify short-circuits before it looks at the screen - so its
-// capture was always discarded. And a pane whose window has had no output
-// since the last tick still has the screen we already classified, which is
-// what the gate is for. On a quiet workspace this leaves nothing to capture at
-// all, which is the whole point: a notifier that is ready costs nothing until
-// something moves.
+// tick compares shared verdicts with the last notification observation.
 func (w *Watcher) tick(ctx context.Context) {
-	tree, err := w.Tmux.Tree(ctx)
-	if err != nil {
+	tree := w.Workspace(ctx)
+	if tree == nil {
 		return
 	}
 	panes := tree.Panes()
 
-	watched := make([]*tmux.Pane, 0, len(panes))
 	seen := map[string]bool{}
 	for _, p := range panes {
 		seen[p.ID] = true
-		if !agent.IsShell(p.Command) {
-			watched = append(watched, p)
+		// An empty status means no capture has succeeded yet, not Unknown.
+		// The shared workspace retains a previous verdict on a later capture
+		// failure; re-observing it leaves notification history unchanged.
+		if !agent.IsShell(p.Command) && p.Status != "" {
+			w.transition(p, agent.Status(p.Status))
 		}
-	}
-
-	for _, s := range w.gate.Capture(ctx, w.Tmux, watched) {
-		// A capture that failed says nothing about the pane. Classifying the
-		// empty string gives Unknown, and a verdict of Unknown here is a
-		// transition like any other - it would fire "finished" on a pane that
-		// is still working, or lose the waiting mark on one that is not.
-		if !s.Captured {
-			continue
-		}
-		w.transition(s.Pane, agent.Classify(s.Pane.Command, s.Pane.Title, s.Screen))
 	}
 
 	// Forget panes that no longer exist, so a recycled pane id does not

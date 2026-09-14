@@ -79,6 +79,13 @@ func (s *Server) Workspace(ctx context.Context, maxAge time.Duration) *tmux.Tree
 	return s.workspace(ctx, maxAge, s.Watching())
 }
 
+// ClassifiedWorkspace returns shared verdicts even with no WebSocket open.
+// Push notifications need them while the phone is away; an unclassified tree
+// from the background poller cannot satisfy that request.
+func (s *Server) ClassifiedWorkspace(ctx context.Context, maxAge time.Duration) *tmux.Tree {
+	return s.workspace(ctx, maxAge, true)
+}
+
 // workspace is Workspace with the classify decision handed in.
 //
 // Watching answers "is a socket open", which is the right question for the
@@ -123,12 +130,10 @@ func (s *Server) refreshWorkspace(ctx context.Context, classify bool) *tmux.Tree
 		alive[pn.ID] = true
 	}
 
-	// The captures are the expensive half and only a phone reads what they
-	// produce: pane.Status is the drawer's status dot and nothing else
-	// consumes it - the namer classifies for itself, off its own gate and a
-	// much narrower set of panes. So with nobody watching this does the tree
-	// read the namer needs and skips the rest, which is what the per-connection
-	// poller used to achieve by simply not existing.
+	// Capture only when a caller needs verdicts: an open phone, an explicit
+	// tree preview request, or the enabled push watcher. The background pass
+	// otherwise needs only the tree; the namer classifies its narrower set of
+	// panes for itself.
 	//
 	// It matters because agent.IsShell's complement is wide. vim, htop, less,
 	// tail and `npm run dev` are none of them, and a dev server writes to its
