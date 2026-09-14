@@ -153,7 +153,9 @@ func run(cfg *config.Config, local bool) error {
 	// building this to run --local against the live tmux, so this is the
 	// normal case, not a corner.
 	if srv.Push != nil && !local {
-		w := push.NewWatcher(tm, srv.Push)
+		w := push.NewWatcher(func(ctx context.Context) *tmux.Tree {
+			return srv.ClassifiedWorkspace(ctx, cfg.TreePoll())
+		}, srv.Push)
 		w.NotifyWaiting = srv.NotifyWaiting
 		w.NotifyDone = srv.NotifyDone
 		go w.Run(ctx)

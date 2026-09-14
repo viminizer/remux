@@ -1063,3 +1063,48 @@ dense with the original goal, so the name that comes back should be the same
 one, which is why the prompt now says a compaction summary is the same session
 continuing and names the goal it describes rather than the work it lists as
 done.
+
+## 2026-09-15 - Share push watcher work with the API (#50)
+
+The remaining duplicate pass in #50 was the push watcher: it owned a separate
+tree read and activity gate even when the API had already classified the same
+workspace. It now requests the shared classified tree, accepting the same age
+as the normal tree poll. This explicitly requests verdicts with no WebSocket
+open, while retaining the five-second notification interval, subscription and
+settings gates, first-observation baseline, cooldown, and focus suppression.
+Local mode still does not start the push watcher.
+
+Reproduced with a fake tmux executable that counts actual subprocess calls:
+`go test ./internal/api -run '^TestPushWatcherReusesSharedWorkspace$' -count=1 -v`
+failed before the fix with two `list-panes` and two `capture-pane` calls for one
+shared request followed by a subscribed watcher tick. The same test passes
+after the fix with one of each, including after the preview cache expires.
+
+Additional verification:
+
+- `go test ./internal/push -count=1` passed. Tests cover notification gating,
+  baseline, missing verdicts, failed refresh, cooldown, shell exclusion and
+  removal, alongside the existing transition and focus checks.
+- `go test ./internal/api -run '^(TestPushWatcherReusesSharedWorkspace|TestClassifiedWorkspace)' -count=1 -v`
+  passed. Tests also verify classification without a phone, concurrent reuse,
+  stale-tree refresh, quiet capture suppression and retry after a failed first
+  capture.
+
+These focused checks use temporary fake executables and stores; they do not
+connect to the real tmux server or send real push notifications.
+
+Final verification in the isolated issue worktree:
+
+- `go test ./... -count=1`, `go vet ./...`, and `go build ./...` all passed.
+  The full suite exercised the existing live tmux tests in `remux-test`.
+- `go test -race ./internal/push -count=1` and
+  `go test -race ./internal/api -run '^(TestPushWatcherReusesSharedWorkspace|TestClassifiedWorkspace.*)$' -count=1`
+  passed.
+- `TMPDIR=/tmp/remux-issue50-verification ./scripts/laptop-invariant.sh before`
+  and `after` surrounded the scratch session and full suite. The final result
+  was `PASS: laptop untouched (27 panes unchanged)`. The script noted allowed
+  changes to existing `@remux_*` options during the run; geometry and clients
+  passed. The scratch session was verified by name and removed before `after`.
+
+No configuration defaults or dependencies changed. Real push delivery was not
+tested; this fix verifies shared polling and notification decisions locally.

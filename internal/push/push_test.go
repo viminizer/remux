@@ -93,7 +93,7 @@ func testWatcher(t *testing.T) *Watcher {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewWatcher(tmux.New(), s)
+	return NewWatcher(nil, s)
 }
 
 func pane() *tmux.Pane {
