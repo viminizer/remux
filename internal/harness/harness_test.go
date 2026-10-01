@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -185,5 +186,37 @@ func TestMirror(t *testing.T) {
 	l.mirror(context.Background(), item(8, "status:blocked"), "review")
 	if c := calls2(); len(c) != 1 || c[0] != "" {
 		t.Errorf("a repo without status:review got calls: %q", c)
+	}
+}
+
+// The loop must see settings pushed to the default branch even when its
+// checkout is behind and has never pulled them.
+func TestSettingsComeFromOrigin(t *testing.T) {
+	dir := t.TempDir()
+	git := func(in string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = in
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	origin, a, b := filepath.Join(dir, "origin.git"), filepath.Join(dir, "a"), filepath.Join(dir, "b")
+	git(dir, "init", "-q", "--bare", "-b", "main", origin)
+	git(dir, "clone", "-q", origin, a)
+	git(a, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "first")
+	git(a, "push", "-q", "origin", "main")
+	git(dir, "clone", "-q", origin, b) // the stale checkout
+
+	os.MkdirAll(filepath.Join(a, ".remux"), 0o755)
+	os.WriteFile(filepath.Join(a, SettingsFile), []byte(`{"mode":"company","test":"make check"}`), 0o644)
+	git(a, "add", ".")
+	git(a, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "settings")
+	git(a, "push", "-q", "origin", "main")
+
+	l := &Loop{Repo: b}
+	s, err := l.loadSettings(context.Background())
+	if err != nil || s.Mode != "company" || s.Test != "make check" {
+		t.Fatalf("loadSettings = %+v, %v; want the pushed settings", s, err)
 	}
 }

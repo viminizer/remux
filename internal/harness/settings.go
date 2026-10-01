@@ -52,6 +52,12 @@ func LoadSettings(repo string) (Settings, error) {
 	if err != nil {
 		return s, err
 	}
+	return ParseSettings(b)
+}
+
+// ParseSettings reads the settings file's contents.
+func ParseSettings(b []byte) (Settings, error) {
+	s := Settings{Mode: "personal"}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return s, fmt.Errorf("%s: %w", SettingsFile, err)
 	}

@@ -72,7 +72,7 @@ func (l *Loop) Run(ctx context.Context) error {
 			log.Printf("stop requested, exiting")
 			return nil
 		}
-		l.set, err = LoadSettings(l.Repo)
+		l.set, err = l.loadSettings(ctx)
 		if err != nil {
 			l.state(ctx, "blocked", err.Error())
 			sleep(ctx, Idle)
@@ -111,6 +111,20 @@ func (l *Loop) setup(ctx context.Context) error {
 	}
 	l.loadLabels(ctx)
 	return nil
+}
+
+// loadSettings reads the settings from the default branch on GitHub, not from
+// the main checkout's files. The checkout is where Kevin works: measured on
+// educenter, it was behind origin with uncommitted changes, so a settings file
+// pushed to main would not have reached the loop until someone pulled there.
+// The checkout's own file is the fallback, for a repo that has not pushed one.
+func (l *Loop) loadSettings(ctx context.Context) (Settings, error) {
+	if def, err := l.defaultBranch(ctx); err == nil {
+		if b, err := l.git(ctx, l.Repo, "show", def+":"+SettingsFile); err == nil {
+			return ParseSettings([]byte(b))
+		}
+	}
+	return LoadSettings(l.Repo)
 }
 
 func (l *Loop) scope(ctx context.Context) string {
