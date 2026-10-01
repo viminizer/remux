@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>remux agent harness</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2312263f'/%3E%3Cpath d='M16 22h32M16 32h22M16 42h28' stroke='%23e0b04a' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --bg: #f3f6fa;
+    --surface: #ffffff;
+    --surface-2: #eaf0f7;
+    --border: rgba(18, 38, 63, 0.12);
+    --text: #12263f;
+    --text-dim: #4d6582;
+    --primary: #1f4e8c;
+    --primary-dim: rgba(31, 78, 140, 0.09);
+    --gold: #b7861f;
+    --gold-dim: rgba(183, 134, 31, 0.12);
+    --ok: #2f7d4f;
+    --danger: #b3412f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1b2c;
+      --surface: #132538;
+      --surface-2: #1a3048;
+      --border: rgba(200, 220, 245, 0.12);
+      --text: #e3ecf7;
+      --text-dim: #9fb3cc;
+      --primary: #7fb0ec;
+      --primary-dim: rgba(127, 176, 236, 0.14);
+      --gold: #e0b04a;
+      --gold-dim: rgba(224, 176, 74, 0.14);
+      --ok: #6cc28f;
+      --danger: #ec8a78;
+    }
+  }
+
+  html { font-size: 17px; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    padding: 2.5rem 1rem 4rem;
+  }
+  .container { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 2.75rem; }
+  .container > * { min-width: 0; }
+
+  header .eyebrow {
+    font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--gold); margin-bottom: 0.5rem;
+  }
+  h1 { font-size: 2.3rem; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+  header p { color: var(--text-dim); margin-top: 0.75rem; max-width: 65ch; }
+
+  h2 {
+    font-size: 1.35rem; text-wrap: balance; margin-bottom: 0.9rem;
+    display: flex; align-items: baseline; gap: 0.6rem;
+  }
+  h2 .num { font-family: var(--font-mono); font-size: 0.8rem; color: var(--gold); font-weight: 500; }
+  section > p { max-width: 65ch; color: var(--text-dim); margin-bottom: 1rem; }
+  code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--primary-dim); color: var(--primary);
+    padding: 0.05em 0.35em; border-radius: 3px; overflow-wrap: anywhere;
+  }
+
+  .hero-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.25rem 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem;
+  }
+  .hero-box h3 { font-size: 0.75rem; font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4rem; }
+  .hero-box .problem h3 { color: var(--danger); }
+  .hero-box .goal h3 { color: var(--ok); }
+  .hero-box ul { padding-left: 1.1rem; }
+  .hero-box li { margin-bottom: 0.2rem; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+  .ve-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.15rem; min-width: 0;
+  }
+  .ve-card .tag {
+    font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--gold);
+  }
+  .ve-card h3 { font-size: 1.05rem; margin: 0.15rem 0 0.4rem; }
+  .ve-card p, .ve-card li { font-size: 0.9rem; color: var(--text-dim); }
+  .ve-card ul { padding-left: 1.1rem; margin-top: 0.3rem; }
+
+  figure { margin: 0; }
+  figcaption { font-size: 0.88rem; color: var(--text-dim); margin-top: 0.5rem; }
+  .diagram-shell__hint { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.4rem; opacity: 0.8; }
+  .mermaid-wrap {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; min-height: 360px; cursor: grab;
+  }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 300px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+  .zoom-controls {
+    position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px; align-items: center;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 0.8rem; cursor: pointer; border-radius: 4px;
+  }
+  .zoom-controls button:hover { background: var(--primary-dim); color: var(--text); }
+  .zoom-controls button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .zoom-label { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: break-word; }
+  th { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+
+  .pill {
+    display: inline-block; font-family: var(--font-mono); font-size: 0.75rem;
+    padding: 0.1em 0.55em; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap;
+  }
+  .pill.wait { color: var(--text-dim); }
+  .pill.work { color: var(--primary); }
+  .pill.bad { color: var(--danger); }
+  .pill.good { color: var(--ok); }
+
+  .rules { list-style: none; display: grid; gap: 0.6rem; counter-reset: r; }
+  .rules li {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+    border-radius: 0 6px 6px 0; padding: 0.7rem 1rem; counter-increment: r;
+  }
+  .rules li::before { content: counter(r, decimal-leading-zero) "  "; font-family: var(--font-mono); color: var(--gold); font-size: 0.8rem; }
+
+  .callout {
+    background: var(--gold-dim); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+    border-radius: 0 6px 6px 0; padding: 0.9rem 1.1rem; font-size: 0.92rem;
+  }
+  .callout strong { color: var(--text); }
+
+  @media (max-width: 640px) {
+    html { font-size: 16px; }
+    h1 { font-size: 1.75rem; }
+    td:first-child { white-space: normal; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="container">
+
+  <header>
+    <div class="eyebrow">Design and architecture · no code yet</div>
+    <h1>remux agent harness</h1>
+    <p>Claude and Codex pick GitHub issues on their own, fix their own blockers, decide from real references, and get reviewed by Codex. You only step in when an agent is truly stuck, and you do it from the remux PWA on your phone.</p>
+  </header>
+
+  <section>
+    <div class="hero-box">
+      <div class="problem">
+        <h3>Problem today</h3>
+        <ul>
+          <li>Agents stop and ask questions.</li>
+          <li>They sit idle most of the time.</li>
+          <li>They stop at blockers instead of fixing them.</li>
+          <li>Subagents use too many tokens.</li>
+          <li>Claude reviews take too long and find too many issues.</li>
+        </ul>
+      </div>
+      <div class="goal">
+        <h3>Goal</h3>
+        <ul>
+          <li>Agents find work on their own and finish it.</li>
+          <li>Claude and Codex work together on one queue.</li>
+          <li>Blockers become issues and get fixed.</li>
+          <li>Decisions are based on references, not guesses.</li>
+          <li>Codex reviews, fixes, and closes the loop.</li>
+          <li>You only get pinged when you are really needed.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">01</span>The parts</h2>
+    <p>Each part does one job. remux stays thin: it shows state and sends a few commands. It does not run the work itself.</p>
+    <div class="cards">
+      <div class="ve-card">
+        <span class="tag">To-do list</span>
+        <h3>GitHub issues</h3>
+        <p>The default tracker for all projects. Labels show the state of each issue and PR.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Worker</span>
+        <h3>Build loop</h3>
+        <p>One loop per agent (Claude, Codex). Takes a <code>ready</code> issue, works in its own worktree, opens a draft PR. One issue per run, then exit.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Worker</span>
+        <h3>Review loop</h3>
+        <p>Codex only. Takes PRs labeled <code>needs-review</code>, fixes real bugs, then merges or hands off.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Shared state</span>
+        <h3>tmux session options</h3>
+        <p>Each loop stores its state on its own tmux session: agent, issue, state, since when, scope, instructions. No extra files.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Per project</span>
+        <h3>Settings file</h3>
+        <p>Lives in the repo. Holds the mode (personal or company), reference projects, and default instructions.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Per project</span>
+        <h3>Decision log</h3>
+        <p>Lives in the repo. One short entry per decision, so later runs stay consistent and do not research the same thing twice.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Your phone</span>
+        <h3>remux (server + PWA)</h3>
+        <p>The server reads state from tmux, like it already does. The PWA shows the loops, sends alerts, and lets you start, stop, and unblock.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>The full flow</h2>
+    <p>Each agent run is short and fresh: one issue, one process, then exit. The loop starts the next one right away, so nothing waits on you.</p>
+    <figure>
+      <div class="diagram-shell" role="img" aria-label="Flow from ready issue through build loop, blocker handling, Codex review, and the personal or company finish step">
+        <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom. Drag to pan. Double-click to fit.</p>
+        <div class="mermaid-wrap">
+          <div class="zoom-controls">
+            <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+            <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+            <button type="button" data-action="zoom-fit" title="Fit">&#8634;</button>
+            <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+            <span class="zoom-label">Loading...</span>
+          </div>
+          <div class="mermaid-viewport"><div class="mermaid mermaid-canvas"></div></div>
+        </div>
+        <script type="text/plain" class="diagram-source">
+flowchart TD
+  U["Unblock check<br/>blocked issues with all<br/>blockers closed"]
+  Q["GitHub issues<br/>label: ready<br/>(blocker issues first)"]
+  B["Build loop<br/>Claude or Codex<br/>+ instructions"]
+  W["Fresh worktree<br/>for this issue"]
+  D{"How did the<br/>run end?"}
+  BL["Create or link blocker issue<br/>label this one: blocked"]
+  PR["Draft PR<br/>label: needs-review"]
+  R["Review loop<br/>Codex"]
+  T{"Tests pass<br/>after fixes?"}
+  H["needs-human<br/>remux pings you"]
+  M{"Project mode"}
+  P["Merge PR<br/>delete branch + worktree"]
+  C["Mark PR ready<br/>supervisor reviews"]
+
+  U -->|"sets ready again"| Q
+  Q -->|"loop claims issue"| B
+  B -->|"creates"| W
+  W -->|"agent works, never asks"| D
+  D -->|"finished"| PR
+  D -->|"code-fixable blocker"| BL
+  D -->|"not fixable by code"| H
+  BL -->|"blocker joins queue"| Q
+  PR -->|"picked up"| R
+  R -->|"reviews, fixes real bugs"| T
+  T -->|"no"| H
+  T -->|"yes"| M
+  M -->|"personal"| P
+  M -->|"company"| C
+  P -->|"closed blockers free others"| U
+  H -->|"you answer, set ready again"| Q
+        </script>
+      </div>
+      <figcaption>You appear in only one place: the <code>needs-human</code> box. Blockers loop back into the queue instead of stopping the agent.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>Labels are the state</h2>
+    <p>GitHub is the single source of truth. Every step is a label change, so any loop or remux can see where each piece of work is. <code>&lt;scope&gt;</code> is the short name of the loop's instructions, like <code>backend</code>. A loop with no instructions uses <code>full</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Label</th><th>Meaning</th><th>Who sets it</th><th>Who acts next</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill wait">ready</span></td><td>Issue is waiting for work</td><td>You, the unblock check, or "Send and resume"</td><td>Any build loop</td></tr>
+          <tr><td><span class="pill work">wip:&lt;scope&gt;</span></td><td>A loop is working on its part</td><td>Build loop</td><td>That loop</td></tr>
+          <tr><td><span class="pill good">done:&lt;scope&gt;</span></td><td>Part done, or nothing to do for that scope</td><td>Build agent</td><td>Loops with that scope skip it</td></tr>
+          <tr><td><span class="pill work">blocker</span></td><td>Issue that blocks another issue. Taken first.</td><td>Build agent</td><td>Any build loop</td></tr>
+          <tr><td><span class="pill wait">blocked</span></td><td>Waiting for its blocker issues to close</td><td>Build agent</td><td>Unblock check</td></tr>
+          <tr><td><span class="pill work">needs-review</span></td><td>Draft PR is waiting for review</td><td>Build agent</td><td>Review loop (Codex)</td></tr>
+          <tr><td><span class="pill bad">needs-human</span></td><td>Truly stuck, one short question in a comment</td><td>Build or review agent</td><td>You, from the phone</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>Personal vs company mode</h2>
+    <p>Same flow. Only the last step changes. The mode is set in the project's settings file.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Personal project</th><th>Company project</th></tr></thead>
+        <tbody>
+          <tr><td>Tracker</td><td>GitHub</td><td>GitHub</td></tr>
+          <tr><td>Reviewer</td><td>Codex</td><td>Codex, then your supervisor</td></tr>
+          <tr><td>Agent rights</td><td>Open and merge PRs</td><td>Open PRs only, never merge</td></tr>
+          <tr><td>After review passes</td><td>Merge, delete branch, remove worktree</td><td>Mark PR ready, supervisor is asked to review</td></tr>
+          <tr><td>Blocker PRs</td><td>Merged, so the blocked issue continues right away</td><td>Wait for the supervisor. The blocked issue's branch is built on top of the blocker branch, and the PR says "depends on PR #X".</td></tr>
+          <tr><td>Your job</td><td>Nothing, unless <code>needs-human</code></td><td>Nothing, unless <code>needs-human</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1rem">Finding the supervisor, first match wins:</p>
+    <ol class="rules">
+      <li><code>CODEOWNERS</code> file in the repo. GitHub asks code owners for review on its own when a draft PR is marked ready, so the loop does nothing.</li>
+      <li>Git history: whoever reviewed or merged the most recent PRs.</li>
+      <li>Fallback: <code>joonsung.um</code>.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>Custom instructions</h2>
+    <p>Two layers. The second adds to the first, or replaces it for that session.</p>
+    <div class="cards">
+      <div class="ve-card">
+        <span class="tag">Layer 1</span>
+        <h3>Project defaults</h3>
+        <p>Rules that rarely change, in the settings file. Example: "Never touch the payment module."</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Layer 2</span>
+        <h3>Session instructions</h3>
+        <p>What you want from this loop now, from the remux start form. Example: "Only do the backend parts of the issues." Comes with a scope name and an add / replace choice.</p>
+      </div>
+    </div>
+    <p style="margin-top:1rem">Each run builds its prompt in this order:</p>
+    <ol class="rules">
+      <li>Fixed agent rules (section 09)</li>
+      <li>Project defaults</li>
+      <li>Session instructions</li>
+      <li>The issue itself</li>
+    </ol>
+    <div class="callout" style="margin-top:1rem">
+      <strong>Editing while a loop runs:</strong> the change is saved to the tmux session and used from the next run. The current run finishes with the old instructions, so no half-done work. Changing the scope name also changes the <code>wip:</code> and <code>done:</code> labels the loop looks at.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span>Scoped and partial issues</h2>
+    <div class="cards">
+      <div class="ve-card">
+        <span class="tag">Partly done</span>
+        <h3>Issue stays open</h3>
+        <p>The PR says "Refs #12", not "Closes #12". The agent comments what it did and what is left, then adds <code>done:&lt;scope&gt;</code>. A <code>full</code> scope loop closes the issue as usual.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Nothing to do</span>
+        <h3>Skip cheaply</h3>
+        <p>If the issue has no work for this scope, the agent adds <code>done:&lt;scope&gt;</code> with a one-line comment and exits. The issue stays <code>ready</code> for other loops.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Later</span>
+        <h3>Two loops, two scopes</h3>
+        <p>Start with one loop per project. Because the claim label includes the scope, a backend loop and a frontend loop can later share one issue without blocking each other. For now you close split issues yourself.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">07</span>Blockers</h2>
+    <p>A blocker is a new issue, not a reason to stop. The agent never fixes the blocker inside the same run. The blocker gets its own issue, PR, and review.</p>
+    <figure>
+      <div class="diagram-shell" role="img" aria-label="Blocker handling: agent finds blocker, links or creates a blocker issue, marks original blocked, blocker gets fixed first, original is unblocked">
+        <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom. Drag to pan. Double-click to fit.</p>
+        <div class="mermaid-wrap">
+          <div class="zoom-controls">
+            <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+            <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+            <button type="button" data-action="zoom-fit" title="Fit">&#8634;</button>
+            <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+            <span class="zoom-label">Loading...</span>
+          </div>
+          <div class="mermaid-viewport"><div class="mermaid mermaid-canvas"></div></div>
+        </div>
+        <script type="text/plain" class="diagram-source">
+flowchart TD
+  A["Working on #12<br/>hits a blocker"]
+  F{"Fixable<br/>by code?"}
+  L{"Already an<br/>issue?"}
+  N["Create #13<br/>labels: ready + blocker"]
+  K["Link #12 blocked by #13<br/>label #12: blocked<br/>exit"]
+  H["needs-human"]
+  X["Next run takes #13 first<br/>fix, review, merge, close"]
+  U["Unblock check<br/>#12 back to ready"]
+  D{"Is #12 itself<br/>a blocker?"}
+
+  A -->|"check"| F
+  F -->|"no: secrets, access,<br/>product call, other team"| H
+  F -->|"yes"| D
+  D -->|"yes, one level max"| H
+  D -->|"no"| L
+  L -->|"no"| N
+  L -->|"yes"| K
+  N -->|"then"| K
+  K -->|"loop moves on"| X
+  X -->|"#13 closed"| U
+        </script>
+      </div>
+      <figcaption>Blockers go through the same queue and review as any other work. Only one level deep, so they cannot grow a chain.</figcaption>
+    </figure>
+    <p style="margin-top:1rem">Links use GitHub's built-in "blocked by" issue relationships, so the dependency is visible on the issue page.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span>How decisions are made</h2>
+    <p>Decide from evidence, not taste. Only for real decisions: data shape, library choice, API design, how to merge two conflicting approaches. Naming a variable is not a decision.</p>
+    <ol class="rules">
+      <li><strong>Decision log.</strong> Already decided? Follow it.</li>
+      <li><strong>This codebase.</strong> Existing pattern? Use it.</li>
+      <li><strong>Reference projects.</strong> How does project A solve it? Project B? Pick the better one or combine, and say why.</li>
+      <li><strong>The internet,</strong> when there are no references or they do not cover it. Real-world cases: well-known open source, official docs, engineering blog posts.</li>
+      <li><strong>Senior engineer judgment.</strong> 2 or 3 options with tradeoffs, pick one, write down why.</li>
+    </ol>
+    <div class="cards" style="margin-top:1rem">
+      <div class="ve-card">
+        <span class="tag">Record</span>
+        <h3>Two places</h3>
+        <ul>
+          <li>A "Decisions" section in the PR: choice, reason, source.</li>
+          <li>One entry in the decision log in the repo.</li>
+        </ul>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Cost</span>
+        <h3>Keep it cheap</h3>
+        <ul>
+          <li>Research is time-boxed: each reference project once, a few web searches, then decide.</li>
+          <li>Reference projects are local read-only clones on the home machine.</li>
+        </ul>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Review</span>
+        <h3>Codex checks it</h3>
+        <p>A PR that goes against the decision log is a real finding.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">09</span>Rules the agents follow</h2>
+    <ol class="rules">
+      <li>Never ask questions. If something is unclear, pick the safest option and write the assumption in the PR.</li>
+      <li>A blocker is a new issue, not a reason to stop. Only things code cannot fix go to <code>needs-human</code>.</li>
+      <li>When stuck, ask one short question, with 2 or 3 options when possible. It will be read on a phone.</li>
+      <li>One issue per run, in its own worktree. Exit when done. No long sessions, no subagents.</li>
+      <li>Stay inside the session instructions and scope.</li>
+      <li>Make real decisions from the decision log, codebase, references, then the internet. Record them.</li>
+      <li>Review fixes only real bugs. Ignore style and small things.</li>
+      <li>One review pass only. If tests still fail after fixes, mark <code>needs-human</code>. No endless fix loops.</li>
+      <li>Nothing merges unless tests pass. In company mode, nothing merges at all.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="num">10</span>remux PWA (mobile first)</h2>
+    <p>Everything is managed from the phone. Main rule: tap, don't type. Each loop runs in its own named tmux session (<code>loop-claude</code>, <code>loop-codex</code>, <code>loop-review</code>). The server reads their state from tmux and sends pushes. Nothing new sits in between.</p>
+    <div class="cards">
+      <div class="ve-card">
+        <span class="tag">Screen 1</span>
+        <h3>Loops (home)</h3>
+        <p>One card per loop, problems first: <span class="pill bad">blocked</span> <span class="pill work">working</span> <span class="pill wait">idle</span>. Shows agent, issue number and title, time in state, and scope.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Screen 2</span>
+        <h3>Loop detail</h3>
+        <p>Current issue, instructions, last few log lines. Buttons: Stop, Edit instructions.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Screen 3</span>
+        <h3>Start loop</h3>
+        <p>Saved instruction presets at the top. Last-used project, agents, and mode pre-filled. Scope name suggested. Most starts are one tap.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Screen 4</span>
+        <h3>Inbox</h3>
+        <p>Only what needs you: <code>needs-human</code> issues, plus company PRs sent to your supervisor (just for your information).</p>
+      </div>
+    </div>
+    <p style="margin-top:1rem">Answering a stuck agent, the most common action:</p>
+    <ol class="rules">
+      <li>The push opens straight to that issue.</li>
+      <li>The agent's short question is at the top, with option buttons when possible.</li>
+      <li>Tap an option or type a short reply, then tap <strong>Send and resume</strong>. It posts the comment and sets <code>ready</code>.</li>
+    </ol>
+    <div class="cards" style="margin-top:1rem">
+      <div class="ve-card">
+        <span class="tag">Alerts</span>
+        <h3>Only three pings</h3>
+        <ul>
+          <li>An agent is stuck (<code>needs-human</code>)</li>
+          <li>Personal PR merged</li>
+          <li>Company PR sent to supervisor</li>
+        </ul>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Basics</span>
+        <h3>Phone layout</h3>
+        <ul>
+          <li>Big tap targets, main buttons at the bottom.</li>
+          <li>Lists, not wide tables. No sideways scrolling.</li>
+          <li>Stop asks "after this issue, or now?"</li>
+          <li>PR and issue links open the GitHub app.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">11</span>Risks and limits</h2>
+    <div class="cards">
+      <div class="ve-card">
+        <span class="tag">Safety</span>
+        <h3>No permission prompts</h3>
+        <p>Agents run without asking, so run the loops in Docker, or use a tight command allowlist instead of bypass mode.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Quality</span>
+        <h3>Codex reviewing Codex</h3>
+        <p>When Codex built the PR, it may miss its own mistakes. Watch personal auto-merge for a while before you fully trust it.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Race</span>
+        <h3>Two loops, one issue</h3>
+        <p>Claiming by label is not atomic. Two loops could grab the same issue. Fix only if it actually happens.</p>
+      </div>
+      <div class="ve-card">
+        <span class="tag">Company</span>
+        <h3>Stacked branches</h3>
+        <p>An issue built on an unmerged blocker branch depends on the supervisor reviewing both. If the blocker PR changes, the stacked one needs a rebase.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">12</span>Still open</h2>
+    <div class="callout">
+      <strong>Before building:</strong> Confirm the remux server already sends push notifications to the PWA. Name and place of the settings file and the decision log in each repo. Should the last scoped loop close a split issue, or do you keep closing them yourself?
+    </div>
+  </section>
+
+</main>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  const config = { fitPadding: 24, minHeight: 360, maxHeightPx: 1000, maxHeightVh: 0.85, maxInitialZoom: 1.6, minZoom: 0.1, maxZoom: 6, zoomStep: 0.14 };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  mermaid.initialize({
+    startOnLoad: false, theme: 'base', look: 'classic',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif", fontSize: '15px',
+      primaryColor: isDark ? '#1a3048' : '#eaf0f7',
+      primaryBorderColor: isDark ? '#7fb0ec' : '#1f4e8c',
+      primaryTextColor: isDark ? '#e3ecf7' : '#12263f',
+      secondaryColor: isDark ? '#2c2614' : '#fbf3df',
+      tertiaryColor: isDark ? '#132538' : '#ffffff',
+      lineColor: isDark ? '#9fb3cc' : '#4d6582',
+      edgeLabelBackground: isDark ? '#132538' : '#ffffff'
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    let zoom = 1, panX = 0, panY = 0, svgW = 0, svgH = 0, sx = 0, sy = 0, spx = 0, spy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight, rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function apply() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '%';
+    }
+    function canPan() {
+      return svgW * zoom + config.fitPadding * 2 > viewport.clientWidth || svgH * zoom + config.fitPadding * 2 > viewport.clientHeight;
+    }
+    function fit() {
+      if (!svgW) return;
+      const aW = viewport.clientWidth - config.fitPadding * 2, aH = viewport.clientHeight - config.fitPadding * 2;
+      zoom = clamp(Math.min(aW / svgW, aH / svgH), config.minZoom, config.maxInitialZoom);
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      apply();
+    }
+    function zoomAround(f, cx, cy) {
+      const next = clamp(zoom * f, config.minZoom, config.maxZoom), r = next / zoom;
+      panX = cx - r * (cx - panX); panY = cy - r * (cy - panY); zoom = next; apply();
+    }
+    function setHeight() {
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const ideal = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, Math.floor(innerHeight * config.maxHeightVh)));
+      wrap.style.height = Math.round(clamp(ideal, config.minHeight, hardMax)) + 'px';
+    }
+    function expand() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true);
+      clone.style.width = ''; clone.style.height = '';
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+    async function render() {
+      try {
+        const id = 'd-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, source.textContent.trim());
+        const parsed = new DOMParser().parseFromString(svg, 'text/html').body.querySelector('svg');
+        canvas.replaceChildren(document.adoptNode(parsed));
+        const node = canvas.querySelector('svg');
+        const vb = node.viewBox.baseVal;
+        svgW = vb && vb.width ? vb.width : node.getBBox().width;
+        svgH = vb && vb.height ? vb.height : node.getBBox().height;
+        node.removeAttribute('width'); node.removeAttribute('height');
+        node.style.maxWidth = 'none'; node.style.display = 'block';
+        setHeight(); fit();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Render error';
+      }
+    }
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fit,
+      'zoom-expand': expand
+    };
+    Object.entries(actions).forEach(([a, h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fit);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const r = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep), e.clientX - r.left, e.clientY - r.top);
+      }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (!canPan()) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; spx = panX; spy = panY;
+      e.preventDefault();
+      activeDrag = {
+        onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); apply(); },
+        onEnd: () => wrap.classList.remove('is-panning')
+      };
+    });
+    new ResizeObserver(() => { if (svgW) { setHeight(); fit(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+</body>
+</html>
