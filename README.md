@@ -185,7 +185,6 @@ Then fill in `.remux/harness.json` and commit it with `.remux/decisions.md`:
 | `references` | local read-only clones the agents compare against for real decisions |
 | `instructions` | project default instructions, read before every run |
 | `supervisor` | company mode: the reviewer when there is no CODEOWNERS and no history |
-| `allow` | extra Claude tools, for example `Bash(npm test:*)` |
 
 Start loops from the phone: **drawer → Loops → Start loop**. Each loop is a
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
@@ -196,9 +195,10 @@ it ready for the supervisor. Labels are the state:
 
 `ready` · `wip:<scope>` · `done:<scope>` · `blocker` · `blocked` · `needs-review` · `needs-human`
 
-The loops run without permission prompts, so they never use bypass mode.
-Claude gets a fixed tool allowlist (plus your `allow` list), and Codex runs in
-its `workspace-write` sandbox with network on.
+The agents run in yolo mode, on the Mac itself: Claude with
+`--dangerously-skip-permissions` and Codex with
+`--dangerously-bypass-approvals-and-sandbox`. They can run any command your user
+can, so only start loops on repos whose issues you trust.
 
 A stuck agent pushes "An agent is stuck". The notification opens the question
 with its options as buttons, and **Send and resume** posts your answer and puts

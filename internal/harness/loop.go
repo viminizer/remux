@@ -375,37 +375,20 @@ func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
 
 // ── the agent ─────────────────────────────────────────────────────────────
 
-// claudeTools is the default allowlist. The loops run without permission
-// prompts, so Claude gets a fixed set of tools instead of bypass mode.
-var claudeTools = []string{
-	"Read", "Edit", "Write", "Glob", "Grep", "WebSearch", "WebFetch",
-	"Bash(git:*)", "Bash(gh:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(tail:*)",
-	"Bash(wc:*)", "Bash(grep:*)", "Bash(rg:*)", "Bash(find:*)", "Bash(mkdir:*)", "Bash(diff:*)",
-}
-
 // command builds the agent's command line. The prompt goes in on stdin.
+//
+// Both agents run with every permission granted, on the host. That was
+// Kevin's call: a fixed tool allowlist kept stopping the agents on ordinary
+// commands, and a loop that cannot run what it needs gets stuck instead.
 func (l *Loop) command(wt string) []string {
-	switch l.Agent {
-	case "codex":
-		// workspace-write limits writes to the worktree. The repo's .git sits
-		// outside it, and commits need it; gh needs the network.
-		args := []string{"codex", "exec", "-s", "workspace-write",
-			"-c", "sandbox_workspace_write.network_access=true",
-			"--add-dir", filepath.Join(l.Repo, ".git"), "-C", wt}
-		return append(args, "-")
-	default:
-		tools := append([]string(nil), claudeTools...)
-		if l.set.Test != "" {
-			tools = append(tools, "Bash("+l.set.Test+")")
-		}
-		tools = append(tools, l.set.Allow...)
-		args := []string{"claude", "-p", "--permission-mode", "acceptEdits",
-			"--allowedTools", strings.Join(tools, ",")}
-		for _, r := range l.set.References {
-			args = append(args, "--add-dir", expandHome(r))
-		}
-		return args
+	if l.Agent == "codex" {
+		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-C", wt, "-"}
 	}
+	args := []string{"claude", "-p", "--dangerously-skip-permissions"}
+	for _, r := range l.set.References {
+		args = append(args, "--add-dir", expandHome(r))
+	}
+	return args
 }
 
 // agent runs one agent process in wt and returns its exit code. Its output

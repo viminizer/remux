@@ -38,9 +38,6 @@ type Settings struct {
 	// Supervisor is the company-mode fallback reviewer, used when the repo
 	// has no CODEOWNERS and its history names nobody.
 	Supervisor string `json:"supervisor"`
-	// Allow adds Claude tools to the default allowlist, for example
-	// "Bash(npm run lint:*)". Codex runs in its workspace-write sandbox instead.
-	Allow []string `json:"allow"`
 }
 
 // LoadSettings reads the settings file from a repo. A repo without one runs
@@ -69,8 +66,7 @@ const exampleSettings = `{
   "test": "",
   "references": [],
   "instructions": "",
-  "supervisor": "",
-  "allow": []
+  "supervisor": ""
 }
 `
 
