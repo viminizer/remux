@@ -6,7 +6,7 @@ export interface Loop {
   agent: 'claude' | 'codex' | ''
   repo: string
   slug: string
-  state: 'idle' | 'working' | 'blocked' | ''
+  state: 'idle' | 'working' | 'triaging' | 'blocked' | ''
   since: number
   issue: number
   title: string
@@ -59,7 +59,7 @@ export interface HarnessItem {
 /** The dot colour for a loop: problems stand out, idle is calm. */
 export function loopDot(l: Loop): string {
   if (l.state === 'blocked') return 'waiting'
-  if (l.state === 'working') return 'working'
+  if (l.state === 'working' || l.state === 'triaging') return 'working'
   return 'idle'
 }
 

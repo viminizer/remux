@@ -31,7 +31,7 @@ type Loop struct {
 	Agent        string `json:"agent"` // claude or codex
 	Repo         string `json:"repo"`  // local clone path
 	Slug         string `json:"slug"`  // owner/name
-	State        string `json:"state"` // idle, working, blocked
+	State        string `json:"state"` // idle, working, triaging, blocked
 	Since        int64  `json:"since"` // unix seconds the state began
 	Issue        int    `json:"issue"`
 	Title        string `json:"title"`

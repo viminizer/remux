@@ -43,7 +43,7 @@ func (s *Server) loopRoutes(mux *http.ServeMux) {
 // ── read ──────────────────────────────────────────────────────────────────
 
 // stateOrder puts problems first: blocked, then working, then idle.
-var stateOrder = map[string]int{"blocked": 0, "working": 1, "idle": 2}
+var stateOrder = map[string]int{"blocked": 0, "working": 1, "triaging": 1, "idle": 2}
 
 func sortLoops(loops []tmux.Loop) {
 	sort.SliceStable(loops, func(i, j int) bool {
@@ -280,7 +280,7 @@ func (s *Server) handleStopLoop(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "no such loop")
 		return
 	}
-	if r.URL.Query().Get("when") == "after" && l.State == "working" {
+	if r.URL.Query().Get("when") == "after" && (l.State == "working" || l.State == "triaging") {
 		if err := s.Tmux.SetLoopOption(r.Context(), name, "@loop_stop", "after"); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return

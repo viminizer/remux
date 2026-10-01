@@ -22,7 +22,7 @@ const CONN_TEXT: Record<Conn, string> = {
 function loopsSub(loops: Loop[] | null): string {
   if (!loops) return 'agent harness'
   if (!loops.length) return 'none running'
-  const working = loops.filter((l) => l.state === 'working').length
+  const working = loops.filter((l) => l.state === 'working' || l.state === 'triaging').length
   const blocked = loops.filter((l) => l.state === 'blocked').length
   const bits = [`${working} working`]
   if (blocked) bits.push(`${blocked} blocked`)

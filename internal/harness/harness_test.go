@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,5 +140,50 @@ func TestSettings(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, SettingsFile), []byte(`{"mode":"yolo"}`), 0o644)
 	if _, err := LoadSettings(dir); err == nil {
 		t.Error("an unknown mode must be refused")
+	}
+}
+
+func TestStatusReadyCountsAsReady(t *testing.T) {
+	got := candidates([]Item{item(4, "status:ready"), item(5, "status:blocked"), item(6, "ready")}, "full")
+	if len(got) != 2 || got[0].Number != 4 || got[1].Number != 6 {
+		t.Fatalf("candidates = %+v, want #4 and #6", got)
+	}
+}
+
+// fakeGH stands in for the gh binary and records each call, one per line.
+func fakeGH(t *testing.T) func() []string {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	bin := filepath.Join(dir, "gh")
+	os.WriteFile(bin, []byte("#!/bin/sh\necho \"$*\" >> "+log+"\necho '[]'\n"), 0o755)
+	old := ghBin
+	ghBin = bin
+	t.Cleanup(func() { ghBin = old })
+	return func() []string {
+		b, _ := os.ReadFile(log)
+		return strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+}
+
+func TestMirror(t *testing.T) {
+	calls := fakeGH(t)
+	l := &Loop{gh: GH{Slug: "o/r"}, labels: map[string]bool{"status:in-progress": true, "status:blocked": true}}
+	l.mirror(context.Background(), item(7, "type:work", "status:blocked"), "in-progress")
+	got := strings.Join(calls(), "\n")
+	for _, want := range []string{"DELETE repos/o/r/issues/7/labels/status:blocked", "POST repos/o/r/issues/7/labels -f labels[]=status:in-progress"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("calls are missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "type:work") {
+		t.Errorf("only status labels may be touched:\n%s", got)
+	}
+
+	// A repo without that status label is left alone.
+	calls2 := fakeGH(t)
+	l.labels = map[string]bool{}
+	l.mirror(context.Background(), item(8, "status:blocked"), "review")
+	if c := calls2(); len(c) != 1 || c[0] != "" {
+		t.Errorf("a repo without status:review got calls: %q", c)
 	}
 }

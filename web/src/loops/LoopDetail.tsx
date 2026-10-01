@@ -101,7 +101,10 @@ export function LoopDetail({
                 ) : loop.state === 'working' ? (
                   `#${loop.issue} ${loop.title}`
                 ) : (
-                  loop.note || 'No ready issues. Looks again every minute.'
+                  loop.note ||
+                  (loop.state === 'triaging'
+                    ? 'No issue was marked ready. Reading the issues to find ones that can start.'
+                    : 'No ready issues. Looks again every minute.')
                 )}
                 <small>{loop.slug || loop.repo}</small>
               </span>
@@ -192,7 +195,7 @@ export function LoopDetail({
             <button className="go ghost" onClick={startEdit}>
               Edit instructions
             </button>
-            <button className="go danger" onClick={() => (loop.state === 'working' ? setAsking(true) : onStop('now'))}>
+            <button className="go danger" onClick={() => (loop.state === 'working' || loop.state === 'triaging' ? setAsking(true) : onStop('now'))}>
               Stop
             </button>
           </div>

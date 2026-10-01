@@ -195,6 +195,15 @@ it ready for the supervisor. Labels are the state:
 
 `ready` · `wip:<scope>` · `done:<scope>` · `blocker` · `blocked` · `needs-review` · `needs-human`
 
+A repo with its own `status:*` labels works as it is. `status:ready` counts as
+`ready`, and the loops move an issue through the repo's own `status:in-progress`,
+`status:review` and `status:blocked` as they work it, when those labels exist.
+
+When no issue is marked ready, a build loop does not just wait. It runs one
+triage pass: the agent reads the open issues, finds up to 5 that can start now,
+marks them `ready` in the repo's own format, and says why in a comment. It
+changes no code, and it runs at most every 30 minutes.
+
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user

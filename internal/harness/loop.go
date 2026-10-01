@@ -31,6 +31,9 @@ type Loop struct {
 
 	gh  GH
 	set Settings
+
+	labels     map[string]bool // the repo's labels, for mirroring its status:* ones
+	lastTriage time.Time
 }
 
 // Idle is how long a loop waits before looking again when there is no work.
@@ -103,7 +106,11 @@ func (l *Loop) setup(ctx context.Context) error {
 	}
 	l.gh = GH{Slug: slug, Dir: l.Repo}
 	l.opt(ctx, "@loop_slug", slug)
-	return l.gh.EnsureLabels(ctx)
+	if err := l.gh.EnsureLabels(ctx); err != nil {
+		return err
+	}
+	l.loadLabels(ctx)
+	return nil
 }
 
 func (l *Loop) scope(ctx context.Context) string {
@@ -134,13 +141,13 @@ func candidates(issues []Item, scope string) []Item {
 }
 
 func free(it Item, scope string) bool {
-	return it.Has("ready") && !it.HasPrefix("wip:") && !it.Has("done:"+scope) &&
+	return isReady(it) && !it.HasPrefix("wip:") && !it.Has("done:"+scope) &&
 		!it.Has("blocked") && !it.Has("needs-human")
 }
 
 func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	scope := l.scope(ctx)
-	issues, err := l.gh.Issues(ctx, "ready")
+	issues, err := l.readyIssues(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -159,7 +166,9 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		}
 	}
 	if it == nil {
-		return false, nil
+		// Nothing is marked ready, but a loop was started here, so the
+		// issues are meant to be worked. Look for ones that can start.
+		return l.triage(ctx, scope), nil
 	}
 	n := it.Number
 	// Claiming by label is not atomic: two loops can grab the same issue. The
@@ -168,6 +177,7 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	defer l.gh.RemoveLabel(context.WithoutCancel(ctx), n, "wip:"+scope)
+	l.mirror(ctx, *it, "in-progress")
 
 	l.working(ctx, n, it.Title)
 	log.Printf("── issue #%d: %s", n, it.Title)
@@ -207,19 +217,26 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	}
 	switch {
 	case after.Has("needs-human"):
-		l.gh.RemoveLabel(ctx, n, "ready")
+		l.unready(ctx, n)
+		l.mirror(ctx, after, "blocked")
 		l.event(ctx, "stuck", n, it.Title)
 	case after.Has("blocked"):
-		l.gh.RemoveLabel(ctx, n, "ready")
+		l.unready(ctx, n)
+		l.mirror(ctx, after, "blocked")
 	case pr != nil:
 		if err := l.gh.AddLabels(ctx, pr.Number, "needs-review"); err != nil {
 			return true, err
 		}
 		// A partial PR leaves the issue ready for the loops with other scopes.
 		if !after.Has("done:" + scope) {
-			l.gh.RemoveLabel(ctx, n, "ready")
+			l.unready(ctx, n)
+			l.mirror(ctx, after, "review")
+		} else {
+			l.mirror(ctx, after, "ready")
 		}
 	case after.Has("done:" + scope):
+		// Done for this scope; still queued for the others.
+		l.mirror(ctx, after, "ready")
 		l.removeWorktree(ctx, wt, branch)
 	case after.State == "CLOSED":
 	default:
@@ -301,6 +318,7 @@ func (l *Loop) unblock(ctx context.Context) {
 			log.Printf("unblocking #%d", it.Number)
 			l.gh.RemoveLabel(ctx, it.Number, "blocked")
 			l.gh.AddLabels(ctx, it.Number, "ready")
+			l.mirror(ctx, it, "ready")
 		}
 	}
 }
@@ -463,8 +481,9 @@ func (l *Loop) stuck(ctx context.Context, n int, title, why string) error {
 	if err := l.gh.AddLabels(ctx, n, "needs-human"); err != nil {
 		return err
 	}
-	l.gh.RemoveLabel(ctx, n, "ready")
+	l.unready(ctx, n)
 	l.gh.RemoveLabel(ctx, n, "needs-review")
+	l.mirrorN(ctx, n, "blocked")
 	l.event(ctx, "stuck", n, title)
 	return nil
 }
