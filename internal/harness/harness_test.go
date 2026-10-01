@@ -220,3 +220,23 @@ func TestSettingsComeFromOrigin(t *testing.T) {
 		t.Fatalf("loadSettings = %+v, %v; want the pushed settings", s, err)
 	}
 }
+
+func TestGitReason(t *testing.T) {
+	push := "To https://github.com/o/r.git\n ! [rejected]        issue-1 -> issue-1 (fetch first)\nerror: failed to push some refs to 'https://github.com/o/r.git'\nhint: Updates were rejected"
+	if got := gitReason(push, nil); !strings.Contains(got, "[rejected]") || !strings.Contains(got, "failed to push") || strings.Contains(got, "hint") {
+		t.Errorf("gitReason = %q", got)
+	}
+	if got := gitReason("fatal: not a git repository\n", nil); got != "fatal: not a git repository" {
+		t.Errorf("gitReason = %q", got)
+	}
+}
+
+func TestPromptConflict(t *testing.T) {
+	p := Prompt(Run{Role: "review", Number: 3, Conflict: "origin/main"})
+	if !strings.Contains(p, "conflicts with origin/main") || !strings.Contains(p, "git merge origin/main") {
+		t.Errorf("review prompt does not hand over the conflict:\n%s", p)
+	}
+	if strings.Contains(Prompt(Run{Role: "review", Number: 3}), "conflicts with") {
+		t.Error("a clean branch must not mention a conflict")
+	}
+}

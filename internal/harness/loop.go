@@ -345,7 +345,7 @@ func (l *Loop) git(ctx context.Context, dir string, args ...string) (string, err
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return out.String(), fmt.Errorf("git %s: %s", args[0], firstLine(errb.String(), err))
+		return out.String(), fmt.Errorf("git %s: %s", args[0], gitReason(errb.String(), err))
 	}
 	return strings.TrimSpace(out.String()), nil
 }
@@ -516,4 +516,22 @@ func expandHome(p string) string {
 		}
 	}
 	return p
+}
+
+// gitReason picks the lines of git's stderr that say what went wrong. The
+// first line alone is often just "To https://github.com/..." - measured on
+// educenter, three stuck PRs said only that.
+func gitReason(stderr string, fallback error) string {
+	var keep []string
+	for _, line := range strings.Split(stderr, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "!") || strings.HasPrefix(t, "error:") ||
+			strings.HasPrefix(t, "fatal:") || strings.HasPrefix(t, "CONFLICT") {
+			keep = append(keep, t)
+		}
+	}
+	if len(keep) == 0 {
+		return firstLine(stderr, fallback)
+	}
+	return strings.Join(keep, "; ")
 }

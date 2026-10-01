@@ -15,6 +15,10 @@ import (
 // TestTimeout caps the test command a pull request has to pass.
 var TestTimeout = 30 * time.Minute
 
+// MergeRetry is the wait between merge attempts while GitHub is still working
+// out whether a just-pushed PR can merge.
+var MergeRetry = 15 * time.Second
+
 func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	prs, err := l.gh.PRs(ctx, "needs-review")
 	if err != nil {
@@ -58,6 +62,18 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	if _, err := l.git(ctx, wt, "merge", "--ff-only", "--quiet", "origin/"+pr.Head); err != nil {
 		return true, l.stuck(ctx, n, pr.Title, "The local branch has moved away from the pushed one: "+err.Error())
 	}
+	// Bring the branch up to date with the default branch first. The build
+	// loops open many PRs from the same base, and once one merges the rest
+	// stop merging cleanly - measured on educenter, 6 of the first 8 reviews
+	// ended at "the merge commit cannot be cleanly created". A clean merge is
+	// done here; a conflict becomes the first part of the review.
+	conflict := ""
+	if def, err := l.defaultBranch(ctx); err == nil {
+		if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
+			l.git(ctx, wt, "merge", "--abort")
+			conflict = def
+		}
+	}
 	thread, err := l.gh.Thread(ctx, "pr", n)
 	if err != nil {
 		return false, err
@@ -65,7 +81,7 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 
 	l.agent(ctx, wt, Prompt(Run{
 		Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
-		Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread,
+		Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 	}))
 
@@ -89,7 +105,18 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 	if dirty, _ := l.git(ctx, wt, "status", "--porcelain"); dirty != "" {
 		return l.stuck(ctx, n, title, "The review left uncommitted changes in `"+wt+"`.")
 	}
-	if _, err := l.git(ctx, wt, "push", "--quiet", "origin", "HEAD:"+branch); err != nil {
+	// main may have moved again during the review.
+	if def, err := l.defaultBranch(ctx); err == nil {
+		if _, err := l.git(ctx, wt, "merge-base", "--is-ancestor", def, "HEAD"); err != nil {
+			if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
+				l.git(ctx, wt, "merge", "--abort")
+				return l.stuck(ctx, n, title, "The branch conflicts with "+def+" and the review did not resolve it: "+err.Error())
+			}
+		}
+	}
+	// With lease: the branch is the loop's own, and an agent may have
+	// rebased it, but a push from anywhere else since the fetch still wins.
+	if _, err := l.git(ctx, wt, "push", "--quiet", "--force-with-lease", "origin", "HEAD:"+branch); err != nil {
 		return l.stuck(ctx, n, title, "Could not push the branch: "+err.Error())
 	}
 	if l.set.Test == "" {
@@ -119,17 +146,25 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 		return nil
 	}
 
-	// The worktree goes first: a branch that is checked out somewhere cannot
-	// be deleted, and --delete-branch would fail on it.
-	if err := l.removeWorktree(ctx, wt, branch); err != nil {
-		return l.stuck(ctx, n, title, "Could not remove the worktree before merging: "+err.Error())
-	}
 	// --match-head-commit: merge exactly what was tested, not whatever was
-	// pushed in between.
-	if _, err := l.gh.run(ctx, "pr", "merge", fmt.Sprint(n), "--squash", "--delete-branch",
-		"--match-head-commit", sha); err != nil {
-		return l.stuck(ctx, n, title, "Could not merge: "+err.Error())
+	// pushed in between. Retried, because GitHub works out whether a PR can
+	// merge after each push, and asking straight away can find it unsure.
+	var err2 error
+	for try := 0; try < 4; try++ {
+		if _, err2 = l.gh.run(ctx, "pr", "merge", fmt.Sprint(n), "--squash", "--match-head-commit", sha); err2 == nil ||
+			!strings.Contains(err2.Error(), "not mergeable") {
+			break
+		}
+		sleep(ctx, MergeRetry)
 	}
+	if err2 != nil {
+		return l.stuck(ctx, n, title, "Could not merge: "+err2.Error())
+	}
+	// Cleanup only after the merge, so a failed merge keeps its worktree.
+	if err := l.removeWorktree(ctx, wt, branch); err != nil {
+		log.Printf("cleanup: %v", err)
+	}
+	l.git(ctx, l.Repo, "push", "--quiet", "origin", "--delete", branch)
 	l.event(ctx, "merged", n, title)
 	return nil
 }

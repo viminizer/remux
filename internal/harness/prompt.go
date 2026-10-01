@@ -75,6 +75,7 @@ type Run struct {
 	Scope        string
 	Mode         string // personal or company
 	DependsOn    int    // company mode: the blocker PR this branch is built on
+	Conflict     string // review: the default branch this branch conflicts with
 	Settings     Settings
 	Instructions string
 	InstrMode    string // add or replace
@@ -114,6 +115,12 @@ func Prompt(r Run) string {
 		fmt.Fprintf(&b, "- This branch is built on top of pull request #%d, which is not merged yet. "+
 			"Open your pull request against the default branch and write \"Depends on PR #%d\" in its body.\n",
 			r.DependsOn, r.DependsOn)
+	}
+
+	if r.Conflict != "" {
+		fmt.Fprintf(&b, "- This branch conflicts with %s. Before you review, run git merge %s, resolve "+
+			"every conflict keeping the intent of both sides, run the tests, and commit the merge. "+
+			"Resolving it is part of this review, not a reason to stop.\n", r.Conflict, r.Conflict)
 	}
 
 	what := "issue"
