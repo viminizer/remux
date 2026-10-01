@@ -106,6 +106,12 @@ func (g GH) Issue(ctx context.Context, n int) (Item, error) {
 	return it, err
 }
 
+func (g GH) PR(ctx context.Context, n int) (Item, error) {
+	var it Item
+	err := g.JSON(ctx, &it, "pr", "view", fmt.Sprint(n), "--json", itemFields+",isDraft,headRefName,headRefOid")
+	return it, err
+}
+
 // PRs lists open pull requests, optionally only those with a label.
 func (g GH) PRs(ctx context.Context, label string) ([]Item, error) {
 	args := []string{"pr", "list", "--state", "open", "--limit", "200",
@@ -129,10 +135,37 @@ func (g GH) PRForBranch(ctx context.Context, branch string) (*Item, error) {
 	return &items[0], nil
 }
 
+const maxDiff = 60 << 10
+
 // Thread is an issue or pull request as text, comments included, for a prompt.
+// Two calls: without a terminal, `view --comments` prints only the comments,
+// so the body has to be read on its own - measured here, the first review
+// prompt went out with an empty pull request in it.
 func (g GH) Thread(ctx context.Context, kind string, n int) (string, error) {
-	out, err := g.run(ctx, kind, "view", fmt.Sprint(n), "--comments")
-	return string(out), err
+	body, err := g.run(ctx, kind, "view", fmt.Sprint(n))
+	if err != nil {
+		return "", err
+	}
+	comments, err := g.run(ctx, kind, "view", fmt.Sprint(n), "--comments")
+	if err != nil {
+		return "", err
+	}
+	out := string(body)
+	if c := strings.TrimSpace(string(comments)); c != "" {
+		out += "\n\n## Comments\n\n" + c
+	}
+	if kind == "pr" {
+		// Capped: the agent can read the rest with git, and a prompt that
+		// is mostly diff leaves no room for the rules above it.
+		if diff, err := g.run(ctx, "pr", "diff", fmt.Sprint(n)); err == nil {
+			d := string(diff)
+			if len(d) > maxDiff {
+				d = d[:maxDiff] + "\n... (diff cut here; read the rest with git diff)"
+			}
+			out += "\n\n## Diff\n\n" + d
+		}
+	}
+	return out, nil
 }
 
 // AddLabels and RemoveLabel go through the issues API, which covers pull

@@ -51,14 +51,17 @@ func (l *Loop) Run(ctx context.Context) error {
 	}
 	l.state(ctx, "idle", "")
 
-	slug, err := Slug(ctx, l.Repo)
-	if err != nil {
-		return l.fail(ctx, fmt.Errorf("not a GitHub repo: %w", err))
-	}
-	l.gh = GH{Slug: slug, Dir: l.Repo}
-	l.opt(ctx, "@loop_slug", slug)
-	if err := l.gh.EnsureLabels(ctx); err != nil {
-		return l.fail(ctx, err)
+	// Setup needs GitHub, and GitHub being briefly unreachable is not a
+	// reason to give up: measured here, one reset connection during label
+	// setup was enough to leave a loop dead until someone restarted it.
+	var err error
+	for ctx.Err() == nil {
+		if err = l.setup(ctx); err == nil {
+			break
+		}
+		log.Printf("setup: %v", err)
+		l.state(ctx, "blocked", err.Error())
+		sleep(ctx, Idle)
 	}
 
 	for ctx.Err() == nil {
@@ -93,14 +96,14 @@ func (l *Loop) Run(ctx context.Context) error {
 	return nil
 }
 
-// fail is for errors the loop cannot retry its way out of. It stays up and
-// says why, rather than exiting and taking its session - and the reason -
-// with it.
-func (l *Loop) fail(ctx context.Context, err error) error {
-	log.Printf("cannot run: %v", err)
-	l.state(ctx, "failed", err.Error())
-	<-ctx.Done()
-	return err
+func (l *Loop) setup(ctx context.Context) error {
+	slug, err := Slug(ctx, l.Repo)
+	if err != nil {
+		return fmt.Errorf("cannot find the GitHub repo: %w", err)
+	}
+	l.gh = GH{Slug: slug, Dir: l.Repo}
+	l.opt(ctx, "@loop_slug", slug)
+	return l.gh.EnsureLabels(ctx)
 }
 
 func (l *Loop) scope(ctx context.Context) string {
@@ -112,22 +115,27 @@ func (l *Loop) scope(ctx context.Context) string {
 
 // ── build ─────────────────────────────────────────────────────────────────
 
-// pick chooses the next issue for this scope: blockers first, then oldest.
-func pick(issues []Item, scope string) *Item {
-	sort.SliceStable(issues, func(i, j int) bool {
-		bi, bj := issues[i].Has("blocker"), issues[j].Has("blocker")
+// candidates are the issues this scope may take, blockers first, then oldest.
+func candidates(issues []Item, scope string) []Item {
+	var out []Item
+	for _, it := range issues {
+		if free(it, scope) {
+			out = append(out, it)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		bi, bj := out[i].Has("blocker"), out[j].Has("blocker")
 		if bi != bj {
 			return bi
 		}
-		return issues[i].Number < issues[j].Number
+		return out[i].Number < out[j].Number
 	})
-	for i, it := range issues {
-		if it.HasPrefix("wip:") || it.Has("done:"+scope) || it.Has("blocked") || it.Has("needs-human") {
-			continue
-		}
-		return &issues[i]
-	}
-	return nil
+	return out
+}
+
+func free(it Item, scope string) bool {
+	return it.Has("ready") && !it.HasPrefix("wip:") && !it.Has("done:"+scope) &&
+		!it.Has("blocked") && !it.Has("needs-human")
 }
 
 func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
@@ -136,7 +144,20 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	it := pick(issues, scope)
+	// The label-filtered list lags behind label changes: measured here, an
+	// issue whose ready label had just been removed was listed as ready again
+	// a second later and worked twice. Reading the issue itself is current.
+	var it *Item
+	for _, c := range candidates(issues, scope) {
+		fresh, err := l.gh.Issue(ctx, c.Number)
+		if err != nil {
+			return false, err
+		}
+		if fresh.State == "OPEN" && free(fresh, scope) {
+			it = &fresh
+			break
+		}
+	}
 	if it == nil {
 		return false, nil
 	}

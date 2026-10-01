@@ -43,7 +43,7 @@ func (s *Server) loopRoutes(mux *http.ServeMux) {
 // ── read ──────────────────────────────────────────────────────────────────
 
 // stateOrder puts problems first: blocked, then working, then idle.
-var stateOrder = map[string]int{"failed": 0, "blocked": 0, "working": 1, "idle": 2}
+var stateOrder = map[string]int{"blocked": 0, "working": 1, "idle": 2}
 
 func sortLoops(loops []tmux.Loop) {
 	sort.SliceStable(loops, func(i, j int) bool {

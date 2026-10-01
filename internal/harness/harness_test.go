@@ -17,7 +17,7 @@ func item(n int, labels ...string) Item {
 	return it
 }
 
-func TestPick(t *testing.T) {
+func TestCandidates(t *testing.T) {
 	issues := []Item{
 		item(3, "ready"),
 		item(1, "ready", "wip:backend"),      // another loop has it
@@ -27,14 +27,14 @@ func TestPick(t *testing.T) {
 		item(4, "ready", "needs-human"),      // waiting on Kevin
 		item(6, "ready", "blocker", "wip:x"), // a claimed blocker is still claimed
 	}
-	if got := pick(issues, "full"); got == nil || got.Number != 7 {
-		t.Fatalf("pick = %+v, want the free blocker #7", got)
+	if got := candidates(issues, "full"); len(got) != 2 || got[0].Number != 7 || got[1].Number != 3 {
+		t.Fatalf("candidates = %+v, want the free blocker #7 then #3", got)
 	}
-	if got := pick([]Item{item(9, "ready", "done:backend"), item(8, "ready")}, "backend"); got == nil || got.Number != 8 {
-		t.Fatalf("pick skipped wrong: %+v", got)
+	if got := candidates([]Item{item(9, "ready", "done:backend"), item(8, "ready")}, "backend"); len(got) != 1 || got[0].Number != 8 {
+		t.Fatalf("candidates skipped wrong: %+v", got)
 	}
-	if got := pick([]Item{item(1, "ready", "wip:full")}, "full"); got != nil {
-		t.Fatalf("pick = %+v, want nothing", got)
+	if got := candidates([]Item{item(1, "ready", "wip:full"), item(2)}, "full"); len(got) != 0 {
+		t.Fatalf("candidates = %+v, want nothing", got)
 	}
 }
 
