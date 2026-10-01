@@ -208,6 +208,13 @@ func run(cfg *config.Config, local bool) error {
 	srv.Naming = namer.Report
 
 	go srv.GH.Run(ctx)
+	// The agent loops. Their pushes follow the same local-mode rule as the
+	// watchers above; remembering their repos does not, so it runs either way.
+	var loopPush *push.Store
+	if !local {
+		loopPush = srv.Push
+	}
+	go srv.WatchLoops(ctx, loopPush)
 	// The one always-on pass over the workspace. Pane/repo matching runs here
 	// rather than inside a handler, because it reads the filesystem and a read
 	// under ~/Desktop from a LaunchAgent macOS has not granted access to

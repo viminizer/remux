@@ -24,6 +24,11 @@ type Loop struct {
 	Session string // its loop-* tmux session
 	Tmux    *tmux.Client
 
+	// The session instructions it starts with. They are written to the
+	// session by the loop itself, before anything reads them, and read back
+	// before every run so an edit from the phone applies to the next one.
+	Scope, Instructions, InstrMode string
+
 	gh  GH
 	set Settings
 }
@@ -38,6 +43,14 @@ var RunTimeout = 90 * time.Minute
 // end: the loop shows it as blocked and tries again, because the usual causes
 // (GitHub unreachable, gh logged out) fix themselves or get fixed at the laptop.
 func (l *Loop) Run(ctx context.Context) error {
+	for opt, v := range map[string]string{
+		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_repo": l.Repo,
+		"@loop_scope": l.Scope, "@loop_instr": l.Instructions, "@loop_mode": l.InstrMode,
+	} {
+		l.opt(ctx, opt, v)
+	}
+	l.state(ctx, "idle", "")
+
 	slug, err := Slug(ctx, l.Repo)
 	if err != nil {
 		return l.fail(ctx, fmt.Errorf("not a GitHub repo: %w", err))

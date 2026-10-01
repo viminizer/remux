@@ -117,6 +117,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/github/repos/{owner}/{name}/prs/{number}", s.handleGitHubPR)
 	}
 
+	s.loopRoutes(mux)
+
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("GET /api/naming", s.handleNaming)

@@ -56,6 +56,36 @@ type Config struct {
 	// a switch - the state glyph beside the name is free and stays on either
 	// way. Gated, it is a few cents a day; the gates are in internal/titler.
 	NamePanes bool `json:"namePanes"`
+
+	// The agent harness. HarnessRepos are the repos a loop has run in, kept
+	// after the loop stops so their stuck items still reach the Inbox.
+	// LoopPresets are the saved session instructions, LastLoop what the Start
+	// form used last, so most starts are one tap.
+	HarnessRepos []HarnessRepo `json:"harnessRepos,omitempty"`
+	LoopPresets  []LoopPreset  `json:"loopPresets,omitempty"`
+	LastLoop     *LoopStart    `json:"lastLoop,omitempty"`
+}
+
+type HarnessRepo struct {
+	Path string `json:"path"`
+	Slug string `json:"slug"`
+}
+
+type LoopPreset struct {
+	Name         string `json:"name"`
+	Scope        string `json:"scope"`
+	Instructions string `json:"instructions"`
+	InstrMode    string `json:"instrMode"`
+}
+
+// LoopStart is one tap on Start: a repo, the agents, and the instructions.
+type LoopStart struct {
+	Repo         string   `json:"repo"`
+	Agents       []string `json:"agents"`
+	Review       bool     `json:"review"`
+	Scope        string   `json:"scope"`
+	Instructions string   `json:"instructions"`
+	InstrMode    string   `json:"instrMode"`
 }
 
 func Default() *Config {

@@ -20,6 +20,9 @@ func cmdLoop(args []string) error {
 	agent := fs.String("agent", "claude", "claude or codex")
 	repo := fs.String("repo", "", "the repo's main checkout")
 	session := fs.String("session", "", "this loop's tmux session")
+	scope := fs.String("scope", "", "the scope name; empty means full")
+	instr := fs.String("instructions", "", "session instructions")
+	mode := fs.String("mode", "add", "add to the project defaults, or replace them")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -28,7 +31,8 @@ func cmdLoop(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	l := &harness.Loop{Role: *role, Agent: *agent, Repo: *repo, Session: *session, Tmux: tmux.New()}
+	l := &harness.Loop{Role: *role, Agent: *agent, Repo: *repo, Session: *session, Tmux: tmux.New(),
+		Scope: *scope, Instructions: *instr, InstrMode: *mode}
 	return l.Run(ctx)
 }
 

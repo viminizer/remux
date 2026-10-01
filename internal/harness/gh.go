@@ -48,7 +48,8 @@ func (g GH) run(ctx context.Context, args ...string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func (g GH) json(ctx context.Context, v any, args ...string) error {
+// JSON runs gh and decodes its output into v.
+func (g GH) JSON(ctx context.Context, v any, args ...string) error {
 	out, err := g.run(ctx, args...)
 	if err != nil {
 		return err
@@ -94,14 +95,14 @@ const itemFields = "number,title,url,state,labels"
 
 func (g GH) Issues(ctx context.Context, label string) ([]Item, error) {
 	var items []Item
-	err := g.json(ctx, &items, "issue", "list", "--state", "open", "--label", label,
+	err := g.JSON(ctx, &items, "issue", "list", "--state", "open", "--label", label,
 		"--limit", "200", "--json", itemFields)
 	return items, err
 }
 
 func (g GH) Issue(ctx context.Context, n int) (Item, error) {
 	var it Item
-	err := g.json(ctx, &it, "issue", "view", fmt.Sprint(n), "--json", itemFields)
+	err := g.JSON(ctx, &it, "issue", "view", fmt.Sprint(n), "--json", itemFields)
 	return it, err
 }
 
@@ -113,14 +114,14 @@ func (g GH) PRs(ctx context.Context, label string) ([]Item, error) {
 		args = append(args, "--label", label)
 	}
 	var items []Item
-	err := g.json(ctx, &items, args...)
+	err := g.JSON(ctx, &items, args...)
 	return items, err
 }
 
 // PRForBranch finds the open pull request whose head is branch.
 func (g GH) PRForBranch(ctx context.Context, branch string) (*Item, error) {
 	var items []Item
-	err := g.json(ctx, &items, "pr", "list", "--state", "open", "--head", branch,
+	err := g.JSON(ctx, &items, "pr", "list", "--state", "open", "--head", branch,
 		"--json", itemFields+",isDraft,headRefName,headRefOid")
 	if err != nil || len(items) == 0 {
 		return nil, err
@@ -165,7 +166,7 @@ func (g GH) Comment(ctx context.Context, n int, body string) error {
 // BlockedBy lists the issues GitHub records as blocking n.
 func (g GH) BlockedBy(ctx context.Context, n int) ([]Item, error) {
 	var items []Item
-	err := g.json(ctx, &items, "api", fmt.Sprintf("repos/%s/issues/%d/dependencies/blocked_by", g.Slug, n))
+	err := g.JSON(ctx, &items, "api", fmt.Sprintf("repos/%s/issues/%d/dependencies/blocked_by", g.Slug, n))
 	return items, err
 }
 
