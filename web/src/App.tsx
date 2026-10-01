@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import { Socket } from './ws'
-import { isGitHub, useRoute } from './router'
+import { isGitHub, isLoops, useRoute } from './router'
 import type { Route } from './router'
 import { useSettings, queueSnapshot, flushSnapshot, loadSnapshot } from './store'
 import type { Conn, GhBadge, Health, Pane, Session, SnapMeta } from './types'
@@ -22,6 +22,7 @@ import { GitHubScreen } from './github/GitHubScreen'
 import { RepoScreen } from './github/RepoScreen'
 import { ItemScreen } from './github/ItemScreen'
 import { AddRepoSheet } from './github/AddRepoSheet'
+import { LoopsRoutes, useLoops } from './loops/LoopsRoutes'
 import { SendToPaneSheet } from './github/SendToPaneSheet'
 import { useGitHub } from './github/useGitHub'
 import type { InboxItem } from './github/types'
@@ -107,6 +108,11 @@ export default function App() {
     () => panes.find((p) => p.id === currentId) ?? null,
     [panes, currentId],
   )
+
+  // ── agent loops ─────────────────────────────────────────────────────────
+
+  const loopsOpen = isLoops(route)
+  const { data: loops, refresh: loopsRefresh } = useLoops(loopsOpen || drawerOpen)
 
   // ── GitHub ──────────────────────────────────────────────────────────────
 
@@ -710,6 +716,11 @@ export default function App() {
           setDrawerOpen(false)
           go({ name: 'settings' })
         }}
+        loops={loops?.loops ?? null}
+        onLoops={() => {
+          setDrawerOpen(false)
+          go({ name: 'loops', tab: 'loops' })
+        }}
         gh={ghBadge}
         onGitHub={() => {
           setDrawerOpen(false)
@@ -789,6 +800,14 @@ export default function App() {
               )
               setGhSheet('topane')
             }}
+          />
+        ) : loopsOpen ? (
+          <LoopsRoutes
+            route={route}
+            go={go}
+            data={loops}
+            refresh={loopsRefresh}
+            onClose={() => go({ name: 'pane', pane: lastPane.current })}
           />
         ) : route.name === 'settings' ? (
           <SettingsScreen

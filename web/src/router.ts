@@ -20,6 +20,15 @@ export type Route =
   | { name: 'gh' }
   | { name: 'ghRepo'; repo: string; tab: 'issues' | 'prs' }
   | { name: 'ghItem'; repo: string; number: number; kind: 'issue' | 'pr' }
+  | { name: 'loops'; tab: 'loops' | 'inbox' }
+  | { name: 'loop'; loop: string }
+  | { name: 'loopStart' }
+  | { name: 'loopQ'; slug: string; number: number }
+
+/** True for the agent loop screens. */
+export function isLoops(r: Route): boolean {
+  return r.name === 'loops' || r.name === 'loop' || r.name === 'loopStart' || r.name === 'loopQ'
+}
 
 /** True for the GitHub screen and anything reached from it. */
 export function isGitHub(r: Route): boolean {
@@ -33,6 +42,14 @@ function parse(hash: string): Route {
   if (h === '/naming') return { name: 'naming' }
 
   if (h === '/gh') return { name: 'gh' }
+
+  if (h === '/loops') return { name: 'loops', tab: 'loops' }
+  if (h === '/loops/inbox') return { name: 'loops', tab: 'inbox' }
+  if (h === '/loops/new') return { name: 'loopStart' }
+  const loop = /^\/loops\/l\/([^/]+)$/.exec(h)
+  if (loop) return { name: 'loop', loop: decodeURIComponent(loop[1]) }
+  const q = /^\/loops\/q\/([^/]+)\/(\d+)$/.exec(h)
+  if (q) return { name: 'loopQ', slug: decodeURIComponent(q[1]), number: Number(q[2]) }
 
   const repo = /^\/gh\/r\/([^/?]+)(?:\?t=(issues|prs))?$/.exec(h)
   if (repo) {
@@ -68,6 +85,14 @@ function href(r: Route): string {
       return '#/naming'
     case 'gh':
       return '#/gh'
+    case 'loops':
+      return r.tab === 'inbox' ? '#/loops/inbox' : '#/loops'
+    case 'loop':
+      return `#/loops/l/${encodeURIComponent(r.loop)}`
+    case 'loopStart':
+      return '#/loops/new'
+    case 'loopQ':
+      return `#/loops/q/${encodeURIComponent(r.slug)}/${r.number}`
     case 'ghRepo':
       return `#/gh/r/${encodeURIComponent(r.repo)}${r.tab === 'prs' ? '?t=prs' : ''}`
     case 'ghItem':

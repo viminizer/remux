@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
 import type { Conn, GhBadge, Pane } from '../types'
+import type { Loop } from '../loops/types'
 import { PaneList } from './PaneList'
 
 const CONN_DOT: Record<Conn, string> = {
@@ -15,6 +16,17 @@ const CONN_TEXT: Record<Conn, string> = {
   live: 'Connected',
   offline: 'Offline',
   denied: 'Not authorized',
+}
+
+/** The line under "Loops": what is working and what is stuck. */
+function loopsSub(loops: Loop[] | null): string {
+  if (!loops) return 'agent harness'
+  if (!loops.length) return 'none running'
+  const working = loops.filter((l) => l.state === 'working').length
+  const blocked = loops.filter((l) => l.state === 'blocked').length
+  const bits = [`${working} working`]
+  if (blocked) bits.push(`${blocked} blocked`)
+  return bits.join(' · ')
 }
 
 /** The one line under "GitHub", which has to say the most useful true thing. */
@@ -45,6 +57,8 @@ export function Drawer({
   onSettings,
   gh,
   onGitHub,
+  loops,
+  onLoops,
 }: {
   open: boolean
   panelRef: RefObject<HTMLElement>
@@ -62,6 +76,8 @@ export function Drawer({
   /** Null until the first tick, or when the GitHub screen is switched off. */
   gh: GhBadge | null
   onGitHub: () => void
+  loops: Loop[] | null
+  onLoops: () => void
 }) {
   const [q, setQ] = useState('')
 
@@ -97,8 +113,8 @@ export function Drawer({
           A third icon in the top bar would have been cramped next to the
           burger and the kebab. A pinned row at the head of the drawer costs
           nothing anywhere else and is one tap from wherever you are. */}
-      {gh && (
-        <div className="pinned">
+      <div className="pinned">
+        {gh && (
           <button className="pin-row" onClick={onGitHub}>
             <span className="glyph">◈</span>
             <span className="pin-mid">
@@ -109,8 +125,16 @@ export function Drawer({
               <span className={`badge ${gh.red > 0 ? 'red' : ''}`}>{gh.count}</span>
             )}
           </button>
-        </div>
-      )}
+        )}
+        <button className="pin-row" onClick={onLoops}>
+          <span className="glyph">↻</span>
+          <span className="pin-mid">
+            Loops
+            <span className="sub">{loopsSub(loops)}</span>
+          </span>
+          {!!loops?.some((l) => l.state === 'blocked') && <span className="badge red">!</span>}
+        </button>
+      </div>
 
       <PaneList
         panes={panes}

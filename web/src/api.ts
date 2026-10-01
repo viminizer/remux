@@ -6,6 +6,7 @@ import type {
   PickerRepo,
   PR,
 } from './github/types'
+import type { HarnessItem, LoopStart, LoopsPayload, Preset } from './loops/types'
 
 /**
  * There is no server URL to configure and no token to send.
@@ -188,6 +189,38 @@ export const api = {
 
   githubUnmute: (repo: string, number: number) =>
     call<GitHubSnapshot>(`/api/github/mute/${repoPath(repo)}/${number}`, { method: 'DELETE' }),
+
+  // ── agent loops ─────────────────────────────────────────────────────
+
+  loops: () => call<LoopsPayload>('/api/loops'),
+
+  startLoops: (v: LoopStart) =>
+    call<{ started: string[]; skipped: string[] }>('/api/loops', {
+      method: 'POST',
+      body: JSON.stringify(v),
+    }),
+
+  editLoop: (name: string, v: { scope?: string; instructions?: string; instrMode?: string }) =>
+    call(`/api/loops/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(v) }),
+
+  stopLoop: (name: string, when: 'now' | 'after') =>
+    call<{ when: string }>(`/api/loops/${encodeURIComponent(name)}?when=${when}`, {
+      method: 'DELETE',
+    }),
+
+  savePresets: (presets: Preset[]) =>
+    call<Preset[]>('/api/loops/presets', { method: 'PUT', body: JSON.stringify(presets) }),
+
+  // Reads GitHub for every harness repo, so it is fetched when the Inbox
+  // opens, never polled.
+  harnessInbox: () => call<{ items: HarnessItem[]; errors: string[] }>('/api/harness/inbox'),
+
+  /** "Send and resume": post the answer and put the item back in the queue. */
+  resume: (slug: string, number: number, kind: 'issue' | 'pr', text: string) =>
+    call('/api/harness/resume', {
+      method: 'POST',
+      body: JSON.stringify({ slug, number, kind, text }),
+    }),
 
   pushKey: () => call<{ publicKey: string; subscriptions: number }>('/api/push/key'),
 

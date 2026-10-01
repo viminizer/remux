@@ -1300,3 +1300,61 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .run-note{padding-left:8px;color:var(--red);word-break:break-word}
 .run-bad{color:var(--red)}
 .run-quiet{color:var(--ov0)}
+
+/* ── agent loops ──────────────────────────────────────────────────────────
+   The overlays reuse the GitHub screen's head, segment and cards. What is
+   new is the bar at the bottom: the main buttons sit where a thumb is. */
+.pinned .pin-row + .pin-row{margin-top:6px}
+.loops-body{padding:12px 12px 24px}
+.loops-body .sec{margin:8px 6px 22px}
+.loop-what{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.repo-card .st.loop-meta{font-family:var(--mono);font-size:11px;color:var(--ov0)}
+.foot-bar{
+  flex:0 0 auto;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+  background:var(--mantle);border-top:1px solid var(--s0);
+}
+.foot-bar .sheet-note{margin:0 0 8px;text-align:center}
+.foot-row{display:flex;gap:8px}
+.foot-row > *{flex:1}
+.foot-bar .go{
+  width:100%;padding:14px;border:0;border-radius:12px;cursor:pointer;
+  background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:15px;font-weight:700;
+}
+.foot-bar .go:disabled{opacity:.45;cursor:default}
+.foot-bar .go.danger{background:var(--red)}
+.foot-bar .go.ghost{background:var(--s0);color:var(--text)}
+.foot-bar .cancel{
+  width:100%;margin-top:6px;padding:12px;border:0;border-radius:12px;cursor:pointer;
+  background:transparent;color:var(--ov1);font-family:var(--ui);font-size:14px;font-weight:600;
+}
+.foot-row .cancel{margin-top:0}
+.field textarea{
+  width:100%;background:var(--base);border:1px solid var(--s1);border-radius:11px;resize:vertical;
+  padding:12px 13px;color:var(--text);font-family:var(--ui);font-size:14px;line-height:1.5;outline:0;
+}
+.field textarea:focus{border-color:var(--blue)}
+@media (pointer:coarse){.field textarea{font-size:16px}}
+.loop-form{padding:14px}
+.loop-log{
+  margin:0;padding:12px;border-radius:11px;background:var(--crust);border:1px solid var(--s0);
+  font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--sub0);
+  white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow-y:auto;
+}
+.crow .lbl a{color:var(--blue);text-decoration:none}
+.chip-pick{border:0;background:transparent;color:inherit;font:inherit;padding:4px 2px;cursor:pointer}
+.chipset .chip{font-size:12.5px;padding:4px 10px}
+.question{
+  margin:8px 4px 16px;font-size:16.5px;line-height:1.5;color:var(--text);white-space:pre-wrap;
+}
+.opt{
+  display:flex;align-items:center;gap:12px;width:100%;margin-bottom:8px;padding:14px;
+  border-radius:12px;border:1px solid var(--s1);background:var(--mantle);color:var(--text);
+  font-family:var(--ui);font-size:14.5px;text-align:left;cursor:pointer;
+}
+.opt .n{
+  flex:0 0 auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  background:var(--s0);font-family:var(--mono);font-size:12px;color:var(--sub0);
+}
+.opt.on{border-color:var(--blue)}
+.opt.on .n{background:var(--blue);color:var(--crust)}
+a.linkbtn{display:inline-block;text-decoration:none}
