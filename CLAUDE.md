@@ -19,6 +19,11 @@ makes it the one safe thing to write. `scripts/laptop-invariant.sh` reports ever
 fails if the value is outside what remux is allowed to write. Nothing else may be written to a
 real pane, and this list does not grow without the same treatment.
 
+The agent harness owns every session named `loop-*` (see **Agent loops** in the README). It
+creates them detached, writes `@loop_*` options on them, and kills them. They are new sessions no
+client is attached to, so this moves nothing of Kevin's. `internal/tmux/loops.go` refuses those
+writes for any other session, and `laptop-invariant.sh` treats `loop-*` like `remux-test`.
+
 Prove it after any phase that touches tmux:
 
 ```bash

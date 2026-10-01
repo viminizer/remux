@@ -164,6 +164,47 @@ set -g pane-border-format ' #{?#{!=:#{@remux_task},},#{@remux_task},#{pane_curre
 on the Settings screen. Turning it off clears the names it wrote; the glyph
 half keeps working and has no switch, because it costs nothing.
 
+## Agent loops
+
+Claude and Codex take GitHub issues on their own, and Codex reviews and merges
+their pull requests. You only step in when an agent is stuck. The design is
+[`docs/agent-harness.html`](docs/agent-harness.html).
+
+Set a repo up once:
+
+```bash
+remux harness init ~/code/myrepo   # labels on GitHub, starter files in the repo
+```
+
+Then fill in `.remux/harness.json` and commit it with `.remux/decisions.md`:
+
+| field | what |
+|---|---|
+| `mode` | `personal` (Codex merges) or `company` (nothing merges; the PR goes to your supervisor) |
+| `test` | the command that must pass before anything merges. Without it nothing merges. |
+| `references` | local read-only clones the agents compare against for real decisions |
+| `instructions` | project default instructions, read before every run |
+| `supervisor` | company mode: the reviewer when there is no CODEOWNERS and no history |
+| `allow` | extra Claude tools, for example `Bash(npm test:*)` |
+
+Start loops from the phone: **drawer → Loops → Start loop**. Each loop is a
+detached `loop-*` tmux session running `remux loop`. A build loop takes one
+`ready` issue per run (blockers first) in its own worktree under
+`.claude/worktrees/`, and opens a draft PR. The review loop runs Codex once on
+each `needs-review` PR, runs your `test` command itself, then merges or marks
+it ready for the supervisor. Labels are the state:
+
+`ready` · `wip:<scope>` · `done:<scope>` · `blocker` · `blocked` · `needs-review` · `needs-human`
+
+The loops run without permission prompts, so they never use bypass mode.
+Claude gets a fixed tool allowlist (plus your `allow` list), and Codex runs in
+its `workspace-write` sandbox with network on.
+
+A stuck agent pushes "An agent is stuck". The notification opens the question
+with its options as buttons, and **Send and resume** posts your answer and puts
+the item back in the queue. The other two pushes are a merged PR and a company
+PR sent to the supervisor.
+
 ## Development
 
 ```bash
