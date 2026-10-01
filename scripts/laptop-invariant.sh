@@ -41,6 +41,12 @@
 set -euo pipefail
 
 SCRATCH="remux-test"
+# The agent harness owns every session named loop-*. Starting a loop creates
+# one and stopping it kills it, so its panes appear and vanish by design. It is
+# a session nobody is attached to, which is why it cannot move anything of
+# Kevin's - see internal/tmux/loops.go. The same exemption as the scratch
+# session, for the same reason.
+OWNED="^($SCRATCH|loop-[^ ]*) "
 DIR="${TMPDIR:-/tmp}/remux-invariant"
 TAG="${1:-}"
 
@@ -56,7 +62,7 @@ tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}' > "$DIR/
 
 # Geometry of every pane that is not part of the scratch session.
 tmux list-panes -a -F '#{session_name} #{pane_id} #{pane_width}x#{pane_height}' > "$DIR/$TAG.raw"
-grep -v "^$SCRATCH " "$DIR/$TAG.raw" > "$DIR/$TAG.layout" || true
+grep -vE "$OWNED" "$DIR/$TAG.raw" > "$DIR/$TAG.layout" || true
 sort -o "$DIR/$TAG.layout" "$DIR/$TAG.layout"
 
 # Session and window names, and which window each session has active. A rename
@@ -64,7 +70,7 @@ sort -o "$DIR/$TAG.layout" "$DIR/$TAG.layout"
 # the active target above.
 tmux list-windows -a -F '#{session_name} #{window_index} #{window_name} active=#{window_active}' \
   > "$DIR/$TAG.wraw"
-grep -v "^$SCRATCH " "$DIR/$TAG.wraw" > "$DIR/$TAG.windows" || true
+grep -vE "$OWNED" "$DIR/$TAG.wraw" > "$DIR/$TAG.windows" || true
 sort -o "$DIR/$TAG.windows" "$DIR/$TAG.windows"
 
 # Attached clients. remux must never become one: a client's terminal size is
@@ -82,6 +88,7 @@ sort -o "$DIR/$TAG.clients" "$DIR/$TAG.clients"
 : > "$DIR/$TAG.remux"
 while read -r sess pane; do
   [ "$sess" = "$SCRATCH" ] && continue
+  case "$sess" in loop-*) continue ;; esac
   tmux show-options -p -t "$pane" > "$DIR/.opts" || true
   grep -E '^@remux_(title|task|state|project)' "$DIR/.opts" \
     | sed "s|^|$pane |" >> "$DIR/$TAG.remux" || true

@@ -45,6 +45,10 @@ func main() {
 			exit(cmdRestart())
 		case "status":
 			exit(cmdStatus())
+		case "loop":
+			exit(cmdLoop(os.Args[2:]))
+		case "harness":
+			exit(cmdHarness(os.Args[2:]))
 		case "help", "-h", "--help":
 			usage()
 			return
@@ -343,6 +347,7 @@ usage:
   remux uninstall      unload and remove it
   remux restart        reload after replacing the binary
   remux status         preflight, reachability and tailnet identity, then exit
+  remux harness init   create the agent harness labels and starter files in a repo
 
 flags:
   --local              serve plain HTTP on loopback
