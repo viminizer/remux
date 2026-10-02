@@ -122,6 +122,16 @@ func TestLoopLifecycle(t *testing.T) {
 		t.Fatalf("list: %d %s", code, body)
 	}
 
+	// Claude twice means a second Claude loop, named so the two differ.
+	defer tm.KillLoop(ctx, "loop-claude2-harness-api-test")
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["loop-claude2-harness-api-test"]`) {
+		t.Errorf("a second Claude loop was not started: %d %s", code, body)
+	}
+	if code, _ := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude", "claude", "claude", "claude", "claude"}}); code != http.StatusBadRequest {
+		t.Errorf("six Claude loops must be refused, got %d", code)
+	}
+
 	// Not working, so "after this issue" has nothing to wait for.
 	if code, body := do(t, ts, "DELETE", "/api/loops/"+name+"?when=after", nil); code != http.StatusOK || !strings.Contains(string(body), `"now"`) {
 		t.Fatalf("stop: %d %s", code, body)

@@ -28,8 +28,9 @@ export function StartLoop({
   const first = last?.repo ?? repos[0]?.path ?? ''
   const [repo, setRepo] = useState(first && known(first) ? first : first ? OTHER : '')
   const [path, setPath] = useState(first && !known(first) ? first : '')
-  const [claude, setClaude] = useState(last ? last.agents.includes('claude') : true)
-  const [codex, setCodex] = useState(last ? last.agents.includes('codex') : false)
+  const many = (a: string) => last?.agents.filter((x) => x === a).length ?? 0
+  const [claude, setClaude] = useState(last ? many('claude') : 1)
+  const [codex, setCodex] = useState(last ? many('codex') : 0)
   const [review, setReview] = useState(last ? last.review : true)
   const [supervise, setSupervise] = useState(last ? !!last.supervise : true)
   const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(last?.superviseAgent ?? 'claude')
@@ -49,7 +50,10 @@ export function StartLoop({
     void onSavePresets(next)
   }
   const target = repo === OTHER ? path.trim() : repo
-  const agents = [...(claude ? ['claude' as const] : []), ...(codex ? ['codex' as const] : [])]
+  const agents = [
+    ...Array<'claude'>(claude).fill('claude'),
+    ...Array<'codex'>(codex).fill('codex'),
+  ]
   const ok = !!target && (agents.length > 0 || review || supervise) && !busy
 
   return (
@@ -109,14 +113,14 @@ export function StartLoop({
         )}
 
         <div className="field">
-          <label>Loops</label>
+          <label>Build loops</label>
+          <Stepper name="Claude" value={claude} onChange={setClaude} />
+          <Stepper name="Codex" value={codex} onChange={setCodex} />
+        </div>
+
+        <div className="field">
+          <label>Also run</label>
           <div className="seg toggles">
-            <button className={claude ? 'on' : ''} onClick={() => setClaude(!claude)}>
-              Claude
-            </button>
-            <button className={codex ? 'on' : ''} onClick={() => setCodex(!codex)}>
-              Codex
-            </button>
             <button className={review ? 'on' : ''} onClick={() => setReview(!review)}>
               Review
             </button>
@@ -180,6 +184,22 @@ export function StartLoop({
           {busy ? 'Starting…' : 'Start'}
         </button>
       </div>
+    </div>
+  )
+}
+
+/** How many build loops of one agent: 0 to 5, each its own session. */
+function Stepper({ name, value, onChange }: { name: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="stepper-row">
+      <span className="grow">{name}</span>
+      <button disabled={value <= 0} onClick={() => onChange(value - 1)} aria-label={`Fewer ${name} loops`}>
+        −
+      </button>
+      <span className="n">{value}</span>
+      <button disabled={value >= 5} onClick={() => onChange(value + 1)} aria-label={`More ${name} loops`}>
+        +
+      </button>
     </div>
   )
 }

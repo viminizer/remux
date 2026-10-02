@@ -186,7 +186,10 @@ Then fill in `.remux/harness.json` and commit it with `.remux/decisions.md`:
 | `instructions` | project default instructions, read before every run |
 | `supervisor` | company mode: the reviewer when there is no CODEOWNERS and no history |
 
-Start loops from the phone: **drawer → Loops → Start loop**. Each loop is a
+Start loops from the phone: **drawer → Loops → Start loop**. The Start screen takes
+a count for each agent, up to 5: two Claude loops are `loop-claude-<repo>` and
+`loop-claude2-<repo>`. Each loop claims an issue with its own `by:<session>`
+label first, so two loops waking together never work the same one. Each loop is a
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
 `ready` issue per run (blockers first) in its own worktree under
 `.claude/worktrees/`, and opens a draft PR. The review loop runs Codex once on

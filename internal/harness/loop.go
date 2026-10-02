@@ -159,6 +159,42 @@ func (l *Loop) scope(ctx context.Context) string {
 
 // ── build ─────────────────────────────────────────────────────────────────
 
+// ClaimSettle is how long a loop waits after marking an issue before it
+// checks whether another loop marked it too.
+var ClaimSettle = 3 * time.Second
+
+// claim takes issue n for this loop, or reports that another loop has it.
+//
+// A label is not a lock, and with several loops of one kind on a repo, two
+// of them waking in the same second will pick the same oldest issue. So each
+// marks the issue with its own by:<session> label, waits, and reads it back:
+// if more than one loop marked it, the one whose name sorts first keeps it
+// and the others take theirs off and move on.
+func (l *Loop) claim(ctx context.Context, n int, scope string) (bool, error) {
+	me := "by:" + l.Session
+	if err := l.gh.AddLabels(ctx, n, me); err != nil {
+		return false, err
+	}
+	sleep(ctx, ClaimSettle)
+	fresh, err := l.gh.Issue(ctx, n)
+	if err != nil || claimant(fresh) != me || fresh.HasPrefix("wip:") {
+		l.gh.RemoveLabel(context.WithoutCancel(ctx), n, me)
+		return false, err
+	}
+	return true, l.gh.AddLabels(ctx, n, "wip:"+scope)
+}
+
+// claimant is the loop that keeps an issue several loops marked at once.
+func claimant(it Item) string {
+	first := ""
+	for _, l := range it.Labels {
+		if strings.HasPrefix(l.Name, "by:") && (first == "" || l.Name < first) {
+			first = l.Name
+		}
+	}
+	return first
+}
+
 // candidates are the issues this scope may take, blockers first, then oldest.
 func candidates(issues []Item, scope string) []Item {
 	var out []Item
@@ -178,7 +214,7 @@ func candidates(issues []Item, scope string) []Item {
 }
 
 func free(it Item, scope string) bool {
-	return isReady(it) && !it.HasPrefix("wip:") && !it.Has("done:"+scope) &&
+	return isReady(it) && !it.HasPrefix("wip:") && !it.HasPrefix("by:") && !it.Has("done:"+scope) &&
 		!it.Has("blocked") && !it.Has("needs-human")
 }
 
@@ -208,12 +244,16 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		return l.triage(ctx, scope), nil
 	}
 	n := it.Number
-	// Claiming by label is not atomic: two loops can grab the same issue. The
-	// design accepts that until it actually happens.
-	if err := l.gh.AddLabels(ctx, n, "wip:"+scope); err != nil {
-		return false, err
+	won, err := l.claim(ctx, n, scope)
+	if err != nil || !won {
+		// Lost to another loop: look again straight away, not in a minute.
+		return !won && err == nil, err
 	}
-	defer l.gh.RemoveLabel(context.WithoutCancel(ctx), n, "wip:"+scope)
+	defer func() {
+		c := context.WithoutCancel(ctx)
+		l.gh.RemoveLabel(c, n, "wip:"+scope)
+		l.gh.RemoveLabel(c, n, "by:"+l.Session)
+	}()
 	l.mirror(ctx, *it, "in-progress")
 
 	l.working(ctx, n, it.Title)

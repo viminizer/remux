@@ -306,3 +306,16 @@ func TestUsageLimit(t *testing.T) {
 		t.Error("an ordinary test failure is not a usage limit")
 	}
 }
+
+func TestClaimant(t *testing.T) {
+	it := item(3, "ready", "by:loop-claude2-x", "by:loop-claude-x", "by:loop-codex-x")
+	if got := claimant(it); got != "by:loop-claude-x" {
+		t.Errorf("claimant = %q", got)
+	}
+	if got := claimant(item(3, "ready")); got != "" {
+		t.Errorf("claimant of an unmarked issue = %q", got)
+	}
+	if free(item(4, "ready", "by:loop-claude-x"), "full") {
+		t.Error("an issue another loop is claiming is not free")
+	}
+}

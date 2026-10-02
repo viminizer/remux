@@ -25,6 +25,9 @@ import (
 // state from its tmux session, starts and stops loop sessions, and moves
 // labels when Kevin answers a stuck agent. The loops do the work.
 
+// maxPerAgent caps the build loops of one agent on one repo.
+const maxPerAgent = 5
+
 var scopeRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,19}$`)
 
 // loopExe is the binary a loop session runs. A variable so tests can name one.
@@ -153,12 +156,24 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	}
 	type plan struct{ name, role, agent string }
 	var plans []plan
+	// An agent named twice means two loops of it. The first is
+	// loop-claude-<repo>, the next loop-claude2-<repo>, and so on.
+	count := map[string]int{}
 	for _, a := range body.Agents {
 		if a != "claude" && a != "codex" {
 			writeErr(w, http.StatusBadRequest, "agents are claude and codex")
 			return
 		}
-		plans = append(plans, plan{loopName(a, body.Repo), "build", a})
+		count[a]++
+		if count[a] > maxPerAgent {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("at most %d %s loops per repo", maxPerAgent, a))
+			return
+		}
+		who := a
+		if count[a] > 1 {
+			who = fmt.Sprint(a, count[a])
+		}
+		plans = append(plans, plan{loopName(who, body.Repo), "build", a})
 	}
 	if body.Review {
 		plans = append(plans, plan{loopName("review", body.Repo), "review", "codex"})
@@ -306,8 +321,10 @@ func (s *Server) handleStopLoop(w http.ResponseWriter, r *http.Request) {
 			claim = "wip:" + cmpOr(l.Scope, "full")
 		}
 		gh := harness.GH{Slug: l.Slug}
-		if err := gh.RemoveLabel(context.WithoutCancel(r.Context()), l.Issue, claim); err != nil {
-			log.Printf("loops: could not release %s#%d: %v", l.Slug, l.Issue, err)
+		for _, label := range []string{claim, "by:" + name} {
+			if err := gh.RemoveLabel(context.WithoutCancel(r.Context()), l.Issue, label); err != nil {
+				log.Printf("loops: could not release %s#%d: %v", l.Slug, l.Issue, err)
+			}
 		}
 	}
 	s.audit(r, "loop-stop", name, "now")

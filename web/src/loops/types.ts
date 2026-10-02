@@ -62,7 +62,9 @@ export interface HarnessItem {
 export function loopWho(l: Loop): string {
   if (l.role === 'review') return 'review'
   if (l.role === 'supervise') return `supervisor · ${l.agent}`
-  return l.agent
+  // loop-claude2-<repo> is the second Claude loop on the repo.
+  const n = /^loop-[a-z]+?(\d+)-/.exec(l.name)?.[1]
+  return n ? `${l.agent} ${n}` : l.agent
 }
 
 /** The dot colour for a loop: problems stand out, idle is calm. */
