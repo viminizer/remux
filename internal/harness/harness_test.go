@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func item(n int, labels ...string) Item {
@@ -244,10 +245,10 @@ func TestPromptConflict(t *testing.T) {
 func TestVerdict(t *testing.T) {
 	for in, want := range map[string]string{
 		"RESOLVED\nRebased and pushed.": "RESOLVED",
-		"**ESCALATED**: needs Kevin":     "ESCALATED",
-		"resolved. fixed the push":       "RESOLVED",
-		"":                               "",
-		"I think this is resolved":       "I",
+		"**ESCALATED**: needs Kevin":    "ESCALATED",
+		"resolved. fixed the push":      "RESOLVED",
+		"":                              "",
+		"I think this is resolved":      "I",
 	} {
 		if got := verdict(in); got != want {
 			t.Errorf("verdict(%q) = %q, want %q", in, got, want)
@@ -279,5 +280,29 @@ func TestSettleReviewsPRWhenIssueBlocked(t *testing.T) {
 	}
 	if !strings.Contains(got, "DELETE repos/o/r/issues/5/labels/ready") {
 		t.Errorf("the blocked issue kept its ready label:\n%s", got)
+	}
+}
+
+func TestUsageLimit(t *testing.T) {
+	seoul := time.FixedZone("KST", 9*3600)
+	now := time.Date(2026, 10, 2, 12, 56, 0, 0, seoul)
+	cases := []struct {
+		out  string
+		want time.Time
+	}{
+		{"You've hit your session limit · resets 1:50pm (Asia/Seoul)", time.Date(2026, 10, 2, 13, 50, 0, 0, seoul)},
+		{"You've hit your session limit · resets 3am", time.Date(2026, 10, 3, 3, 0, 0, 0, seoul)},
+		{"You've hit your usage limit. Upgrade to Pro or try again at 3:53 AM.", time.Date(2026, 10, 3, 3, 53, 0, 0, seoul)},
+		{"You've hit your usage limit. Upgrade to Pro or try again in 1 day 2 hours 5 minutes.", now.Add(26*time.Hour + 5*time.Minute)},
+		{"Usage limit reached", now.Add(LimitWait)},
+	}
+	for _, c := range cases {
+		got, ok := usageLimit(c.out, now)
+		if !ok || !got.Equal(c.want) {
+			t.Errorf("usageLimit(%q) = %v, %v; want %v", c.out, got, ok, c.want)
+		}
+	}
+	if _, ok := usageLimit("go test ./... FAIL: TestRateLimiter", now); ok {
+		t.Error("an ordinary test failure is not a usage limit")
 	}
 }

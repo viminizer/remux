@@ -85,6 +85,9 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 	}))
 
+	if l.limited() {
+		return true, nil // still needs-review; tried again after the reset
+	}
 	// The review is posted by the loop, not left to the agent, so every
 	// reviewed PR says what the review found - "no real issues" too. It goes
 	// in as a GitHub review, so it sits in the PR's review timeline.

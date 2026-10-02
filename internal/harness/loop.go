@@ -35,7 +35,12 @@ type Loop struct {
 
 	labels     map[string]bool // the repo's labels, for mirroring its status:* ones
 	lastTriage time.Time
+	limit      time.Time // set when the last agent run ended on a usage limit
 }
+
+// limited reports whether the last agent run ran out of usage. Callers skip
+// everything they would do with its result: there is none.
+func (l *Loop) limited() bool { return !l.limit.IsZero() }
 
 // Idle is how long a loop waits before looking again when there is no work.
 var Idle = time.Minute
@@ -84,6 +89,7 @@ func (l *Loop) Run(ctx context.Context) error {
 		}
 
 		var did bool
+		l.limit = time.Time{}
 		switch l.Role {
 		case "review":
 			did, err = l.reviewOnce(ctx)
@@ -92,6 +98,16 @@ func (l *Loop) Run(ctx context.Context) error {
 		default:
 			l.unblock(ctx)
 			did, err = l.buildOnce(ctx)
+		}
+		if l.limited() {
+			msg := "usage limit, back at " + l.limit.Format("15:04")
+			if time.Until(l.limit) > 20*time.Hour {
+				msg = "usage limit, back " + l.limit.Format("Mon 15:04")
+			}
+			log.Printf("%s", msg)
+			l.state(ctx, "blocked", msg)
+			sleep(ctx, time.Until(l.limit)+time.Minute)
+			continue
 		}
 		switch {
 		case err != nil:
@@ -226,6 +242,11 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 	}))
 
+	if l.limited() {
+		// Back as it was: still ready, and its status back from in-progress.
+		l.mirrorN(ctx, n, "ready")
+		return true, nil
+	}
 	// What the agent left behind decides what happens next. Labels are read
 	// fresh: the agent changed them during the run.
 	after, err := l.gh.Issue(ctx, n)
@@ -471,14 +492,21 @@ func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = wt
 	cmd.Stdin = strings.NewReader(prompt)
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out), os.Stderr
+	var out, all bytes.Buffer
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out, &all), io.MultiWriter(os.Stderr, &all)
 	code := 0
 	if err := cmd.Run(); err != nil {
 		log.Printf("agent: %v", err)
 		code = -1
 		if ee, ok := err.(*exec.ExitError); ok {
 			code = ee.ExitCode()
+		}
+	}
+	// Only a failed run is checked, and only its end: an agent writing about
+	// rate limits in the code it works on must not read as being out of usage.
+	if code != 0 {
+		if until, ok := usageLimit(tail(all.String(), 40), time.Now()); ok {
+			l.limit = until
 		}
 	}
 	last := out.String()

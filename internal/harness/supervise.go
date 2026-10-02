@@ -107,6 +107,9 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 	prompt += fmt.Sprintf("\n# The %s\n\n%s\n", what, strings.TrimSpace(thread))
 
 	_, last := l.agent(ctx, l.Repo, prompt)
+	if l.limited() {
+		return true, nil // still needs-human, not escalated
+	}
 
 	if verdict(last) == "RESOLVED" {
 		next := "ready"
