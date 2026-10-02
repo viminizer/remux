@@ -81,9 +81,12 @@ func (l *Loop) Run(ctx context.Context) error {
 		}
 
 		var did bool
-		if l.Role == "review" {
+		switch l.Role {
+		case "review":
 			did, err = l.reviewOnce(ctx)
-		} else {
+		case "supervise":
+			did, err = l.superviseOnce(ctx)
+		default:
 			l.unblock(ctx)
 			did, err = l.buildOnce(ctx)
 		}
@@ -500,6 +503,9 @@ func (l *Loop) working(ctx context.Context, n int, title string) {
 // event records one of the three things worth a push: stuck, merged, sent.
 // The server watches the option and notifies on each new value.
 func (l *Loop) event(ctx context.Context, kind string, n int, title string) {
+	if kind == "stuck" && l.Role != "supervise" && l.supervised(ctx) {
+		return
+	}
 	l.opt(ctx, "@loop_event", fmt.Sprintf("%d %s %d %s", time.Now().UnixNano(), kind, n,
 		strings.ReplaceAll(title, "|~|", "")))
 }

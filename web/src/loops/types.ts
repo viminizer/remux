@@ -2,7 +2,7 @@
 export interface Loop {
   name: string
   pane: string
-  role: 'build' | 'review' | ''
+  role: 'build' | 'review' | 'supervise' | 'chat' | ''
   agent: 'claude' | 'codex' | ''
   repo: string
   slug: string
@@ -28,6 +28,7 @@ export interface LoopStart {
   repo: string
   agents: ('claude' | 'codex')[]
   review: boolean
+  supervise: boolean
   scope: string
   instructions: string
   instrMode: 'add' | 'replace'
@@ -51,9 +52,17 @@ export interface HarnessItem {
   kind: 'issue' | 'pr'
   title: string
   url: string
-  why: 'stuck' | 'supervisor'
+  why: 'stuck' | 'checking' | 'supervisor'
   question?: string
   options?: string[]
+}
+
+/** What a loop is called on its card: its role, or its agent for a build loop. */
+export function loopWho(l: Loop): string {
+  if (l.role === 'review') return 'review'
+  if (l.role === 'supervise') return 'supervisor'
+  if (l.role === 'chat') return 'ask'
+  return l.agent
 }
 
 /** The dot colour for a loop: problems stand out, idle is calm. */

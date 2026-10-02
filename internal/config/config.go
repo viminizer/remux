@@ -83,6 +83,7 @@ type LoopStart struct {
 	Repo         string   `json:"repo"`
 	Agents       []string `json:"agents"`
 	Review       bool     `json:"review"`
+	Supervise    bool     `json:"supervise"`
 	Scope        string   `json:"scope"`
 	Instructions string   `json:"instructions"`
 	InstrMode    string   `json:"instrMode"`

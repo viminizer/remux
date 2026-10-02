@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../api'
 import type { Loop } from './types'
-import { itemURL, loopDot, project, since } from './types'
+import { itemURL, loopDot, loopWho, project, since } from './types'
 
 /**
  * One loop: what it is on, its instructions, and the last lines of its log.
@@ -81,7 +81,7 @@ export function LoopDetail({
           ←
         </button>
         <h2>
-          {loop.role === 'review' ? 'review' : loop.agent} · {project(loop)}
+          {loopWho(loop)} · {project(loop)}
           <small>
             <span className={`dot ${loopDot(loop)}`} /> {loop.state || 'starting'} · {since(loop.since)}
           </small>
@@ -117,7 +117,7 @@ export function LoopDetail({
           <h3>Instructions</h3>
           {editing ? (
             <div className="card loop-form">
-              {loop.role !== 'review' && (
+              {loop.role === 'build' && (
                 <div className="field">
                   <label>Scope name</label>
                   <input value={scope} onChange={(e) => setScope(e.target.value)} spellCheck={false} autoCapitalize="off" />
@@ -143,7 +143,7 @@ export function LoopDetail({
                 <span className="lbl">
                   {loop.instructions || <span className="c-dim">None. Project defaults only.</span>}
                   <small>
-                    {loop.role !== 'review' && `scope ${loop.scope || 'full'} · `}
+                    {loop.role === 'build' && `scope ${loop.scope || 'full'} · `}
                     {loop.instrMode === 'replace' ? 'replaces' : 'adds to'} project defaults
                   </small>
                 </span>

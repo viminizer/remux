@@ -1,5 +1,5 @@
 import type { HarnessItem, Loop } from './types'
-import { loopDot, project, since } from './types'
+import { loopDot, loopWho, project, since } from './types'
 
 /**
  * The agent loops: an overlay at #/loops, like the GitHub screen.
@@ -20,6 +20,7 @@ export function LoopsScreen({
   onOpenLoop,
   onOpenItem,
   onStart,
+  onAsk,
 }: {
   tab: 'loops' | 'inbox'
   loops: Loop[] | null
@@ -32,6 +33,7 @@ export function LoopsScreen({
   onOpenLoop: (l: Loop) => void
   onOpenItem: (it: HarnessItem) => void
   onStart: () => void
+  onAsk: () => void
 }) {
   const stuck = inbox?.filter((it) => it.why === 'stuck').length ?? 0
   return (
@@ -92,18 +94,24 @@ export function LoopsScreen({
       )}
 
       <div className="foot-bar">
-        <button className="go" onClick={onStart}>
-          ✚ Start loop
-        </button>
+        <div className="foot-row">
+          <button className="go ghost" onClick={onAsk}>
+            Ask the supervisor
+          </button>
+          <button className="go" onClick={onStart}>
+            ✚ Start loop
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
 function LoopCard({ loop: l, onOpen }: { loop: Loop; onOpen: () => void }) {
-  const who = l.role === 'review' ? 'review' : l.agent
+  const who = loopWho(l)
   let what: string
   if (l.state === 'working') what = `#${l.issue} ${l.title}`
+  else if (l.role === 'chat') what = 'tap to ask about the loops'
   else if (l.state === 'triaging') what = 'finding issues that can start'
   else if (l.state === 'blocked') what = l.note || 'blocked'
   else what = 'idle · no ready issues'
@@ -121,7 +129,7 @@ function LoopCard({ loop: l, onOpen }: { loop: Loop; onOpen: () => void }) {
         </span>
         <span className="st loop-meta">
           {since(l.since)}
-          {l.role !== 'review' && ` · ${l.scope || 'full'}`}
+          {l.role === 'build' && ` · ${l.scope || 'full'}`}
           {l.stop && ' · stopping after this issue'}
         </span>
       </span>
@@ -132,9 +140,10 @@ function LoopCard({ loop: l, onOpen }: { loop: Loop; onOpen: () => void }) {
 
 function InboxRow({ item, onOpen }: { item: HarnessItem; onOpen: () => void }) {
   const stuck = item.why === 'stuck'
+  const checking = item.why === 'checking'
   return (
     <button className="repo-card" onClick={onOpen}>
-      <span className="av">{stuck ? '?' : '→'}</span>
+      <span className="av">{stuck ? '?' : checking ? '…' : '→'}</span>
       <span className="mid">
         <span className="nm">
           <span className="owner">
@@ -143,9 +152,13 @@ function InboxRow({ item, onOpen }: { item: HarnessItem; onOpen: () => void }) {
           {item.title}
         </span>
         <span className="st">
-          <span className={`dot ${stuck ? 'waiting' : 'stale'}`} />
+          <span className={`dot ${stuck ? 'waiting' : checking ? 'working' : 'stale'}`} />
           <span className="loop-what">
-            {stuck ? item.question || 'Stuck - open to see why' : 'With your supervisor'}
+            {stuck
+              ? item.question || 'Stuck - open to see why'
+              : checking
+                ? 'The supervisor is checking this. You only hear if it needs you.'
+                : 'With your supervisor'}
           </span>
         </span>
       </span>

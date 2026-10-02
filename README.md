@@ -209,6 +209,19 @@ The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user
 can, so only start loops on repos whose issues you trust.
 
+**The supervisor.** Turn on **Supervisor** when you start loops, and a
+supervise loop takes every `needs-human` item before you do. It fixes what the
+loops got stuck on (a failed push, a conflict, a failing test) and answers an
+agent's question only when the issue, the decision log, the docs or the code
+clearly decide it. Everything else it passes to you as a plain-English question
+with its recommendation, and labels it `escalated`. While it runs, the "stuck"
+push only fires for what it passes on; the Inbox shows the rest as "the
+supervisor is checking this".
+
+**Ask the supervisor** on the Loops screen opens a Claude session that knows
+how the loops work, as an ordinary pane. Ask it anything: what a loop is doing,
+why a PR did not merge, what to do about an item.
+
 A stuck agent pushes "An agent is stuck". The notification opens the question
 with its options as buttons, and **Send and resume** posts your answer and puts
 the item back in the queue. The other two pushes are a merged PR and a company

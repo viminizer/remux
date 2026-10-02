@@ -240,3 +240,26 @@ func TestPromptConflict(t *testing.T) {
 		t.Error("a clean branch must not mention a conflict")
 	}
 }
+
+func TestVerdict(t *testing.T) {
+	for in, want := range map[string]string{
+		"RESOLVED\nRebased and pushed.": "RESOLVED",
+		"**ESCALATED**: needs Kevin":     "ESCALATED",
+		"resolved. fixed the push":       "RESOLVED",
+		"":                               "",
+		"I think this is resolved":       "I",
+	} {
+		if got := verdict(in); got != want {
+			t.Errorf("verdict(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestBriefing(t *testing.T) {
+	b := Briefing([]string{"viminizer/educenter  /Users/mac/dev/envoy/educenter"})
+	for _, want := range []string{"viminizer/educenter", "Never run tmux attach", "loop-*", "short sentences"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("briefing is missing %q", want)
+		}
+	}
+}

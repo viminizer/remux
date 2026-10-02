@@ -20,6 +20,7 @@ var Labels = []struct{ Name, Color, Desc string }{
 	{"blocked", "fbca04", "Waiting for its blocker issues to close"},
 	{"needs-review", "1d76db", "Draft PR waiting for the Codex review loop"},
 	{"needs-human", "b60205", "An agent is stuck. One short question in a comment."},
+	{"escalated", "5319e7", "The supervisor passed this to Kevin"},
 }
 
 // GH runs gh against one repo.

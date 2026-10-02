@@ -37,6 +37,7 @@ func (s *Server) loopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/loops/{name}", s.handleStopLoop)
 	mux.HandleFunc("PUT /api/loops/presets", s.handlePutPresets)
 	mux.HandleFunc("GET /api/harness/inbox", s.handleHarnessInbox)
+	mux.HandleFunc("POST /api/loops/supervisor", s.handleSupervisor)
 	mux.HandleFunc("POST /api/harness/resume", s.handleResume)
 }
 
@@ -161,6 +162,9 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Review {
 		plans = append(plans, plan{loopName("review", body.Repo), "review", "codex"})
+	}
+	if body.Supervise {
+		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", "claude"})
 	}
 	if len(plans) == 0 {
 		writeErr(w, http.StatusBadRequest, "pick at least one agent")
@@ -330,6 +334,44 @@ func (s *Server) handlePutPresets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, orEmpty(presets))
 }
 
+// ── the supervisor to talk to ─────────────────────────────────────────────
+
+// supervisorSession is the one chat supervisor, for every repo.
+const supervisorSession = "loop-supervisor"
+
+// handleSupervisor opens the supervisor Kevin talks to: an interactive Claude
+// session in its own loop-* session, briefed on the loops. The phone shows it
+// as an ordinary pane, so there is no chat screen to build. It is started on
+// first use and reused after that.
+func (s *Server) handleSupervisor(w http.ResponseWriter, r *http.Request) {
+	if l, _ := s.loopByName(r.Context(), supervisorSession); l != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"pane": l.Pane})
+		return
+	}
+	s.mu.Lock()
+	var repos []string
+	for _, h := range s.Cfg.HarnessRepos {
+		repos = append(repos, h.Slug+"  "+h.Path)
+	}
+	s.mu.Unlock()
+	home, _ := os.UserHomeDir()
+	argv := []string{"claude", "--dangerously-skip-permissions", "--append-system-prompt", harness.Briefing(repos)}
+	if err := s.Tmux.NewLoopSession(r.Context(), supervisorSession, home, argv); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Labelled so the Loops screen can tell it from the loops it supervises.
+	s.Tmux.SetLoopOption(r.Context(), supervisorSession, "@loop_role", "chat")
+	s.Tmux.SetLoopOption(r.Context(), supervisorSession, "@loop_state", "idle")
+	s.audit(r, "loop-start", supervisorSession, "")
+	l, _ := s.loopByName(r.Context(), supervisorSession)
+	if l == nil {
+		writeErr(w, http.StatusInternalServerError, "the supervisor session exited at once")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pane": l.Pane})
+}
+
 // ── inbox ─────────────────────────────────────────────────────────────────
 
 // InboxItem is one thing that needs Kevin: a stuck agent's question, or a
@@ -340,7 +382,10 @@ type InboxItem struct {
 	Kind     string   `json:"kind"` // issue or pr
 	Title    string   `json:"title"`
 	URL      string   `json:"url"`
-	Why      string   `json:"why"` // stuck or supervisor
+	// stuck waits on Kevin; checking is with the supervise loop, which will
+	// pass it on only if it needs him; supervisor is a company PR with his
+	// human supervisor.
+	Why      string   `json:"why"`
 	Question string   `json:"question,omitempty"`
 	Options  []string `json:"options,omitempty"`
 }
@@ -363,6 +408,14 @@ func (s *Server) handleHarnessInbox(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	repos := slices.Clone(s.Cfg.HarnessRepos)
 	s.mu.Unlock()
+	supervised := map[string]bool{}
+	if loops, err := s.Tmux.Loops(r.Context()); err == nil {
+		for _, l := range loops {
+			if l.Role == "supervise" {
+				supervised[l.Slug] = true
+			}
+		}
+	}
 
 	var (
 		mu    sync.Mutex
@@ -374,7 +427,7 @@ func (s *Server) handleHarnessInbox(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, err := repoInbox(r.Context(), repo.Slug)
+			got, err := repoInbox(r.Context(), repo.Slug, supervised[repo.Slug])
 			mu.Lock()
 			defer mu.Unlock()
 			items = append(items, got...)
@@ -385,11 +438,12 @@ func (s *Server) handleHarnessInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 	// Stuck first: those are the ones waiting on him.
-	sort.SliceStable(items, func(i, j int) bool { return items[i].Why == "stuck" && items[j].Why != "stuck" })
+	rank := map[string]int{"stuck": 0, "checking": 1, "supervisor": 2}
+	sort.SliceStable(items, func(i, j int) bool { return rank[items[i].Why] < rank[items[j].Why] })
 	writeJSON(w, http.StatusOK, map[string]any{"items": orEmpty(items), "errors": orEmpty(errs)})
 }
 
-func repoInbox(ctx context.Context, slug string) ([]InboxItem, error) {
+func repoInbox(ctx context.Context, slug string, supervised bool) ([]InboxItem, error) {
 	g := harness.GH{Slug: slug}
 	var items []InboxItem
 	for _, kind := range []string{"issue", "pr"} {
@@ -400,8 +454,12 @@ func repoInbox(ctx context.Context, slug string) ([]InboxItem, error) {
 		}
 		for _, t := range list {
 			q, opts := parseQuestion(t.Comments)
+			why := "stuck"
+			if supervised && !hasLabel(t.Labels, "escalated") {
+				why = "checking"
+			}
 			items = append(items, InboxItem{Slug: slug, Number: t.Number, Kind: kind, Title: t.Title,
-				URL: t.URL, Why: "stuck", Question: q, Options: opts})
+				URL: t.URL, Why: why, Question: q, Options: opts})
 		}
 	}
 	// A harness pull request that is open, out of draft, and waiting on
@@ -498,6 +556,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	g.RemoveLabel(ctx, body.Number, "escalated")
 	s.audit(r, "resume", fmt.Sprintf("%s#%d", body.Slug, body.Number), truncate(body.Text, 400))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

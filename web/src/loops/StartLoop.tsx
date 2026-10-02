@@ -31,6 +31,7 @@ export function StartLoop({
   const [claude, setClaude] = useState(last ? last.agents.includes('claude') : true)
   const [codex, setCodex] = useState(last ? last.agents.includes('codex') : false)
   const [review, setReview] = useState(last ? last.review : true)
+  const [supervise, setSupervise] = useState(last ? !!last.supervise : true)
   const [scope, setScope] = useState(last?.scope ?? 'full')
   const [instr, setInstr] = useState(last?.instructions ?? '')
   const [mode, setMode] = useState<'add' | 'replace'>(last?.instrMode ?? 'add')
@@ -48,7 +49,7 @@ export function StartLoop({
   }
   const target = repo === OTHER ? path.trim() : repo
   const agents = [...(claude ? ['claude' as const] : []), ...(codex ? ['codex' as const] : [])]
-  const ok = !!target && (agents.length > 0 || review) && !busy
+  const ok = !!target && (agents.length > 0 || review || supervise) && !busy
 
   return (
     <div className="screen on gh-screen">
@@ -118,6 +119,9 @@ export function StartLoop({
             <button className={review ? 'on' : ''} onClick={() => setReview(!review)}>
               Review
             </button>
+            <button className={supervise ? 'on' : ''} onClick={() => setSupervise(!supervise)}>
+              Supervisor
+            </button>
           </div>
         </div>
 
@@ -153,7 +157,7 @@ export function StartLoop({
           disabled={!ok}
           onClick={() => {
             setBusy(true)
-            void onStart({ repo: target, agents, review, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
+            void onStart({ repo: target, agents, review, supervise, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
               () => setBusy(false),
             )
           }}

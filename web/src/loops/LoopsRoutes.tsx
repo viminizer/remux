@@ -130,7 +130,7 @@ export function LoopsRoutes({
   }
 
   if (route.name === 'loopQ') {
-    const item = inbox?.find((it) => it.slug === route.slug && it.number === route.number && it.why === 'stuck') ?? null
+    const item = inbox?.find((it) => it.slug === route.slug && it.number === route.number && it.why !== 'supervisor') ?? null
     return (
       <AnswerScreen
         slug={route.slug}
@@ -164,11 +164,20 @@ export function LoopsRoutes({
       onTab={(t) => go({ name: 'loops', tab: t })}
       onBack={onClose}
       onRefresh={() => void (tab === 'inbox' ? loadInbox() : refresh())}
-      onOpenLoop={(l) => go({ name: 'loop', loop: l.name })}
+      onOpenLoop={(l) => (l.role === 'chat' ? go({ name: 'pane', pane: l.pane }) : go({ name: 'loop', loop: l.name }))}
       onOpenItem={(it) =>
-        it.why === 'stuck' ? go({ name: 'loopQ', slug: it.slug, number: it.number }) : window.open(it.url, '_blank')
+        it.why === 'supervisor' ? window.open(it.url, '_blank') : go({ name: 'loopQ', slug: it.slug, number: it.number })
       }
       onStart={() => go({ name: 'loopStart' })}
+      onAsk={async () => {
+        try {
+          const r = await api.supervisor()
+          await refresh()
+          go({ name: 'pane', pane: r.pane })
+        } catch (e) {
+          say(e)
+        }
+      }}
     />
   )
 }
