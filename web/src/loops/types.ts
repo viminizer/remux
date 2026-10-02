@@ -29,6 +29,7 @@ export interface LoopStart {
   agents: ('claude' | 'codex')[]
   review: boolean
   supervise: boolean
+  superviseAgent?: 'claude' | 'codex'
   scope: string
   instructions: string
   instrMode: 'add' | 'replace'
@@ -60,8 +61,8 @@ export interface HarnessItem {
 /** What a loop is called on its card: its role, or its agent for a build loop. */
 export function loopWho(l: Loop): string {
   if (l.role === 'review') return 'review'
-  if (l.role === 'supervise') return 'supervisor'
-  if (l.role === 'chat') return 'ask'
+  if (l.role === 'supervise') return `supervisor · ${l.agent}`
+  if (l.role === 'chat') return `ask · ${l.agent || 'claude'}`
   return l.agent
 }
 

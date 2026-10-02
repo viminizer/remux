@@ -84,6 +84,9 @@ type LoopStart struct {
 	Agents       []string `json:"agents"`
 	Review       bool     `json:"review"`
 	Supervise    bool     `json:"supervise"`
+	// SuperviseAgent is claude or codex, for the supervise loop and the
+	// supervisor Kevin talks to. Empty means claude.
+	SuperviseAgent string `json:"superviseAgent,omitempty"`
 	Scope        string   `json:"scope"`
 	Instructions string   `json:"instructions"`
 	InstrMode    string   `json:"instrMode"`

@@ -169,9 +169,9 @@ export function LoopsRoutes({
         it.why === 'supervisor' ? window.open(it.url, '_blank') : go({ name: 'loopQ', slug: it.slug, number: it.number })
       }
       onStart={() => go({ name: 'loopStart' })}
-      onAsk={async () => {
+      onAsk={async (agent) => {
         try {
-          const r = await api.supervisor()
+          const r = await api.supervisor(agent)
           await refresh()
           go({ name: 'pane', pane: r.pane })
         } catch (e) {

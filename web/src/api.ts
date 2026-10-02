@@ -212,7 +212,8 @@ export const api = {
     call<Preset[]>('/api/loops/presets', { method: 'PUT', body: JSON.stringify(presets) }),
 
   /** Opens (or reuses) the supervisor Kevin talks to, and returns its pane. */
-  supervisor: () => call<{ pane: string }>('/api/loops/supervisor', { method: 'POST' }),
+  supervisor: (agent: 'claude' | 'codex') =>
+    call<{ pane: string }>(`/api/loops/supervisor?agent=${agent}`, { method: 'POST' }),
 
   // Reads GitHub for every harness repo, so it is fetched when the Inbox
   // opens, never polled.

@@ -32,6 +32,7 @@ export function StartLoop({
   const [codex, setCodex] = useState(last ? last.agents.includes('codex') : false)
   const [review, setReview] = useState(last ? last.review : true)
   const [supervise, setSupervise] = useState(last ? !!last.supervise : true)
+  const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(last?.superviseAgent ?? 'claude')
   const [scope, setScope] = useState(last?.scope ?? 'full')
   const [instr, setInstr] = useState(last?.instructions ?? '')
   const [mode, setMode] = useState<'add' | 'replace'>(last?.instrMode ?? 'add')
@@ -125,6 +126,20 @@ export function StartLoop({
           </div>
         </div>
 
+        {supervise && (
+          <div className="field">
+            <label>Supervisor agent</label>
+            <div className="seg">
+              <button className={supAgent === 'claude' ? 'on' : ''} onClick={() => setSupAgent('claude')}>
+                Claude
+              </button>
+              <button className={supAgent === 'codex' ? 'on' : ''} onClick={() => setSupAgent('codex')}>
+                Codex
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="field">
           <label>Scope name</label>
           <input value={scope} onChange={(e) => setScope(e.target.value)} spellCheck={false} autoCapitalize="off" />
@@ -157,7 +172,7 @@ export function StartLoop({
           disabled={!ok}
           onClick={() => {
             setBusy(true)
-            void onStart({ repo: target, agents, review, supervise, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
+            void onStart({ repo: target, agents, review, supervise, superviseAgent: supAgent, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
               () => setBusy(false),
             )
           }}

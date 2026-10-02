@@ -164,7 +164,10 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		plans = append(plans, plan{loopName("review", body.Repo), "review", "codex"})
 	}
 	if body.Supervise {
-		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", "claude"})
+		if body.SuperviseAgent != "codex" {
+			body.SuperviseAgent = "claude"
+		}
+		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", body.SuperviseAgent})
 	}
 	if len(plans) == 0 {
 		writeErr(w, http.StatusBadRequest, "pick at least one agent")
@@ -343,10 +346,23 @@ const supervisorSession = "loop-supervisor"
 // session in its own loop-* session, briefed on the loops. The phone shows it
 // as an ordinary pane, so there is no chat screen to build. It is started on
 // first use and reused after that.
+//
+// ?agent=claude or codex picks who answers. An open session with that agent
+// is reused; asking for the other one replaces it.
 func (s *Server) handleSupervisor(w http.ResponseWriter, r *http.Request) {
+	agent := r.URL.Query().Get("agent")
+	if agent != "codex" {
+		agent = "claude"
+	}
 	if l, _ := s.loopByName(r.Context(), supervisorSession); l != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"pane": l.Pane})
-		return
+		if l.Agent == agent || l.Agent == "" && agent == "claude" {
+			writeJSON(w, http.StatusOK, map[string]any{"pane": l.Pane})
+			return
+		}
+		if err := s.Tmux.KillLoop(r.Context(), supervisorSession); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	s.mu.Lock()
 	var repos []string
@@ -355,13 +371,20 @@ func (s *Server) handleSupervisor(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	home, _ := os.UserHomeDir()
-	argv := []string{"claude", "--dangerously-skip-permissions", "--append-system-prompt", harness.Briefing(repos)}
+	brief := harness.Briefing(repos)
+	argv := []string{"claude", "--dangerously-skip-permissions", "--append-system-prompt", brief}
+	if agent == "codex" {
+		// Codex has no system-prompt flag; developer_instructions is its
+		// config key for the same thing, here as a TOML literal string.
+		argv = codexChat(home, brief)
+	}
 	if err := s.Tmux.NewLoopSession(r.Context(), supervisorSession, home, argv); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// Labelled so the Loops screen can tell it from the loops it supervises.
 	s.Tmux.SetLoopOption(r.Context(), supervisorSession, "@loop_role", "chat")
+	s.Tmux.SetLoopOption(r.Context(), supervisorSession, "@loop_agent", agent)
 	s.Tmux.SetLoopOption(r.Context(), supervisorSession, "@loop_state", "idle")
 	s.audit(r, "loop-start", supervisorSession, "")
 	l, _ := s.loopByName(r.Context(), supervisorSession)
@@ -370,6 +393,18 @@ func (s *Server) handleSupervisor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"pane": l.Pane})
+}
+
+// codexChat is the command for an interactive Codex supervisor. Two startup
+// prompts would otherwise sit on its screen waiting for a key - "update
+// available" and "trust this folder?" - so both are answered here, for this
+// session only.
+func codexChat(home, brief string) []string {
+	tq := strings.Repeat("'", 3)
+	return []string{"codex", "--dangerously-bypass-approvals-and-sandbox",
+		"-c", "check_for_update_on_startup=false",
+		"-c", fmt.Sprintf("projects={%q={trust_level=\"trusted\"}}", home),
+		"-c", "developer_instructions=" + tq + strings.ReplaceAll(brief, tq, "' ' '") + tq}
 }
 
 // ── inbox ─────────────────────────────────────────────────────────────────

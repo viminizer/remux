@@ -133,3 +133,16 @@ func TestLoopLifecycle(t *testing.T) {
 		t.Errorf("stopping a non-loop session must be refused, got %d", code)
 	}
 }
+
+func TestCodexChat(t *testing.T) {
+	got := strings.Join(codexChat("/Users/mac", "brief with ''' inside"), " ")
+	for _, want := range []string{
+		"check_for_update_on_startup=false",
+		`projects={"/Users/mac"={trust_level="trusted"}}`,
+		"developer_instructions='''brief with ' ' ' inside'''",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("codex chat command %q is missing %q", got, want)
+		}
+	}
+}

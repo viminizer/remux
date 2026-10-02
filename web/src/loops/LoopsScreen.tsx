@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import type { HarnessItem, Loop } from './types'
 import { loopDot, loopWho, project, since } from './types'
 
@@ -33,8 +35,10 @@ export function LoopsScreen({
   onOpenLoop: (l: Loop) => void
   onOpenItem: (it: HarnessItem) => void
   onStart: () => void
-  onAsk: () => void
+  onAsk: (agent: 'claude' | 'codex') => void
 }) {
+  const [asking, setAsking] = useState(false)
+  const chat = loops?.find((l) => l.role === 'chat')
   const stuck = inbox?.filter((it) => it.why === 'stuck').length ?? 0
   return (
     <div className="screen on gh-screen">
@@ -94,14 +98,31 @@ export function LoopsScreen({
       )}
 
       <div className="foot-bar">
-        <div className="foot-row">
-          <button className="go ghost" onClick={onAsk}>
-            Ask the supervisor
-          </button>
-          <button className="go" onClick={onStart}>
-            ✚ Start loop
-          </button>
-        </div>
+        {asking ? (
+          <>
+            <p className="sheet-note">Ask with which agent?</p>
+            <div className="foot-row">
+              {(['claude', 'codex'] as const).map((a) => (
+                <button key={a} className="go" onClick={() => { setAsking(false); onAsk(a) }}>
+                  {a === 'claude' ? 'Claude' : 'Codex'}
+                  {(chat?.agent || (chat ? 'claude' : '')) === a ? ' (open)' : ''}
+                </button>
+              ))}
+            </div>
+            <button className="cancel" onClick={() => setAsking(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <div className="foot-row">
+            <button className="go ghost" onClick={() => setAsking(true)}>
+              Ask the supervisor
+            </button>
+            <button className="go" onClick={onStart}>
+              ✚ Start loop
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
