@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -213,7 +214,7 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	code := l.agent(ctx, wt, Prompt(Run{
+	code, _ := l.agent(ctx, wt, Prompt(Run{
 		Role: "build", Slug: l.gh.Slug, Number: n, Branch: branch, Worktree: wt, Scope: scope,
 		Mode: l.set.Mode, DependsOn: dependsOn, Settings: l.set, Thread: thread,
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
@@ -412,9 +413,12 @@ func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
 // Both agents run with every permission granted, on the host. That was
 // Kevin's call: a fixed tool allowlist kept stopping the agents on ordinary
 // commands, and a loop that cannot run what it needs gets stuck instead.
-func (l *Loop) command(wt string) []string {
+//
+// last is a file Codex writes its final message to; Claude prints only its
+// final message, so its stdout is that already.
+func (l *Loop) command(wt, last string) []string {
 	if l.Agent == "codex" {
-		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-C", wt, "-"}
+		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-C", wt, "-o", last, "-"}
 	}
 	args := []string{"claude", "-p", "--dangerously-skip-permissions"}
 	for _, r := range l.set.References {
@@ -423,24 +427,39 @@ func (l *Loop) command(wt string) []string {
 	return args
 }
 
-// agent runs one agent process in wt and returns its exit code. Its output
-// goes to the loop's own pane, which is where the phone reads the log from.
-func (l *Loop) agent(ctx context.Context, wt, prompt string) int {
+// agent runs one agent process in wt and returns its exit code and its final
+// message. Its output goes to the loop's own pane, which is where the phone
+// reads the log from.
+func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 	ctx, cancel := context.WithTimeout(ctx, RunTimeout)
 	defer cancel()
-	argv := l.command(wt)
+	f, err := os.CreateTemp("", "remux-last-*.txt")
+	if err != nil {
+		return -1, ""
+	}
+	f.Close()
+	defer os.Remove(f.Name())
+
+	argv := l.command(wt, f.Name())
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = wt
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out), os.Stderr
+	code := 0
 	if err := cmd.Run(); err != nil {
 		log.Printf("agent: %v", err)
+		code = -1
 		if ee, ok := err.(*exec.ExitError); ok {
-			return ee.ExitCode()
+			code = ee.ExitCode()
 		}
-		return -1
 	}
-	return 0
+	last := out.String()
+	if l.Agent == "codex" {
+		b, _ := os.ReadFile(f.Name())
+		last = string(b)
+	}
+	return code, strings.TrimSpace(last)
 }
 
 // ── state ─────────────────────────────────────────────────────────────────

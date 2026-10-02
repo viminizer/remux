@@ -79,11 +79,20 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	l.agent(ctx, wt, Prompt(Run{
+	_, summary := l.agent(ctx, wt, Prompt(Run{
 		Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
 		Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 	}))
+
+	// The review comment is posted by the loop, not left to the agent, so
+	// every reviewed PR says what the review found - "no real issues" too.
+	if summary == "" {
+		summary = "The review finished, but the agent left no summary. See the loop's log."
+	}
+	if err := l.gh.Comment(ctx, n, "**Review**\n\n"+summary); err != nil {
+		log.Printf("review comment: %v", err)
+	}
 
 	after, err := l.gh.PR(ctx, n)
 	if err != nil {

@@ -113,11 +113,11 @@ func TestPromptOrder(t *testing.T) {
 
 func TestCommand(t *testing.T) {
 	l := &Loop{Agent: "claude", Repo: "/r", set: Settings{References: []string{"/ref"}}}
-	if c := strings.Join(l.command("/r/wt"), " "); c != "claude -p --dangerously-skip-permissions --add-dir /ref" {
+	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != "claude -p --dangerously-skip-permissions --add-dir /ref" {
 		t.Errorf("claude command = %q", c)
 	}
 	l.Agent = "codex"
-	if c := strings.Join(l.command("/r/wt"), " "); c != "codex exec --dangerously-bypass-approvals-and-sandbox -C /r/wt -" {
+	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != "codex exec --dangerously-bypass-approvals-and-sandbox -C /r/wt -o /tmp/last -" {
 		t.Errorf("codex command = %q", c)
 	}
 }

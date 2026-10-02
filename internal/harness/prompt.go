@@ -60,8 +60,9 @@ Your job in this run: review pull request #N once. You are on its branch, in its
 - Fix only real bugs: wrong behaviour, crashes, data loss, security holes, and anything
   that goes against the decision log. Ignore style, naming and small things.
 - One pass only. Commit your fixes and push the branch. Do not loop on fixes.
-- Leave one short comment on the pull request: what you found and what you fixed, or
-  "No real issues found."
+- Do not post a review comment yourself. End your run with a short summary of the
+  review: what you found and what you fixed, or "No real issues found." The loop posts
+  your final message on the pull request.
 - Do not merge and do not mark the pull request ready. The loop does that after the
   tests pass.`
 
