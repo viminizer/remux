@@ -196,6 +196,13 @@ func (g GH) Comment(ctx context.Context, n int, body string) error {
 	return err
 }
 
+// Review posts a review on a pull request. A comment review, because the loops
+// run as Kevin: GitHub refuses approve and request-changes on your own PR.
+func (g GH) Review(ctx context.Context, n int, body string) error {
+	_, err := g.run(ctx, "pr", "review", fmt.Sprint(n), "--comment", "--body", body)
+	return err
+}
+
 // BlockedBy lists the issues GitHub records as blocking n.
 func (g GH) BlockedBy(ctx context.Context, n int) ([]Item, error) {
 	var items []Item

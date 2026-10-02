@@ -85,12 +85,13 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 	}))
 
-	// The review comment is posted by the loop, not left to the agent, so
-	// every reviewed PR says what the review found - "no real issues" too.
+	// The review is posted by the loop, not left to the agent, so every
+	// reviewed PR says what the review found - "no real issues" too. It goes
+	// in as a GitHub review, so it sits in the PR's review timeline.
 	if summary == "" {
 		summary = "The review finished, but the agent left no summary. See the loop's log."
 	}
-	if err := l.gh.Comment(ctx, n, "**Review**\n\n"+summary); err != nil {
+	if err := l.gh.Review(ctx, n, summary); err != nil {
 		log.Printf("review comment: %v", err)
 	}
 
