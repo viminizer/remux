@@ -68,16 +68,17 @@ export function LoopsRoutes({
 
   if (route.name === 'loop') {
     const loop = data?.loops.find((l) => l.name === route.loop) ?? null
+    const home = { name: 'loops', tab: loop?.role === 'supervise' ? 'supervisor' : 'loops' } as const
     return (
       <LoopDetail
         loop={data ? loop : null}
-        onBack={() => go({ name: 'loops', tab: 'loops' })}
+        onBack={() => go(home)}
         onStop={async (when) => {
           try {
             const r = await api.stopLoop(route.loop, when)
             toast(r.when === 'after' ? 'stops after this issue' : 'stopped')
             await refresh()
-            if (r.when !== 'after') go({ name: 'loops', tab: 'loops' })
+            if (r.when !== 'after') go(home)
           } catch (e) {
             say(e)
           }

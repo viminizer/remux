@@ -6,9 +6,10 @@ import { loopDot, loopWho, project, since } from './types'
 /**
  * The agent loops: an overlay at #/loops, like the GitHub screen.
  *
- * Two tabs. Loops is one card per loop, problems first. Inbox is only what
- * needs Kevin: a stuck agent's question, or a company PR now with the
- * supervisor. The main button sits at the bottom, where a thumb is.
+ * Three tabs. Loops is the build and review loops, problems first.
+ * Supervisor is the supervise loops and the supervisor to talk to. Inbox is
+ * only what needs Kevin: a stuck agent's question, or a company PR now with
+ * the supervisor. The main button sits at the bottom, where a thumb is.
  */
 export function LoopsScreen({
   tab,
@@ -24,12 +25,12 @@ export function LoopsScreen({
   onStart,
   onAsk,
 }: {
-  tab: 'loops' | 'inbox'
+  tab: 'loops' | 'supervisor' | 'inbox'
   loops: Loop[] | null
   inbox: HarnessItem[] | null
   inboxErrors: string[]
   loading: boolean
-  onTab: (t: 'loops' | 'inbox') => void
+  onTab: (t: 'loops' | 'supervisor' | 'inbox') => void
   onBack: () => void
   onRefresh: () => void
   onOpenLoop: (l: Loop) => void
@@ -40,8 +41,9 @@ export function LoopsScreen({
   const [asking, setAsking] = useState(false)
   const chat = loops?.find((l) => l.role === 'chat')
   // The chat supervisor is a conversation, not a loop: it is reached through
-  // the Ask button and kept out of the list and its counts.
-  const work = loops?.filter((l) => l.role !== 'chat') ?? null
+  // the Ask button and kept out of the lists and their counts.
+  const work = loops?.filter((l) => l.role !== 'chat' && l.role !== 'supervise') ?? null
+  const sups = loops?.filter((l) => l.role === 'supervise') ?? null
   const stuck = inbox?.filter((it) => it.why === 'stuck').length ?? 0
   return (
     <div className="screen on gh-screen">
@@ -51,7 +53,7 @@ export function LoopsScreen({
         </button>
         <h2>
           Loops
-          <small>{work ? `${work.length} running` : 'reading…'}</small>
+          <small>{work && sups ? `${work.length + sups.length} running` : 'reading…'}</small>
         </h2>
         <button className={`iconbtn ${loading ? 'spin' : ''}`} onClick={onRefresh} aria-label="Refresh">
           ⟳
@@ -61,6 +63,9 @@ export function LoopsScreen({
       <div className="gh-seg">
         <button className={tab === 'loops' ? 'on' : ''} onClick={() => onTab('loops')}>
           Loops <span className="n">{work?.length ?? '·'}</span>
+        </button>
+        <button className={tab === 'supervisor' ? 'on' : ''} onClick={() => onTab('supervisor')}>
+          Supervisor <span className="n">{sups?.length ?? '·'}</span>
         </button>
         <button className={tab === 'inbox' ? 'on' : ''} onClick={() => onTab('inbox')}>
           Inbox <span className="n">{inbox ? stuck : '·'}</span>
@@ -77,6 +82,22 @@ export function LoopsScreen({
               <p>Start one and the agents take ready issues on their own.</p>
             </div>
           )}
+        </div>
+      ) : tab === 'supervisor' ? (
+        <div className="screen-body loops-body">
+          {sups?.map((l) => <LoopCard key={l.name} loop={l} onOpen={() => onOpenLoop(l)} />)}
+          {sups && !sups.length && (
+            <div className="msg" style={{ paddingBottom: 8 }}>
+              <div className="glyph">◎</div>
+              <h2>No supervisor running</h2>
+              <p>Turn on Supervisor when you start loops, and it takes stuck items before you do.</p>
+            </div>
+          )}
+          <p className="sheet-note" style={{ margin: '14px 6px' }}>
+            {chat
+              ? `Your chat with the supervisor (${chat.agent || 'claude'}) is open. Ask below to go back to it.`
+              : 'Ask the supervisor anything about the loops: what they are doing, why a PR did not merge.'}
+          </p>
         </div>
       ) : (
         <div className="screen-body loops-body">
@@ -116,15 +137,14 @@ export function LoopsScreen({
               Cancel
             </button>
           </>
+        ) : tab === 'supervisor' ? (
+          <button className="go" onClick={() => setAsking(true)}>
+            Ask the supervisor
+          </button>
         ) : (
-          <div className="foot-row">
-            <button className="go ghost" onClick={() => setAsking(true)}>
-              Ask the supervisor
-            </button>
-            <button className="go" onClick={onStart}>
-              ✚ Start loop
-            </button>
-          </div>
+          <button className="go" onClick={onStart}>
+            ✚ Start loop
+          </button>
         )}
       </div>
     </div>

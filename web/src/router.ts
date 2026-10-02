@@ -20,7 +20,7 @@ export type Route =
   | { name: 'gh' }
   | { name: 'ghRepo'; repo: string; tab: 'issues' | 'prs' }
   | { name: 'ghItem'; repo: string; number: number; kind: 'issue' | 'pr' }
-  | { name: 'loops'; tab: 'loops' | 'inbox' }
+  | { name: 'loops'; tab: 'loops' | 'supervisor' | 'inbox' }
   | { name: 'loop'; loop: string }
   | { name: 'loopStart' }
   | { name: 'loopQ'; slug: string; number: number }
@@ -45,6 +45,7 @@ function parse(hash: string): Route {
 
   if (h === '/loops') return { name: 'loops', tab: 'loops' }
   if (h === '/loops/inbox') return { name: 'loops', tab: 'inbox' }
+  if (h === '/loops/supervisor') return { name: 'loops', tab: 'supervisor' }
   if (h === '/loops/new') return { name: 'loopStart' }
   const loop = /^\/loops\/l\/([^/]+)$/.exec(h)
   if (loop) return { name: 'loop', loop: decodeURIComponent(loop[1]) }
@@ -86,7 +87,7 @@ function href(r: Route): string {
     case 'gh':
       return '#/gh'
     case 'loops':
-      return r.tab === 'inbox' ? '#/loops/inbox' : '#/loops'
+      return r.tab === 'loops' ? '#/loops' : `#/loops/${r.tab}`
     case 'loop':
       return `#/loops/l/${encodeURIComponent(r.loop)}`
     case 'loopStart':
