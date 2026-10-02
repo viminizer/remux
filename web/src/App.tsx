@@ -716,7 +716,7 @@ export default function App() {
           setDrawerOpen(false)
           go({ name: 'settings' })
         }}
-        loops={loops?.loops ?? null}
+        loops={loops?.loops.filter((l) => l.role !== 'chat') ?? null}
         onLoops={() => {
           setDrawerOpen(false)
           go({ name: 'loops', tab: 'loops' })

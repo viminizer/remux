@@ -62,7 +62,6 @@ export interface HarnessItem {
 export function loopWho(l: Loop): string {
   if (l.role === 'review') return 'review'
   if (l.role === 'supervise') return `supervisor · ${l.agent}`
-  if (l.role === 'chat') return `ask · ${l.agent || 'claude'}`
   return l.agent
 }
 

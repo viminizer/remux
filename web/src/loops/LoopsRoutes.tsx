@@ -164,7 +164,7 @@ export function LoopsRoutes({
       onTab={(t) => go({ name: 'loops', tab: t })}
       onBack={onClose}
       onRefresh={() => void (tab === 'inbox' ? loadInbox() : refresh())}
-      onOpenLoop={(l) => (l.role === 'chat' ? go({ name: 'pane', pane: l.pane }) : go({ name: 'loop', loop: l.name }))}
+      onOpenLoop={(l) => go({ name: 'loop', loop: l.name })}
       onOpenItem={(it) =>
         it.why === 'supervisor' ? window.open(it.url, '_blank') : go({ name: 'loopQ', slug: it.slug, number: it.number })
       }

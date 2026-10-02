@@ -39,6 +39,9 @@ export function LoopsScreen({
 }) {
   const [asking, setAsking] = useState(false)
   const chat = loops?.find((l) => l.role === 'chat')
+  // The chat supervisor is a conversation, not a loop: it is reached through
+  // the Ask button and kept out of the list and its counts.
+  const work = loops?.filter((l) => l.role !== 'chat') ?? null
   const stuck = inbox?.filter((it) => it.why === 'stuck').length ?? 0
   return (
     <div className="screen on gh-screen">
@@ -48,7 +51,7 @@ export function LoopsScreen({
         </button>
         <h2>
           Loops
-          <small>{loops ? `${loops.length} running` : 'reading…'}</small>
+          <small>{work ? `${work.length} running` : 'reading…'}</small>
         </h2>
         <button className={`iconbtn ${loading ? 'spin' : ''}`} onClick={onRefresh} aria-label="Refresh">
           ⟳
@@ -57,7 +60,7 @@ export function LoopsScreen({
 
       <div className="gh-seg">
         <button className={tab === 'loops' ? 'on' : ''} onClick={() => onTab('loops')}>
-          Loops <span className="n">{loops?.length ?? '·'}</span>
+          Loops <span className="n">{work?.length ?? '·'}</span>
         </button>
         <button className={tab === 'inbox' ? 'on' : ''} onClick={() => onTab('inbox')}>
           Inbox <span className="n">{inbox ? stuck : '·'}</span>
@@ -66,8 +69,8 @@ export function LoopsScreen({
 
       {tab === 'loops' ? (
         <div className="screen-body loops-body">
-          {loops?.map((l) => <LoopCard key={l.name} loop={l} onOpen={() => onOpenLoop(l)} />)}
-          {loops && !loops.length && (
+          {work?.map((l) => <LoopCard key={l.name} loop={l} onOpen={() => onOpenLoop(l)} />)}
+          {work && !work.length && (
             <div className="msg" style={{ paddingBottom: 8 }}>
               <div className="glyph">↻</div>
               <h2>No loops running</h2>
@@ -132,7 +135,6 @@ function LoopCard({ loop: l, onOpen }: { loop: Loop; onOpen: () => void }) {
   const who = loopWho(l)
   let what: string
   if (l.state === 'working') what = `#${l.issue} ${l.title}`
-  else if (l.role === 'chat') what = 'tap to ask about the loops'
   else if (l.state === 'triaging') what = 'finding issues that can start'
   else if (l.state === 'blocked') what = l.note || 'blocked'
   else what = 'idle · no ready issues'
