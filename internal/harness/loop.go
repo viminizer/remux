@@ -40,6 +40,9 @@ type Loop struct {
 // Idle is how long a loop waits before looking again when there is no work.
 var Idle = time.Minute
 
+// PRLag is the wait between looks for a PR the agent has just opened.
+var PRLag = 5 * time.Second
+
 // RunTimeout caps one agent run, so a hung agent cannot hold an issue forever.
 var RunTimeout = 90 * time.Minute
 
@@ -229,22 +232,43 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	pr, err := l.gh.PRForBranch(ctx, branch)
-	if err != nil {
-		return true, err
+	// GitHub's lists lag behind changes, so a PR opened seconds ago may not
+	// be listed yet. Asked a few times before concluding there is none.
+	var pr *Item
+	for try := 0; try < 3; try++ {
+		if pr, err = l.gh.PRForBranch(ctx, branch); err != nil {
+			return true, err
+		}
+		if pr != nil {
+			break
+		}
+		sleep(ctx, PRLag)
+	}
+	return true, l.settle(ctx, it.Title, after, pr, scope, wt, branch, code)
+}
+
+// settle acts on what a build run left behind: the issue's labels, read fresh,
+// and the PR for its branch, if any.
+func (l *Loop) settle(ctx context.Context, title string, after Item, pr *Item, scope, wt, branch string, code int) error {
+	n := after.Number
+	// A PR always goes to review, whatever else happened to the issue. On
+	// educenter five partial PRs sat unreviewed for hours: each agent opened
+	// a PR for the part it could do, then marked the rest of the issue
+	// blocked, and the blocked case came first and skipped the PR.
+	if pr != nil {
+		if err := l.gh.AddLabels(ctx, pr.Number, "needs-review"); err != nil {
+			return err
+		}
 	}
 	switch {
 	case after.Has("needs-human"):
 		l.unready(ctx, n)
 		l.mirror(ctx, after, "blocked")
-		l.event(ctx, "stuck", n, it.Title)
+		l.event(ctx, "stuck", n, title)
 	case after.Has("blocked"):
 		l.unready(ctx, n)
 		l.mirror(ctx, after, "blocked")
 	case pr != nil:
-		if err := l.gh.AddLabels(ctx, pr.Number, "needs-review"); err != nil {
-			return true, err
-		}
 		// A partial PR leaves the issue ready for the loops with other scopes.
 		if !after.Has("done:" + scope) {
 			l.unready(ctx, n)
@@ -258,11 +282,11 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		l.removeWorktree(ctx, wt, branch)
 	case after.State == "CLOSED":
 	default:
-		return true, l.stuck(ctx, n, it.Title, fmt.Sprintf(
+		return l.stuck(ctx, n, title, fmt.Sprintf(
 			"The run ended (exit code %d) without a pull request, a done:%s label, a blocker or a question. "+
 				"The worktree is kept at `%s`.", code, scope, wt))
 	}
-	return true, nil
+	return nil
 }
 
 // base is where a new branch starts. Normally the default branch. In company

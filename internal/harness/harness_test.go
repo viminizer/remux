@@ -263,3 +263,21 @@ func TestBriefing(t *testing.T) {
 		}
 	}
 }
+
+// A PR goes to review even when the agent also marked the rest of its issue
+// blocked - the case that left five educenter PRs unreviewed.
+func TestSettleReviewsPRWhenIssueBlocked(t *testing.T) {
+	calls := fakeGH(t)
+	l := &Loop{gh: GH{Slug: "o/r"}}
+	after := item(5, "blocked", "done:full")
+	if err := l.settle(context.Background(), "t", after, &Item{Number: 9}, "full", "/wt", "b", 0); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(calls(), "\n")
+	if !strings.Contains(got, "repos/o/r/issues/9/labels -f labels[]=needs-review") {
+		t.Errorf("the PR was not sent to review:\n%s", got)
+	}
+	if !strings.Contains(got, "DELETE repos/o/r/issues/5/labels/ready") {
+		t.Errorf("the blocked issue kept its ready label:\n%s", got)
+	}
+}
