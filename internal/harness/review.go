@@ -109,6 +109,9 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return true, err
 	}
+	if after.State == "MERGED" {
+		return true, l.cleanupMergedPR(ctx, after)
+	}
 	if after.Has("needs-human") {
 		l.gh.RemoveLabel(ctx, n, "needs-review")
 		l.event(ctx, "stuck", n, pr.Title)
@@ -122,6 +125,11 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 // the pull request move on - merged in personal mode, handed to the supervisor
 // in company mode.
 func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) error {
+	if pr, err := l.gh.PR(ctx, n); err != nil {
+		return err
+	} else if pr.State == "MERGED" {
+		return l.cleanupMergedPR(ctx, pr)
+	}
 	if dirty, _ := l.git(ctx, wt, "status", "--porcelain"); dirty != "" {
 		return l.stuck(ctx, n, title, "The review left uncommitted changes in `"+wt+"`.")
 	}
@@ -178,13 +186,19 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 		sleep(ctx, MergeRetry)
 	}
 	if err2 != nil {
+		if pr, err := l.gh.PR(ctx, n); err == nil && pr.State == "MERGED" {
+			return l.cleanupMergedPR(ctx, pr)
+		}
 		return l.stuck(ctx, n, title, "Could not merge: "+err2.Error())
 	}
-	// Cleanup only after the merge, so a failed merge keeps its worktree.
-	if err := l.removeWorktree(ctx, wt, branch); err != nil {
-		log.Printf("cleanup: %v", err)
+	// The merge is complete. Cleanup is retried by the review loop if it fails.
+	if pr, err := l.gh.PR(ctx, n); err == nil {
+		if err := l.cleanupMergedPR(ctx, pr); err != nil {
+			log.Printf("cleanup: %v", err)
+		}
+	} else {
+		log.Printf("cleanup: could not reload merged PR #%d: %v", n, err)
 	}
-	l.git(ctx, l.Repo, "push", "--quiet", "origin", "--delete", branch)
 	l.event(ctx, "merged", n, title)
 	return nil
 }
