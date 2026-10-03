@@ -33,9 +33,10 @@ type Loop struct {
 	gh  GH
 	set Settings
 
-	labels     map[string]bool // the repo's labels, for mirroring its status:* ones
-	lastTriage time.Time
-	limit      time.Time // set when the last agent run ended on a usage limit
+	labels      map[string]bool // the repo's labels, for mirroring its status:* ones
+	lastTriage  time.Time
+	lastCleanup time.Time
+	limit       time.Time // set when the last agent run ended on a usage limit
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
@@ -92,6 +93,12 @@ func (l *Loop) Run(ctx context.Context) error {
 		l.limit = time.Time{}
 		switch l.Role {
 		case "review":
+			if time.Since(l.lastCleanup) >= 15*time.Minute {
+				l.lastCleanup = time.Now()
+				if err := l.cleanupMerged(ctx); err != nil {
+					log.Printf("merged PR cleanup: %v", err)
+				}
+			}
 			did, err = l.reviewOnce(ctx)
 		case "supervise":
 			did, err = l.superviseOnce(ctx)
