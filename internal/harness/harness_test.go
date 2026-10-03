@@ -347,3 +347,45 @@ func TestOrphan(t *testing.T) {
 		}
 	}
 }
+
+func TestDropWorktree(t *testing.T) {
+	dir := t.TempDir()
+	run := func(in string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		cmd.Dir = in
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	origin, repo := filepath.Join(dir, "origin.git"), filepath.Join(dir, "repo")
+	run(dir, "init", "-q", "--bare", "-b", "main", origin)
+	run(dir, "clone", "-q", origin, repo)
+	run(repo, "commit", "-q", "--allow-empty", "-m", "first")
+	run(repo, "push", "-q", "origin", "main")
+	wt := func(name string) string {
+		p := filepath.Join(repo, ".claude", "worktrees", name)
+		run(repo, "worktree", "add", "-q", "-b", name, p, "main")
+		return p
+	}
+	l := &Loop{Repo: repo}
+	ctx := context.Background()
+	gone := func(p string) bool { _, err := os.Stat(p); return os.IsNotExist(err) }
+
+	clean := wt("issue-1")
+	l.dropWorktree(ctx, clean, "issue-1", nil)
+	if !gone(clean) {
+		t.Error("a clean, pushed worktree of a blocked run was kept")
+	}
+	local := wt("issue-2")
+	run(local, "commit", "-q", "--allow-empty", "-m", "only here")
+	l.dropWorktree(ctx, local, "issue-2", nil)
+	if gone(local) {
+		t.Error("a worktree with an unpushed commit was removed")
+	}
+	withPR := wt("issue-3")
+	l.dropWorktree(ctx, withPR, "issue-3", &Item{Number: 9})
+	if gone(withPR) {
+		t.Error("a worktree whose PR is open was removed")
+	}
+}

@@ -341,9 +341,11 @@ func (l *Loop) settle(ctx context.Context, title string, after Item, pr *Item, s
 		l.unready(ctx, n)
 		l.mirror(ctx, after, "blocked")
 		l.event(ctx, "stuck", n, title)
+		l.dropWorktree(ctx, wt, branch, pr)
 	case after.Has("blocked"):
 		l.unready(ctx, n)
 		l.mirror(ctx, after, "blocked")
+		l.dropWorktree(ctx, wt, branch, pr)
 	case pr != nil:
 		// A partial PR leaves the issue ready for the loops with other scopes.
 		if !after.Has("done:" + scope) {
@@ -355,7 +357,7 @@ func (l *Loop) settle(ctx context.Context, title string, after Item, pr *Item, s
 	case after.Has("done:" + scope):
 		// Done for this scope; still queued for the others.
 		l.mirror(ctx, after, "ready")
-		l.removeWorktree(ctx, wt, branch)
+		l.dropWorktree(ctx, wt, branch, pr)
 	case after.State == "CLOSED":
 	default:
 		return l.stuck(ctx, n, title, fmt.Sprintf(
@@ -499,6 +501,27 @@ func (l *Loop) findWorktree(ctx context.Context, branch string) string {
 		}
 	}
 	return ""
+}
+
+// dropWorktree removes a finished run's worktree when nothing would be lost:
+// no PR still needs it, no uncommitted changes, every commit on GitHub. A run
+// that ends blocked or with a question used to keep its worktree to resume
+// from; measured on educenter, nothing ever removed them, and 9 of 23
+// worktrees were these. A resumed issue gets a fresh one from the pushed
+// branch, so keeping them bought nothing.
+func (l *Loop) dropWorktree(ctx context.Context, wt, branch string, pr *Item) {
+	if pr != nil {
+		return
+	}
+	if dirty, err := l.git(ctx, wt, "status", "--porcelain"); err != nil || dirty != "" {
+		return
+	}
+	if ahead, err := l.git(ctx, wt, "log", "--oneline", "HEAD", "--not", "--remotes"); err != nil || ahead != "" {
+		return
+	}
+	if err := l.removeWorktree(ctx, wt, branch); err != nil {
+		log.Printf("cleanup: %v", err)
+	}
 }
 
 func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
