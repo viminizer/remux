@@ -15,6 +15,8 @@ const commonRules = `You are running unattended inside an agent loop. Nobody is 
 - Never ask questions and never wait for an answer. If something is unclear, pick the
   safest option and write the assumption down in the pull request.
 - Do not use subagents. Do the work yourself, in this one run.
+- Never create git worktrees or new branches. Work in the worktree and on the branch
+  you are given; the loop makes and removes those.
 - Stay inside the session instructions and the scope below.
 - Real decisions (data shape, library choice, API design, merging two conflicting
   approaches) follow this order, and stop at the first one that answers:
