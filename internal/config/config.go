@@ -83,6 +83,8 @@ type LoopStart struct {
 	Repo         string   `json:"repo"`
 	Agents       []string `json:"agents"`
 	Review       bool     `json:"review"`
+	// Reviews is how many review loops; Review alone means one.
+	Reviews int `json:"reviews,omitempty"`
 	Supervise    bool     `json:"supervise"`
 	// SuperviseAgent is claude or codex, for the supervise loop and the
 	// supervisor Kevin talks to. Empty means claude.

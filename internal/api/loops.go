@@ -175,8 +175,20 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		}
 		plans = append(plans, plan{loopName(who, body.Repo), "build", a})
 	}
-	if body.Review {
-		plans = append(plans, plan{loopName("review", body.Repo), "review", "codex"})
+	if body.Review && body.Reviews == 0 {
+		body.Reviews = 1
+	}
+	if body.Reviews > maxPerAgent {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("at most %d review loops per repo", maxPerAgent))
+		return
+	}
+	body.Review = body.Reviews > 0
+	for i := 1; i <= body.Reviews; i++ {
+		who := "review"
+		if i > 1 {
+			who = fmt.Sprint("review", i)
+		}
+		plans = append(plans, plan{loopName(who, body.Repo), "review", "codex"})
 	}
 	if body.Supervise {
 		if body.SuperviseAgent != "codex" {

@@ -27,14 +27,14 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	// Re-read before claiming, for the same lag the build loop measured.
 	var pr *Item
 	for _, p := range prs {
-		if p.HasPrefix("wip:") || p.Has("needs-human") {
+		if p.HasPrefix("wip:") || p.HasPrefix("by:") || p.Has("needs-human") {
 			continue
 		}
 		fresh, err := l.gh.PR(ctx, p.Number)
 		if err != nil {
 			return false, err
 		}
-		if fresh.State == "OPEN" && fresh.Has("needs-review") && !fresh.HasPrefix("wip:") && !fresh.Has("needs-human") {
+		if fresh.State == "OPEN" && fresh.Has("needs-review") && !fresh.HasPrefix("wip:") && !fresh.HasPrefix("by:") && !fresh.Has("needs-human") {
 			pr = &fresh
 			break
 		}
@@ -43,10 +43,17 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	n := pr.Number
-	if err := l.gh.AddLabels(ctx, n, "wip:review"); err != nil {
-		return false, err
+	// Several review loops can share a repo, so a PR is claimed the same way
+	// the build loops claim an issue.
+	won, err := l.claim(ctx, "pr", n, "wip:review")
+	if err != nil || !won {
+		return !won && err == nil, err
 	}
-	defer l.gh.RemoveLabel(context.WithoutCancel(ctx), n, "wip:review")
+	defer func() {
+		c := context.WithoutCancel(ctx)
+		l.gh.RemoveLabel(c, n, "wip:review")
+		l.gh.RemoveLabel(c, n, "by:"+l.Session)
+	}()
 
 	l.working(ctx, n, pr.Title)
 	log.Printf("── review PR #%d: %s", n, pr.Title)

@@ -28,6 +28,7 @@ export interface LoopStart {
   repo: string
   agents: ('claude' | 'codex')[]
   review: boolean
+  reviews?: number
   supervise: boolean
   superviseAgent?: 'claude' | 'codex'
   scope: string
@@ -60,10 +61,11 @@ export interface HarnessItem {
 
 /** What a loop is called on its card: its role, or its agent for a build loop. */
 export function loopWho(l: Loop): string {
-  if (l.role === 'review') return 'review'
-  if (l.role === 'supervise') return `supervisor · ${l.agent}`
-  // loop-claude2-<repo> is the second Claude loop on the repo.
+  // loop-claude2-<repo> is the second Claude loop on the repo, loop-review2-
+  // the second review loop.
   const n = /^loop-[a-z]+?(\d+)-/.exec(l.name)?.[1]
+  if (l.role === 'review') return n ? `review ${n}` : 'review'
+  if (l.role === 'supervise') return `supervisor · ${l.agent}`
   return n ? `${l.agent} ${n}` : l.agent
 }
 

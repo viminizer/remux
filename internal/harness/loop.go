@@ -170,18 +170,20 @@ var ClaimSettle = 3 * time.Second
 // marks the issue with its own by:<session> label, waits, and reads it back:
 // if more than one loop marked it, the one whose name sorts first keeps it
 // and the others take theirs off and move on.
-func (l *Loop) claim(ctx context.Context, n int, scope string) (bool, error) {
+//
+// kind is issue or pr, and wip the claim label the winner adds.
+func (l *Loop) claim(ctx context.Context, kind string, n int, wip string) (bool, error) {
 	me := "by:" + l.Session
 	if err := l.gh.AddLabels(ctx, n, me); err != nil {
 		return false, err
 	}
 	sleep(ctx, ClaimSettle)
-	fresh, err := l.gh.Issue(ctx, n)
+	fresh, err := l.read(ctx, kind, n)
 	if err != nil || claimant(fresh) != me || fresh.HasPrefix("wip:") {
 		l.gh.RemoveLabel(context.WithoutCancel(ctx), n, me)
 		return false, err
 	}
-	return true, l.gh.AddLabels(ctx, n, "wip:"+scope)
+	return true, l.gh.AddLabels(ctx, n, wip)
 }
 
 // claimant is the loop that keeps an issue several loops marked at once.
@@ -244,7 +246,7 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		return l.triage(ctx, scope), nil
 	}
 	n := it.Number
-	won, err := l.claim(ctx, n, scope)
+	won, err := l.claim(ctx, "issue", n, "wip:"+scope)
 	if err != nil || !won {
 		// Lost to another loop: look again straight away, not in a minute.
 		return !won && err == nil, err

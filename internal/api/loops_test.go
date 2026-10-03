@@ -132,6 +132,13 @@ func TestLoopLifecycle(t *testing.T) {
 		t.Errorf("six Claude loops must be refused, got %d", code)
 	}
 
+	// Two reviews means a second review loop, beside the one already running.
+	defer tm.KillLoop(ctx, "loop-review2-harness-api-test")
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "reviews": 2}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["loop-review2-harness-api-test"]`) {
+		t.Errorf("a second review loop was not started: %d %s", code, body)
+	}
+
 	// Not working, so "after this issue" has nothing to wait for.
 	if code, body := do(t, ts, "DELETE", "/api/loops/"+name+"?when=after", nil); code != http.StatusOK || !strings.Contains(string(body), `"now"`) {
 		t.Fatalf("stop: %d %s", code, body)

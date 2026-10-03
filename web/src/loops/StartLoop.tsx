@@ -31,7 +31,7 @@ export function StartLoop({
   const many = (a: string) => last?.agents.filter((x) => x === a).length ?? 0
   const [claude, setClaude] = useState(last ? many('claude') : 1)
   const [codex, setCodex] = useState(last ? many('codex') : 0)
-  const [review, setReview] = useState(last ? last.review : true)
+  const [reviews, setReviews] = useState(last ? (last.reviews ?? (last.review ? 1 : 0)) : 1)
   const [supervise, setSupervise] = useState(last ? !!last.supervise : true)
   const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(last?.superviseAgent ?? 'claude')
   const [scope, setScope] = useState(last?.scope ?? 'full')
@@ -54,7 +54,7 @@ export function StartLoop({
     ...Array<'claude'>(claude).fill('claude'),
     ...Array<'codex'>(codex).fill('codex'),
   ]
-  const ok = !!target && (agents.length > 0 || review || supervise) && !busy
+  const ok = !!target && (agents.length > 0 || reviews > 0 || supervise) && !busy
 
   return (
     <div className="screen on gh-screen">
@@ -119,11 +119,13 @@ export function StartLoop({
         </div>
 
         <div className="field">
+          <label>Review loops</label>
+          <Stepper name="Review (Codex)" value={reviews} onChange={setReviews} />
+        </div>
+
+        <div className="field">
           <label>Also run</label>
           <div className="seg toggles">
-            <button className={review ? 'on' : ''} onClick={() => setReview(!review)}>
-              Review
-            </button>
             <button className={supervise ? 'on' : ''} onClick={() => setSupervise(!supervise)}>
               Supervisor
             </button>
@@ -176,7 +178,7 @@ export function StartLoop({
           disabled={!ok}
           onClick={() => {
             setBusy(true)
-            void onStart({ repo: target, agents, review, supervise, superviseAgent: supAgent, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
+            void onStart({ repo: target, agents, review: reviews > 0, reviews, supervise, superviseAgent: supAgent, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
               () => setBusy(false),
             )
           }}
