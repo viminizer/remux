@@ -319,3 +319,31 @@ func TestClaimant(t *testing.T) {
 		t.Error("an issue another loop is claiming is not free")
 	}
 }
+
+func TestOrphan(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-2 * time.Hour)
+	pr := func(draft bool, head string, labels ...string) Item {
+		it := item(1, labels...)
+		it.IsDraft, it.Head = draft, head
+		return it
+	}
+	if !orphan(pr(true, "issue-879-backend"), old, now) {
+		t.Error("an old unlabelled loop draft must be adopted")
+	}
+	for name, c := range map[string]struct {
+		p       Item
+		created time.Time
+	}{
+		"fresh":          {pr(true, "issue-1"), now.Add(-time.Minute)},
+		"not a draft":    {pr(false, "issue-1"), old},
+		"not a loop PR":  {pr(true, "feature-x"), old},
+		"already queued": {pr(true, "issue-1", "needs-review"), old},
+		"stuck":          {pr(true, "issue-1", "needs-human"), old},
+		"being reviewed": {pr(true, "issue-1", "wip:review"), old},
+	} {
+		if orphan(c.p, c.created, now) {
+			t.Errorf("%s: must not be adopted", name)
+		}
+	}
+}

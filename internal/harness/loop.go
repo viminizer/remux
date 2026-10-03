@@ -98,6 +98,7 @@ func (l *Loop) Run(ctx context.Context) error {
 				if err := l.cleanupMerged(ctx); err != nil {
 					log.Printf("merged PR cleanup: %v", err)
 				}
+				l.adoptOrphans(ctx)
 			}
 			did, err = l.reviewOnce(ctx)
 		case "supervise":
@@ -292,7 +293,12 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	}))
 
 	if l.limited() {
-		// Back as it was: still ready, and its status back from in-progress.
+		// The run may have opened its PR before the limit hit - measured on
+		// educenter, two did at 12:30 and sat unlabelled. A PR still goes to
+		// review; the issue goes back as it was.
+		if pr, err := l.gh.PRForBranch(ctx, branch); err == nil && pr != nil {
+			l.gh.AddLabels(ctx, pr.Number, "needs-review")
+		}
 		l.mirrorN(ctx, n, "ready")
 		return true, nil
 	}

@@ -272,3 +272,37 @@ func tail(s string, n int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// OrphanAge is how old an unlabelled loop PR must be before the review loop
+// adopts it, so a build run still settling its own PR is never raced.
+var OrphanAge = time.Hour
+
+// adoptOrphans sends a loop's draft PR to review when nothing ever labelled
+// it: a run that died after opening its PR leaves one behind, and no loop
+// looks at a PR without a label. Only drafts on issue-* branches: a PR out of
+// draft with no label is a company PR with its supervisor.
+func (l *Loop) adoptOrphans(ctx context.Context) {
+	var prs []struct {
+		Item
+		CreatedAt time.Time `json:"createdAt"`
+	}
+	if err := l.gh.JSON(ctx, &prs, "pr", "list", "--state", "open", "--limit", "200",
+		"--json", itemFields+",isDraft,headRefName,createdAt"); err != nil {
+		return
+	}
+	for _, p := range prs {
+		if !orphan(p.Item, p.CreatedAt, time.Now()) {
+			continue
+		}
+		if err := l.gh.AddLabels(ctx, p.Number, "needs-review"); err == nil {
+			log.Printf("adopted unlabelled PR #%d", p.Number)
+		}
+	}
+}
+
+func orphan(p Item, created, now time.Time) bool {
+	if !p.IsDraft || !strings.HasPrefix(p.Head, "issue-") || now.Sub(created) < OrphanAge {
+		return false
+	}
+	return !p.Has("needs-review") && !p.Has("needs-human") && !p.HasPrefix("wip:") && !p.HasPrefix("by:")
+}
