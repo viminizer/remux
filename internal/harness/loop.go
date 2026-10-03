@@ -35,6 +35,7 @@ type Loop struct {
 
 	labels     map[string]bool // the repo's labels, for mirroring its status:* ones
 	lastTriage time.Time
+	lastSweep  time.Time
 	limit      time.Time // set when the last agent run ended on a usage limit
 }
 
@@ -93,6 +94,8 @@ func (l *Loop) Run(ctx context.Context) error {
 		switch l.Role {
 		case "review":
 			did, err = l.reviewOnce(ctx)
+			// Review loops see every merge, so they tidy up after them.
+			l.sweep(ctx)
 		case "supervise":
 			did, err = l.superviseOnce(ctx)
 		default:
