@@ -99,6 +99,7 @@ func (l *Loop) Run(ctx context.Context) error {
 					log.Printf("merged PR cleanup: %v", err)
 				}
 				l.adoptOrphans(ctx)
+				l.reapClaims(ctx)
 			}
 			did, err = l.reviewOnce(ctx)
 		case "supervise":

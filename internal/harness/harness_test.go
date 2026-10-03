@@ -389,3 +389,25 @@ func TestDropWorktree(t *testing.T) {
 		t.Error("a worktree whose PR is open was removed")
 	}
 }
+
+func TestStaleClaims(t *testing.T) {
+	on := map[string]int{"loop-claude-x": 5, "loop-claude2-x": 9}
+	items := []Item{
+		item(5, "wip:backend", "by:loop-claude-x"),    // its loop is on it
+		item(172, "wip:backend", "by:loop-codex2-x"),  // loop gone
+		item(196, "wip:backend", "by:loop-claude2-x"), // loop moved on to #9
+		item(7, "by:loop-gone-x"),                     // claim still being made
+	}
+	got := staleIn(items, on)
+	if len(got) != 2 {
+		t.Fatalf("stale = %v, want #172 and #196", got)
+	}
+	for _, k := range []string{"172 by:loop-codex2-x", "196 by:loop-claude2-x"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("%s should be stale", k)
+		}
+	}
+	if n := liveClaims(item(5, "wip:backend", "by:loop-claude-x", "by:loop-codex2-x"), map[string]Item{"5 by:loop-codex2-x": {}}); n != 1 {
+		t.Errorf("liveClaims = %d, want 1", n)
+	}
+}
