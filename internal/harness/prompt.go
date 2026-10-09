@@ -14,7 +14,8 @@ const commonRules = `You are running unattended inside an agent loop. Nobody is 
 
 - Never ask questions and never wait for an answer. If something is unclear, pick the
   safest option and write the assumption down in the pull request.
-- Do not use subagents. Do the work yourself, in this one run.
+- Avoid subagents. Do the work yourself, in this one run. Use a subagent only when the
+  task truly cannot be done without one, never by default for a fix or an issue.
 - Never create git worktrees or new branches. Work in the worktree and on the branch
   you are given; the loop makes and removes those.
 - Stay inside the session instructions and the scope below.
