@@ -244,11 +244,11 @@ func TestPromptConflict(t *testing.T) {
 
 func TestPromptFindings(t *testing.T) {
 	p := Prompt(Run{Role: "fix", Number: 3, Findings: "- [P2] Remove the extra offset"})
-	if !strings.Contains(p, "# Review findings") || !strings.Contains(p, "[P2] Remove the extra offset") ||
+	if !strings.Contains(p, "# To fix") || !strings.Contains(p, "[P2] Remove the extra offset") ||
 		!strings.Contains(p, "Do not review the diff again") {
 		t.Errorf("review prompt does not hand over the findings:\n%s", p)
 	}
-	if strings.Contains(Prompt(Run{Role: "review", Number: 3}), "# Review findings") {
+	if strings.Contains(Prompt(Run{Role: "review", Number: 3}), "# To fix") {
 		t.Error("a run without findings must not have a findings section")
 	}
 }

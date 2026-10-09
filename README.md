@@ -197,7 +197,9 @@ each `needs-review` PR and posts its findings as inline review comments. A
 second Codex run fixes them on the PR's branch, only when there are findings or
 the branch conflicts. A crashed run is started again, up to 3 times, before the
 PR goes to `needs-human`. Then the loop runs your `test` command itself, merges
-or marks the PR ready for the supervisor, and removes the review's worktree. Labels are the state:
+or marks the PR ready for the supervisor, and removes the review's worktree. A
+conflict with the default branch, failing tests or a refused merge go back to a
+fix run, up to 2 times, before the PR goes to `needs-human`. Labels are the state:
 
 `ready` · `wip:<scope>` · `done:<scope>` · `blocker` · `blocked` · `needs-review` · `needs-human`
 

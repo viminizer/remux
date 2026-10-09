@@ -71,13 +71,13 @@ Your job in this run: review pull request #N once. You are on its branch, in its
 
 const fixRules = commonRules + `
 
-Your job in this run: fix pull request #N. A code review already ran, and its findings
-are below. You are on the pull request's branch, in its worktree.
+Your job in this run: fix pull request #N. A code review already ran. What is left to
+fix is below: review findings, failing tests, or a conflict. You are on the pull
+request's branch, in its worktree.
 
-- Do not review the diff again. Work only on the review findings and the conflict, if
-  there is one.
-- Check each finding against the code. Fix it when it is a real bug; skip it when it is
-  wrong.
+- Do not review the diff again. Work only on what is below.
+- Check each review finding against the code. Fix it when it is a real bug; skip it when
+  it is wrong. Failing tests and conflicts always need fixing.
 - One pass only. Commit your fixes and push the branch. Do not loop on fixes.
 - Do not post comments yourself. End your run with a short summary: what you fixed, and
   what you skipped and why. The loop posts your final message on the pull request.
@@ -147,7 +147,7 @@ func Prompt(r Run) string {
 	}
 
 	if strings.TrimSpace(r.Findings) != "" {
-		b.WriteString("\n# Review findings\n\n" + strings.TrimSpace(r.Findings) + "\n")
+		b.WriteString("\n# To fix\n\n" + strings.TrimSpace(r.Findings) + "\n")
 	}
 
 	what := "issue"

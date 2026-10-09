@@ -122,10 +122,8 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 			}
 		}
 	}
-	summary := findings
-	if role == "review" || conflict != "" || hasFindings(findings) {
-		var ok bool
-		summary, ok = l.retry(func() (int, string) {
+	run := func(role, conflict, findings string) (string, bool) {
+		return l.retry(func() (int, string) {
 			return l.agent(ctx, wt, Prompt(Run{
 				Role: role, Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
 				Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
@@ -133,10 +131,14 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 				Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
 			}))
 		})
-		if l.limited() {
-			return true, nil
-		}
-		if !ok {
+	}
+	summary := findings
+	if role == "review" || conflict != "" || hasFindings(findings) {
+		var ok bool
+		if summary, ok = run(role, conflict, findings); !ok {
+			if l.limited() {
+				return true, nil
+			}
 			return true, l.stuck(ctx, n, pr.Title, fmt.Sprintf("The %s run crashed %d times in a row. See the loop's log.", role, ReviewTries))
 		}
 	}
@@ -162,50 +164,92 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		l.event(ctx, "stuck", n, pr.Title)
 		return true, nil
 	}
-	return true, l.finish(ctx, n, pr.Title, pr.Head, wt)
+	return true, l.finish(ctx, n, pr.Title, pr.Head, wt, func(conflict, problem string) bool {
+		_, ok := run("fix", conflict, problem)
+		return ok
+	})
 }
+
+// RepairTries is how many times finish hands a conflict, failing tests or a
+// refused merge back to a fix run before the PR goes to Kevin. Measured on
+// educenter, 71 of 391 PRs went to him for these, and their waiting was 1050
+// hours against 665 for the other 320 together.
+var RepairTries = 3
 
 // finish is everything after the review that must not depend on the agent
 // having done it right: the work is pushed, the tests pass, and only then does
 // the pull request move on - merged in personal mode, handed to the supervisor
-// in company mode.
-func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) error {
-	if pr, err := l.gh.PR(ctx, n); err != nil {
-		return err
-	} else if pr.State == "MERGED" {
-		return l.cleanupMergedPR(ctx, pr)
+// in company mode. A conflict with the default branch, failing tests or a
+// merge GitHub refuses go back to fix, a fix run, and the checks start over.
+func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string, fix func(conflict, problem string) bool) error {
+	if l.set.Test == "" {
+		return l.stuck(ctx, n, title, "There is no test command in "+SettingsFile+
+			", so nothing can merge. Add one, then resume.")
 	}
-	if dirty, _ := l.git(ctx, wt, "status", "--porcelain"); dirty != "" {
-		return l.stuck(ctx, n, title, "The review left uncommitted changes in `"+wt+"`.")
-	}
-	// main may have moved again during the review.
-	if def, err := l.defaultBranch(ctx); err == nil {
-		if _, err := l.git(ctx, wt, "merge-base", "--is-ancestor", def, "HEAD"); err != nil {
-			if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
-				l.git(ctx, wt, "merge", "--abort")
-				return l.stuck(ctx, n, title, "The branch conflicts with "+def+" and the review did not resolve it: "+err.Error())
+	for try := 1; ; try++ {
+		if pr, err := l.gh.PR(ctx, n); err != nil {
+			return err
+		} else if pr.State == "MERGED" {
+			return l.cleanupMergedPR(ctx, pr)
+		}
+		if dirty, _ := l.git(ctx, wt, "status", "--porcelain"); dirty != "" {
+			return l.stuck(ctx, n, title, "The review left uncommitted changes in `"+wt+"`.")
+		}
+		conflict, problem, err := l.check(ctx, n, title, branch, wt)
+		if err != nil {
+			return err
+		}
+		if conflict == "" && problem == "" {
+			return nil // merged, or handed to the supervisor
+		}
+		why := problem
+		if conflict != "" {
+			why = "The branch conflicts with " + conflict + "."
+		}
+		if try == RepairTries {
+			return l.stuck(ctx, n, title, fmt.Sprintf("Still failing after %d fix runs. %s", RepairTries, why))
+		}
+		log.Printf("PR #%d: %s Starting a fix run (%d/%d).", n, firstLine(why, nil), try, RepairTries-1)
+		if !fix(conflict, problem) {
+			if l.limited() {
+				// Tried again after the reset. check may have taken the label off.
+				return l.gh.AddLabels(ctx, n, "needs-review")
 			}
+			return l.stuck(ctx, n, title, fmt.Sprintf("The fix run crashed %d times in a row. %s", ReviewTries, why))
+		}
+	}
+}
+
+// check brings the branch up to date, pushes it, tests it and moves it on. It
+// returns the default branch when that conflicts, or what failed when a fix
+// run can repair it; both empty means the pull request moved on.
+func (l *Loop) check(ctx context.Context, n int, title, branch, wt string) (conflict, problem string, err error) {
+	// main may have moved again during the review.
+	def, err := l.defaultBranch(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := l.git(ctx, wt, "merge-base", "--is-ancestor", def, "HEAD"); err != nil {
+		if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
+			l.git(ctx, wt, "merge", "--abort")
+			return def, "", nil
 		}
 	}
 	// With lease: the branch is the loop's own, and an agent may have
 	// rebased it, but a push from anywhere else since the fetch still wins.
 	if _, err := l.git(ctx, wt, "push", "--quiet", "--force-with-lease", "origin", "HEAD:"+branch); err != nil {
-		return l.stuck(ctx, n, title, "Could not push the branch: "+err.Error())
-	}
-	if l.set.Test == "" {
-		return l.stuck(ctx, n, title, "There is no test command in "+SettingsFile+
-			", so nothing can merge. Add one, then resume.")
+		return "", "", l.stuck(ctx, n, title, "Could not push the branch: "+err.Error())
 	}
 	if out, err := l.test(ctx, wt); err != nil {
-		return l.stuck(ctx, n, title, "Tests still fail after the review:\n\n```\n"+tail(out, 30)+"\n```")
+		return "", "The tests fail. Make them pass:\n\n```\n" + tail(out, 60) + "\n```", nil
 	}
 	sha, err := l.git(ctx, wt, "rev-parse", "HEAD")
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
 	if _, err := l.gh.run(ctx, "pr", "ready", fmt.Sprint(n)); err != nil && !strings.Contains(err.Error(), "already") {
-		return l.stuck(ctx, n, title, "Could not mark the pull request ready: "+err.Error())
+		return "", "", l.stuck(ctx, n, title, "Could not mark the pull request ready: "+err.Error())
 	}
 	l.gh.RemoveLabel(ctx, n, "needs-review")
 
@@ -216,7 +260,7 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 			}
 		}
 		l.event(ctx, "sent", n, title)
-		return nil
+		return "", "", nil
 	}
 
 	// --match-head-commit: merge exactly what was tested, not whatever was
@@ -232,9 +276,14 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 	}
 	if err2 != nil {
 		if pr, err := l.gh.PR(ctx, n); err == nil && pr.State == "MERGED" {
-			return l.cleanupMergedPR(ctx, pr)
+			return "", "", l.cleanupMergedPR(ctx, pr)
 		}
-		return l.stuck(ctx, n, title, "Could not merge: "+err2.Error())
+		// Most often the default branch moved and now conflicts; the next
+		// round finds that and hands it to a fix run.
+		if strings.Contains(err2.Error(), "not mergeable") {
+			return "", "GitHub refuses to merge: " + err2.Error(), nil
+		}
+		return "", "", l.stuck(ctx, n, title, "Could not merge: "+err2.Error())
 	}
 	// The merge is complete. Cleanup is retried by the review loop if it fails.
 	if pr, err := l.gh.PR(ctx, n); err == nil {
@@ -245,7 +294,7 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string) erro
 		log.Printf("cleanup: could not reload merged PR #%d: %v", n, err)
 	}
 	l.event(ctx, "merged", n, title)
-	return nil
+	return "", "", nil
 }
 
 func (l *Loop) test(ctx context.Context, wt string) (string, error) {
