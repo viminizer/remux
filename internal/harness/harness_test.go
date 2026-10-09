@@ -242,6 +242,30 @@ func TestPromptConflict(t *testing.T) {
 	}
 }
 
+func TestPromptFindings(t *testing.T) {
+	p := Prompt(Run{Role: "review", Number: 3, Findings: "- [P2] Remove the extra offset"})
+	if !strings.Contains(p, "# Review findings") || !strings.Contains(p, "[P2] Remove the extra offset") {
+		t.Errorf("review prompt does not hand over the findings:\n%s", p)
+	}
+	if strings.Contains(Prompt(Run{Role: "review", Number: 3}), "# Review findings") {
+		t.Error("a run without findings must not have a findings section")
+	}
+}
+
+// The two outputs are what codex exec review printed for a real bug and for
+// the fixed branch.
+func TestHasFindings(t *testing.T) {
+	bug := "The new average function produces incorrect results.\n\nReview comment:\n\n" +
+		"- [P2] Remove the extra offset from the average — /tmp/rv/m.py:5-5\n  For nonempty inputs..."
+	clean := "The new avg function correctly computes arithmetic means. No actionable regressions were identified."
+	if !hasFindings(bug) {
+		t.Error("a review with a finding read as clean")
+	}
+	if hasFindings(clean) {
+		t.Error("a clean review read as having findings")
+	}
+}
+
 func TestVerdict(t *testing.T) {
 	for in, want := range map[string]string{
 		"RESOLVED\nRebased and pushed.": "RESOLVED",

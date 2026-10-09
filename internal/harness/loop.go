@@ -558,6 +558,21 @@ func (l *Loop) command(wt, last string) []string {
 // message. Its output goes to the loop's own pane, which is where the phone
 // reads the log from.
 func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
+	return l.spawn(ctx, wt, prompt, func(last string) []string { return l.command(wt, last) })
+}
+
+// codexReview runs Codex's built-in review of wt's changes against base. It
+// only reports findings; it does not change the branch.
+func (l *Loop) codexReview(ctx context.Context, wt, base string) string {
+	_, out := l.spawn(ctx, wt, "", func(last string) []string {
+		return []string{"codex", "exec", "review", "--dangerously-bypass-approvals-and-sandbox", "--base", base, "-o", last}
+	})
+	return out
+}
+
+// spawn runs argv(last) in wt with stdin on its input. The final message is
+// the file at last when the command wrote one (Codex), else its stdout.
+func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last string) []string) (int, string) {
 	ctx, cancel := context.WithTimeout(ctx, RunTimeout)
 	defer cancel()
 	f, err := os.CreateTemp("", "remux-last-*.txt")
@@ -567,10 +582,10 @@ func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 	f.Close()
 	defer os.Remove(f.Name())
 
-	argv := l.command(wt, f.Name())
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	args := argv(f.Name())
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = wt
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Stdin = strings.NewReader(stdin)
 	var out, all bytes.Buffer
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out, &all), io.MultiWriter(os.Stderr, &all)
 	code := 0
@@ -588,12 +603,10 @@ func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 			l.limit = until
 		}
 	}
-	last := out.String()
-	if l.Agent == "codex" {
-		b, _ := os.ReadFile(f.Name())
-		last = string(b)
+	if b, _ := os.ReadFile(f.Name()); len(bytes.TrimSpace(b)) > 0 {
+		return code, strings.TrimSpace(string(b))
 	}
-	return code, strings.TrimSpace(last)
+	return code, strings.TrimSpace(out.String())
 }
 
 // ── state ─────────────────────────────────────────────────────────────────

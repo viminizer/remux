@@ -79,6 +79,7 @@ type Run struct {
 	Mode         string // personal or company
 	DependsOn    int    // company mode: the blocker PR this branch is built on
 	Conflict     string // review: the default branch this branch conflicts with
+	Findings     string // review: what codex review found, for this run to fix
 	Settings     Settings
 	Instructions string
 	InstrMode    string // add or replace
@@ -124,6 +125,12 @@ func Prompt(r Run) string {
 		fmt.Fprintf(&b, "- This branch conflicts with %s. Before you review, run git merge %s, resolve "+
 			"every conflict keeping the intent of both sides, run the tests, and commit the merge. "+
 			"Resolving it is part of this review, not a reason to stop.\n", r.Conflict, r.Conflict)
+	}
+
+	if strings.TrimSpace(r.Findings) != "" {
+		b.WriteString("\n# Review findings\n\nA code review of this branch already ran and found the items below. " +
+			"Check each one against the code and fix the real bugs; skip any that are wrong. " +
+			"You do not need to review the diff again.\n\n" + strings.TrimSpace(r.Findings) + "\n")
 	}
 
 	what := "issue"

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -65,6 +66,17 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return true, l.stuck(ctx, n, pr.Title, "Could not create the worktree: "+err.Error())
 	}
+	// The branch is on GitHub, so a later review starts from a fresh
+	// worktree. Keeping this one bought nothing: reviews that ended stuck,
+	// with a question, or handed to a supervisor left theirs behind for good.
+	// dropWorktree keeps it when it holds uncommitted or unpushed work, and
+	// it is left alone while another loop is working on the same branch.
+	defer func() {
+		c := context.WithoutCancel(ctx)
+		if active, err := l.branchActive(c, *pr); err == nil && !active {
+			l.dropWorktree(c, wt, pr.Head, nil)
+		}
+	}()
 	// A worktree left from the build run may be behind what was pushed since.
 	if _, err := l.git(ctx, wt, "merge", "--ff-only", "--quiet", "origin/"+pr.Head); err != nil {
 		return true, l.stuck(ctx, n, pr.Title, "The local branch has moved away from the pushed one: "+err.Error())
@@ -75,7 +87,8 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	// ended at "the merge commit cannot be cleanly created". A clean merge is
 	// done here; a conflict becomes the first part of the review.
 	conflict := ""
-	if def, err := l.defaultBranch(ctx); err == nil {
+	def, err := l.defaultBranch(ctx)
+	if err == nil {
 		if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
 			l.git(ctx, wt, "merge", "--abort")
 			conflict = def
@@ -86,11 +99,22 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	_, summary := l.agent(ctx, wt, Prompt(Run{
-		Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
-		Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
-		Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
-	}))
+	// Codex reviews with its own review mode first. A clean review with no
+	// conflict to resolve goes straight to tests and merge; only findings or
+	// a conflict start a second run that fixes them.
+	findings := ""
+	if l.Agent == "codex" && def != "" {
+		findings = l.codexReview(ctx, wt, def)
+	}
+	summary := findings
+	if !l.limited() && (findings == "" || conflict != "" || hasFindings(findings)) {
+		_, summary = l.agent(ctx, wt, Prompt(Run{
+			Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
+			Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
+			Findings:     findings,
+			Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
+		}))
+	}
 
 	if l.limited() {
 		return true, nil // still needs-review; tried again after the reset
@@ -306,3 +330,10 @@ func orphan(p Item, created, now time.Time) bool {
 	}
 	return !p.Has("needs-review") && !p.Has("needs-human") && !p.HasPrefix("wip:") && !p.HasPrefix("by:")
 }
+
+// findingRE matches a finding line in Codex review output: "- [P1] Title".
+// ponytail: tied to Codex's output format; if it changes, every review looks
+// clean and skips the fix run. Switch to codex exec review --json then.
+var findingRE = regexp.MustCompile(`(?m)^\s*- \[P\d\]`)
+
+func hasFindings(review string) bool { return findingRE.MatchString(review) }
