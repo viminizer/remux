@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// The default branch moves under the PR and conflicts, then the tests fail.
-// Each goes to a fix run, and the PR still merges without Kevin.
+// The default branch keeps moving under the PR and conflicting, then the
+// tests fail. Each goes to a fix run, and the PR still merges without Kevin.
 func TestFinishRepairs(t *testing.T) {
 	root := t.TempDir()
 	repo, origin := filepath.Join(root, "repo"), filepath.Join(root, "origin.git")
@@ -59,6 +59,12 @@ esac
 		case conflict != "":
 			got = append(got, "conflict")
 			runGit(t, wt, "merge", "-X", "ours", "--no-edit", conflict)
+			// main moves on again while the fix run works, twice.
+			if len(got) < 3 {
+				write(repo, "file", "main work "+strings.Repeat("again ", len(got)))
+				runGit(t, repo, "commit", "-am", "more main work")
+				runGit(t, repo, "push", "origin", "main")
+			}
 		case strings.Contains(problem, "The tests fail"):
 			got = append(got, "tests")
 			write(wt, "fixed", "")
@@ -72,8 +78,10 @@ esac
 	if err := l.finish(context.Background(), 1, "t", "issue-1", wt, fix); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got, ",") != "conflict,tests" {
-		t.Errorf("fix runs = %v, want conflict then tests", got)
+	// Three resolved conflicts and a test fix: more rounds than RepairTries,
+	// but only the test fix was not progress on a conflict.
+	if strings.Join(got, ",") != "conflict,conflict,conflict,tests" {
+		t.Errorf("fix runs = %v, want three conflicts then tests", got)
 	}
 	b, _ := os.ReadFile(calls)
 	if !strings.Contains(string(b), "pr merge 1 --squash") || strings.Contains(string(b), "needs-human") {

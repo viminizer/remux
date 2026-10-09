@@ -176,6 +176,10 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 // hours against 665 for the other 320 together.
 var RepairTries = 3
 
+// RepairRounds caps fix runs in all, for a default branch that never stops
+// moving: resolved conflicts do not count toward RepairTries.
+var RepairRounds = 10
+
 // finish is everything after the review that must not depend on the agent
 // having done it right: the work is pushed, the tests pass, and only then does
 // the pull request move on - merged in personal mode, handed to the supervisor
@@ -186,7 +190,8 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string, fix 
 		return l.stuck(ctx, n, title, "There is no test command in "+SettingsFile+
 			", so nothing can merge. Add one, then resume.")
 	}
-	for try := 1; ; try++ {
+	failed := 0
+	for round := 1; ; round++ {
 		if pr, err := l.gh.PR(ctx, n); err != nil {
 			return err
 		} else if pr.State == "MERGED" {
@@ -206,16 +211,27 @@ func (l *Loop) finish(ctx context.Context, n int, title, branch, wt string, fix 
 		if conflict != "" {
 			why = "The branch conflicts with " + conflict + "."
 		}
-		if try == RepairTries {
-			return l.stuck(ctx, n, title, fmt.Sprintf("Still failing after %d fix runs. %s", RepairTries, why))
+		if failed == RepairTries-1 || round == RepairRounds {
+			return l.stuck(ctx, n, title, fmt.Sprintf("Still failing after %d fix runs. %s", round-1, why))
 		}
-		log.Printf("PR #%d: %s Starting a fix run (%d/%d).", n, firstLine(why, nil), try, RepairTries-1)
+		log.Printf("PR #%d: %s Starting a fix run (round %d).", n, firstLine(why, nil), round)
+		// A conflict the fix run resolved is progress even when the default
+		// branch moved on again meanwhile, so it does not count as a failure.
+		before := ""
+		if conflict != "" {
+			before, _ = l.git(ctx, wt, "rev-parse", conflict)
+		}
 		if !fix(conflict, problem) {
 			if l.limited() {
 				// Tried again after the reset. check may have taken the label off.
 				return l.gh.AddLabels(ctx, n, "needs-review")
 			}
 			return l.stuck(ctx, n, title, fmt.Sprintf("The fix run crashed %d times in a row. %s", ReviewTries, why))
+		}
+		if before == "" {
+			failed++
+		} else if _, err := l.git(ctx, wt, "merge-base", "--is-ancestor", before, "HEAD"); err != nil {
+			failed++
 		}
 	}
 }
