@@ -243,8 +243,9 @@ func TestPromptConflict(t *testing.T) {
 }
 
 func TestPromptFindings(t *testing.T) {
-	p := Prompt(Run{Role: "review", Number: 3, Findings: "- [P2] Remove the extra offset"})
-	if !strings.Contains(p, "# Review findings") || !strings.Contains(p, "[P2] Remove the extra offset") {
+	p := Prompt(Run{Role: "fix", Number: 3, Findings: "- [P2] Remove the extra offset"})
+	if !strings.Contains(p, "# Review findings") || !strings.Contains(p, "[P2] Remove the extra offset") ||
+		!strings.Contains(p, "Do not review the diff again") {
 		t.Errorf("review prompt does not hand over the findings:\n%s", p)
 	}
 	if strings.Contains(Prompt(Run{Role: "review", Number: 3}), "# Review findings") {
@@ -263,6 +264,46 @@ func TestHasFindings(t *testing.T) {
 	}
 	if hasFindings(clean) {
 		t.Error("a clean review read as having findings")
+	}
+}
+
+func TestParseFindings(t *testing.T) {
+	review := "The new average function is wrong.\n\nReview comment:\n\n" +
+		"- [P2] Remove the extra offset — /r/wt/m.py:5-5\n  For nonempty inputs, `+ 1` is wrong.\n  Return the quotient.\n" +
+		"- [P1] Guard empty input — /r/wt/pkg/m.py:4-6\n  len(xs) can be 0.\n"
+	overall, cs, ok := parseFindings(review, "/r/wt")
+	if !ok || overall != "The new average function is wrong." || len(cs) != 2 {
+		t.Fatalf("parseFindings = %q, %+v, %v", overall, cs, ok)
+	}
+	want := ReviewComment{Path: "m.py", Line: 5, Side: "RIGHT",
+		Body: "**[P2] Remove the extra offset**\n\nFor nonempty inputs, `+ 1` is wrong.\nReturn the quotient."}
+	if cs[0] != want {
+		t.Errorf("first comment = %+v", cs[0])
+	}
+	if c := cs[1]; c.Path != "pkg/m.py" || c.StartLine != 4 || c.Line != 6 {
+		t.Errorf("range comment = %+v", c)
+	}
+	if _, _, ok := parseFindings("- [P2] Outside — /elsewhere/m.py:5-5\n", "/r/wt"); ok {
+		t.Error("a finding outside the worktree must not become an inline comment")
+	}
+}
+
+func TestRetry(t *testing.T) {
+	l := &Loop{}
+	runs := 0
+	out, ok := l.retry(func() (int, string) {
+		runs++
+		if runs < 3 {
+			return 1, ""
+		}
+		return 0, "done"
+	})
+	if !ok || out != "done" || runs != 3 {
+		t.Errorf("retry = %q, %v after %d runs", out, ok, runs)
+	}
+	runs = 0
+	if _, ok := l.retry(func() (int, string) { runs++; return 0, "" }); ok || runs != ReviewTries {
+		t.Errorf("a run with no output must count as a crash: ok=%v runs=%d", ok, runs)
 	}
 }
 

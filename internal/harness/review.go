@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -88,36 +89,56 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	// done here; a conflict becomes the first part of the review.
 	conflict := ""
 	def, err := l.defaultBranch(ctx)
-	if err == nil {
-		if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
-			l.git(ctx, wt, "merge", "--abort")
-			conflict = def
-		}
+	if err != nil {
+		return true, err
+	}
+	if _, err := l.git(ctx, wt, "merge", "--no-edit", "--quiet", def); err != nil {
+		l.git(ctx, wt, "merge", "--abort")
+		conflict = def
 	}
 	thread, err := l.gh.Thread(ctx, "pr", n)
 	if err != nil {
 		return false, err
 	}
 
-	// Codex reviews with its own review mode first. A clean review with no
-	// conflict to resolve goes straight to tests and merge; only findings or
-	// a conflict start a second run that fixes them.
-	findings := ""
-	if l.Agent == "codex" && def != "" {
-		findings = l.codexReview(ctx, wt, def)
+	// Codex reviews with its own review mode first and its findings go on
+	// the PR as review comments. A clean review with no conflict goes
+	// straight to tests and merge; only findings or a conflict start a second
+	// run, which fixes them on this branch without reviewing again.
+	findings, role := "", "review"
+	if l.Agent == "codex" {
+		role = "fix"
+		var ok bool
+		findings, ok = l.retry(func() (int, string) { return l.codexReview(ctx, wt, def) })
+		if l.limited() {
+			return true, nil // still needs-review; tried again after the reset
+		}
+		if !ok {
+			return true, l.stuck(ctx, n, pr.Title, fmt.Sprintf("codex review crashed %d times in a row. See the loop's log.", ReviewTries))
+		}
+		if hasFindings(findings) {
+			if err := l.postFindings(ctx, n, wt, findings); err != nil {
+				log.Printf("review comments: %v", err)
+			}
+		}
 	}
 	summary := findings
-	if !l.limited() && (findings == "" || conflict != "" || hasFindings(findings)) {
-		_, summary = l.agent(ctx, wt, Prompt(Run{
-			Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
-			Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
-			Findings:     findings,
-			Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
-		}))
-	}
-
-	if l.limited() {
-		return true, nil // still needs-review; tried again after the reset
+	if role == "review" || conflict != "" || hasFindings(findings) {
+		var ok bool
+		summary, ok = l.retry(func() (int, string) {
+			return l.agent(ctx, wt, Prompt(Run{
+				Role: role, Slug: l.gh.Slug, Number: n, Branch: pr.Head, Worktree: wt,
+				Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread, Conflict: conflict,
+				Findings:     findings,
+				Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode"),
+			}))
+		})
+		if l.limited() {
+			return true, nil
+		}
+		if !ok {
+			return true, l.stuck(ctx, n, pr.Title, fmt.Sprintf("The %s run crashed %d times in a row. See the loop's log.", role, ReviewTries))
+		}
 	}
 	// The review is posted by the loop, not left to the agent, so every
 	// reviewed PR says what the review found - "no real issues" too. It goes
@@ -331,9 +352,93 @@ func orphan(p Item, created, now time.Time) bool {
 	return !p.Has("needs-review") && !p.Has("needs-human") && !p.HasPrefix("wip:") && !p.HasPrefix("by:")
 }
 
-// findingRE matches a finding line in Codex review output: "- [P1] Title".
+// ReviewTries is how many times a review or fix run is started in all
+// before a crash hands the PR to Kevin.
+var ReviewTries = 3
+
+// retry starts run again while it crashes: a non-zero exit or no final
+// message. It stops at a usage limit, which the caller waits out.
+func (l *Loop) retry(run func() (int, string)) (string, bool) {
+	for try := 1; ; try++ {
+		code, out := run()
+		if l.limited() {
+			return out, false
+		}
+		if code == 0 && out != "" {
+			return out, true
+		}
+		if try == ReviewTries {
+			return out, false
+		}
+		log.Printf("run crashed (exit %d, %d chars out), starting it again (%d/%d)", code, len(out), try+1, ReviewTries)
+	}
+}
+
+// findingRE matches a finding line in Codex review output:
+// "- [P1] Title — /abs/path/file.go:12-14".
 // ponytail: tied to Codex's output format; if it changes, every review looks
 // clean and skips the fix run. Switch to codex exec review --json then.
 var findingRE = regexp.MustCompile(`(?m)^\s*- \[P\d\]`)
 
+var findingHead = regexp.MustCompile(`^\s*- (\[P\d\] .+?) — (.+?):(\d+)(?:-(\d+))?\s*$`)
+
 func hasFindings(review string) bool { return findingRE.MatchString(review) }
+
+// parseFindings turns Codex review output into the overall verdict and one
+// inline comment per finding. ok is false when a finding cannot be placed on
+// a file in wt, so the caller posts the text as it is instead.
+func parseFindings(review, wt string) (overall string, comments []ReviewComment, ok bool) {
+	lines := strings.Split(review, "\n")
+	first := len(lines)
+	for i, line := range lines {
+		if findingRE.MatchString(line) {
+			first = i
+			break
+		}
+	}
+	head := strings.TrimSpace(strings.Join(lines[:first], "\n"))
+	if i := strings.LastIndex(head, "\n"); i >= 0 && strings.HasSuffix(head, ":") {
+		head = strings.TrimSpace(head[:i]) // drop the "Review comment:" header
+	}
+	for _, line := range lines[first:] {
+		if m := findingHead.FindStringSubmatch(line); m != nil {
+			path, ok := strings.CutPrefix(m[2], strings.TrimSuffix(wt, "/")+"/")
+			if !ok {
+				return head, nil, false
+			}
+			c := ReviewComment{Path: path, Side: "RIGHT", Body: "**" + m[1] + "**\n"}
+			start, _ := strconv.Atoi(m[3])
+			c.Line = start
+			if m[4] != "" {
+				c.Line, _ = strconv.Atoi(m[4])
+			}
+			if start < c.Line {
+				c.StartLine = start
+			}
+			comments = append(comments, c)
+		} else if findingRE.MatchString(line) {
+			return head, nil, false
+		} else if len(comments) > 0 {
+			c := &comments[len(comments)-1]
+			c.Body += "\n" + strings.TrimSpace(line)
+		}
+	}
+	for i := range comments {
+		comments[i].Body = strings.TrimSpace(comments[i].Body)
+	}
+	return head, comments, len(comments) > 0
+}
+
+// postFindings puts each finding on its line of the PR. GitHub refuses the
+// whole review when one line is outside the diff; then the findings go in
+// as one review body.
+func (l *Loop) postFindings(ctx context.Context, n int, wt, review string) error {
+	if overall, comments, ok := parseFindings(review, wt); ok {
+		if err := l.gh.ReviewComments(ctx, n, overall, comments); err == nil {
+			return nil
+		} else {
+			log.Printf("inline review comments: %v", err)
+		}
+	}
+	return l.gh.Review(ctx, n, strings.ReplaceAll(review, strings.TrimSuffix(wt, "/")+"/", ""))
+}

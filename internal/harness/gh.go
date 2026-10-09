@@ -204,6 +204,35 @@ func (g GH) Review(ctx context.Context, n int, body string) error {
 	return err
 }
 
+// ReviewComment is one inline comment of a review, on the PR's new code.
+type ReviewComment struct {
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	StartLine int    `json:"start_line,omitempty"`
+	Side      string `json:"side"`
+	Body      string `json:"body"`
+}
+
+// ReviewComments posts a comment review with inline comments on lines.
+func (g GH) ReviewComments(ctx context.Context, n int, body string, comments []ReviewComment) error {
+	b, err := json.Marshal(map[string]any{"event": "COMMENT", "body": body, "comments": comments})
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp("", "remux-review-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(b)
+	f.Close()
+	if err != nil {
+		return err
+	}
+	_, err = g.run(ctx, "api", "-X", "POST", fmt.Sprintf("repos/%s/pulls/%d/reviews", g.Slug, n), "--input", f.Name())
+	return err
+}
+
 // BlockedBy lists the issues GitHub records as blocking n.
 func (g GH) BlockedBy(ctx context.Context, n int) ([]Item, error) {
 	var items []Item

@@ -68,9 +68,24 @@ Your job in this run: review pull request #N once. You are on its branch, in its
 - Do not merge and do not mark the pull request ready. The loop does that after the
   tests pass.`
 
+const fixRules = commonRules + `
+
+Your job in this run: fix pull request #N. A code review already ran, and its findings
+are below. You are on the pull request's branch, in its worktree.
+
+- Do not review the diff again. Work only on the review findings and the conflict, if
+  there is one.
+- Check each finding against the code. Fix it when it is a real bug; skip it when it is
+  wrong.
+- One pass only. Commit your fixes and push the branch. Do not loop on fixes.
+- Do not post comments yourself. End your run with a short summary: what you fixed, and
+  what you skipped and why. The loop posts your final message on the pull request.
+- Do not merge and do not mark the pull request ready. The loop does that after the
+  tests pass.`
+
 // Run is everything a prompt needs to know about this one run.
 type Run struct {
-	Role         string // build or review
+	Role         string // build, review or fix
 	Slug         string
 	Number       int
 	Branch       string
@@ -90,8 +105,11 @@ type Run struct {
 // rules, the project defaults, the session instructions, then the issue.
 func Prompt(r Run) string {
 	rules := buildRules
-	if r.Role == "review" {
+	switch r.Role {
+	case "review":
 		rules = reviewRules
+	case "fix":
+		rules = fixRules
 	}
 	rules = strings.NewReplacer("SCOPE", r.Scope, "SLUG", r.Slug, "#N", fmt.Sprintf("#%d", r.Number),
 		"issues/N/", fmt.Sprintf("issues/%d/", r.Number)).Replace(rules)
@@ -128,13 +146,11 @@ func Prompt(r Run) string {
 	}
 
 	if strings.TrimSpace(r.Findings) != "" {
-		b.WriteString("\n# Review findings\n\nA code review of this branch already ran and found the items below. " +
-			"Check each one against the code and fix the real bugs; skip any that are wrong. " +
-			"You do not need to review the diff again.\n\n" + strings.TrimSpace(r.Findings) + "\n")
+		b.WriteString("\n# Review findings\n\n" + strings.TrimSpace(r.Findings) + "\n")
 	}
 
 	what := "issue"
-	if r.Role == "review" {
+	if r.Role == "review" || r.Role == "fix" {
 		what = "pull request"
 	}
 	fmt.Fprintf(&b, "\n# The %s\n\n%s\n", what, strings.TrimSpace(r.Thread))

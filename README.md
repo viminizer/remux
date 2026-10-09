@@ -193,9 +193,11 @@ label first, so two loops waking together never work the same one. Each loop is 
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
 `ready` issue per run (blockers first) in its own worktree under
 `.claude/worktrees/`, and opens a draft PR. The review loop runs `codex exec review` on
-each `needs-review` PR, and a second Codex run only when it found something to
-fix or the branch conflicts. Then it runs your `test` command itself, merges or
-marks the PR ready for the supervisor, and removes the review's worktree. Labels are the state:
+each `needs-review` PR and posts its findings as inline review comments. A
+second Codex run fixes them on the PR's branch, only when there are findings or
+the branch conflicts. A crashed run is started again, up to 3 times, before the
+PR goes to `needs-human`. Then the loop runs your `test` command itself, merges
+or marks the PR ready for the supervisor, and removes the review's worktree. Labels are the state:
 
 `ready` · `wip:<scope>` · `done:<scope>` · `blocker` · `blocked` · `needs-review` · `needs-human`
 

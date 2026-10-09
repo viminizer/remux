@@ -563,11 +563,10 @@ func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 
 // codexReview runs Codex's built-in review of wt's changes against base. It
 // only reports findings; it does not change the branch.
-func (l *Loop) codexReview(ctx context.Context, wt, base string) string {
-	_, out := l.spawn(ctx, wt, "", func(last string) []string {
+func (l *Loop) codexReview(ctx context.Context, wt, base string) (int, string) {
+	return l.spawn(ctx, wt, "", func(last string) []string {
 		return []string{"codex", "exec", "review", "--dangerously-bypass-approvals-and-sandbox", "--base", base, "-o", last}
 	})
-	return out
 }
 
 // spawn runs argv(last) in wt with stdin on its input. The final message is
