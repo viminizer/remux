@@ -101,17 +101,14 @@ export function LoopsRoutes({
     return (
       <StartLoop
         repos={data?.repos ?? []}
+        running={data?.loops ?? []}
         last={data?.last ?? null}
         presets={data?.presets ?? []}
         onBack={() => go({ name: 'loops', tab: 'loops' })}
         onStart={async (v) => {
           try {
             const r = await api.startLoops(v)
-            toast(
-              r.started.length
-                ? `started ${r.started.length} loop${r.started.length === 1 ? '' : 's'}`
-                : 'already running',
-            )
+            toast(startSummary(r))
             await refresh()
             go({ name: 'loops', tab: 'loops' })
           } catch (e) {
@@ -181,4 +178,14 @@ export function LoopsRoutes({
       }}
     />
   )
+}
+
+/** What a start did, in one line: "started 1 · stopped 1 · updated 3". */
+export function startSummary(r: { started: string[]; stopped: string[]; updated: string[] }): string {
+  const parts = [
+    r.started.length && `started ${r.started.length}`,
+    r.stopped.length && `stopped ${r.stopped.length}`,
+    r.updated.length && `updated ${r.updated.length}`,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : 'nothing changed'
 }

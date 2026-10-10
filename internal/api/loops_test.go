@@ -98,8 +98,9 @@ func TestLoopLifecycle(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(string(body), name) {
 		t.Fatalf("start: %d %s", code, body)
 	}
-	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude"}}); code != http.StatusOK || !strings.Contains(string(body), `"skipped":["`+name) {
-		t.Errorf("a running loop must not be started twice: %d %s", code, body)
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude"}, "review": true}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":[]`) || !strings.Contains(string(body), `"updated":["`+name) {
+		t.Errorf("a running loop must be updated, not started twice: %d %s", code, body)
 	}
 
 	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"instructions": "only tests\nplease"}); code != http.StatusOK {
@@ -124,7 +125,7 @@ func TestLoopLifecycle(t *testing.T) {
 
 	// Claude twice means a second Claude loop, named so the two differ.
 	defer tm.KillLoop(ctx, "loop-claude2-harness-api-test")
-	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}}); code != http.StatusOK ||
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK ||
 		!strings.Contains(string(body), `"started":["loop-claude2-harness-api-test"]`) {
 		t.Errorf("a second Claude loop was not started: %d %s", code, body)
 	}
@@ -134,9 +135,45 @@ func TestLoopLifecycle(t *testing.T) {
 
 	// Two reviews means a second review loop, beside the one already running.
 	defer tm.KillLoop(ctx, "loop-review2-harness-api-test")
-	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "reviews": 2}); code != http.StatusOK ||
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 2}); code != http.StatusOK ||
 		!strings.Contains(string(body), `"started":["loop-review2-harness-api-test"]`) {
 		t.Errorf("a second review loop was not started: %d %s", code, body)
+	}
+
+	// One review fewer and one Claude more: the extra review loop stops.
+	defer tm.KillLoop(ctx, "loop-claude3-harness-api-test")
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude", "claude"}, "reviews": 1}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["loop-claude3-harness-api-test"]`) ||
+		!strings.Contains(string(body), `"stopped":["loop-review2-harness-api-test"]`) {
+		t.Errorf("lowering the review count did not stop a review loop: %d %s", code, body)
+	}
+	if l, _ := srv.loopByName(ctx, "loop-review2-harness-api-test"); l != nil {
+		t.Error("loop-review2 still runs")
+	}
+
+	// A gap in the numbering: with loop-claude stopped by hand, two Claude
+	// loops means loop-claude and loop-claude2, not three.
+	if code, _ := do(t, ts, "DELETE", "/api/loops/"+name, nil); code != http.StatusOK {
+		t.Fatalf("stop: %d", code)
+	}
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["`+name+`"]`) ||
+		!strings.Contains(string(body), `"stopped":["loop-claude3-harness-api-test"]`) {
+		t.Errorf("a gap left the wrong loops running: %d %s", code, body)
+	}
+
+	// A queued "after this issue" is cancelled when the loop is still wanted.
+	tm.SetLoopOption(ctx, "loop-claude2-harness-api-test", "@loop_stop", "after")
+	do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1})
+	if v, _ := tm.LoopOption(ctx, "loop-claude2-harness-api-test", "@loop_stop"); v != "" {
+		t.Errorf("queued stop = %q, want it cancelled", v)
+	}
+
+	// Another repo with the same folder name would share these sessions.
+	twin := filepath.Join(t.TempDir(), "harness-api-test")
+	os.MkdirAll(twin, 0o755)
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": twin, "agents": []string{"claude"}}); code != http.StatusConflict {
+		t.Errorf("a repo with the same folder name must be refused: %d %s", code, body)
 	}
 
 	// Not working, so "after this issue" has nothing to wait for.
@@ -160,6 +197,22 @@ func TestCodexChat(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("codex chat command %q is missing %q", got, want)
+		}
+	}
+}
+
+func TestClaimLabel(t *testing.T) {
+	for _, tc := range []struct {
+		l    tmux.Loop
+		want string
+	}{
+		{tmux.Loop{Role: "review"}, "wip:review"},
+		{tmux.Loop{Role: "supervise", Scope: "full"}, "wip:supervise"},
+		{tmux.Loop{Role: "build", Scope: "backend"}, "wip:backend"},
+		{tmux.Loop{Role: "build"}, "wip:full"},
+	} {
+		if got := claimLabel(tc.l); got != tc.want {
+			t.Errorf("claimLabel(%+v) = %q, want %q", tc.l, got, tc.want)
 		}
 	}
 }

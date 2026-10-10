@@ -206,27 +206,81 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, _ := s.Tmux.Loops(r.Context())
-	running := map[string]bool{}
-	for _, l := range existing {
-		running[l.Name] = true
+	// A start is the whole set of loops this repo should have, not loops to
+	// add: the missing ones start, running ones take the new scope and
+	// instructions, and loops of this repo that are not in the set stop.
+	ctx := r.Context()
+	existing, err := s.Tmux.Loops(ctx)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	var started, skipped []string
+	byName := map[string]tmux.Loop{}
+	for _, l := range existing {
+		byName[l.Name] = l
+	}
+	want := map[string]bool{}
 	for _, p := range plans {
 		if !tmux.ValidLoopName(p.name) {
 			writeErr(w, http.StatusBadRequest, fmt.Sprintf("cannot name a session for %q", body.Repo))
 			return
 		}
-		if running[p.name] {
-			skipped = append(skipped, p.name)
+		// Names come from the folder name alone, so two repos called the
+		// same share them.
+		if l, ok := byName[p.name]; ok && l.Repo != "" && l.Repo != body.Repo {
+			writeErr(w, http.StatusConflict, fmt.Sprintf("%s already runs for %s, a repo with the same folder name. Stop those loops first.", p.name, l.Repo))
+			return
+		}
+		want[p.name] = true
+	}
+
+	var started, updated, stopped []string
+	for _, l := range existing {
+		if l.Repo != body.Repo || want[l.Name] || !loopRoles[l.Role] {
 			continue
+		}
+		when, err := s.stopLoop(ctx, l, true)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.audit(r, "loop-stop", l.Name, when)
+		stopped = append(stopped, l.Name)
+	}
+	for _, p := range plans {
+		if l, ok := byName[p.name]; ok {
+			// Another agent cannot take over a running session, so the
+			// supervisor is replaced; its claim goes back for the new one.
+			if l.Agent == p.agent || l.Agent == "" {
+				// The empty stop cancels a queued "after this issue": the
+				// loop is still wanted.
+				for opt, v := range map[string]string{"@loop_scope": body.Scope, "@loop_instr": body.Instructions,
+					"@loop_mode": body.InstrMode, "@loop_stop": ""} {
+					if err := s.Tmux.SetLoopOption(ctx, p.name, opt, v); err != nil {
+						writeErr(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+				}
+				updated = append(updated, p.name)
+				continue
+			}
+			if _, err := s.stopLoop(ctx, l, false); err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			stopped = append(stopped, p.name)
 		}
 		argv := []string{exe, "loop", "--role", p.role, "--agent", p.agent, "--repo", body.Repo,
 			"--session", p.name, "--scope", body.Scope, "--instructions", body.Instructions,
 			"--mode", body.InstrMode}
-		if err := s.Tmux.NewLoopSession(r.Context(), p.name, body.Repo, argv); err != nil {
+		if err := s.Tmux.NewLoopSession(ctx, p.name, body.Repo, argv); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		// Written here too, not only by the loop on its way up, so a start
+		// a moment later already knows whose loop this is.
+		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent} {
+			s.Tmux.SetLoopOption(ctx, p.name, opt, v)
 		}
 		s.audit(r, "loop-start", p.name, body.Repo)
 		started = append(started, p.name)
@@ -239,8 +293,11 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	if _, err := config.Update(func(c *config.Config) { c.LastLoop = &last }); err != nil {
 		log.Printf("loops: could not save the last start: %v", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started), "skipped": orEmpty(skipped)})
+	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started), "updated": orEmpty(updated), "stopped": orEmpty(stopped)})
 }
+
+// loopRoles are the roles a start manages. The chat supervisor is not one.
+var loopRoles = map[string]bool{"build": true, "review": true, "supervise": true}
 
 func (s *Server) loopByName(ctx context.Context, name string) (*tmux.Loop, error) {
 	loops, err := s.Tmux.Loops(ctx)
@@ -314,33 +371,44 @@ func (s *Server) handleStopLoop(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "no such loop")
 		return
 	}
-	if r.URL.Query().Get("when") == "after" && (l.State == "working" || l.State == "triaging") {
-		if err := s.Tmux.SetLoopOption(r.Context(), name, "@loop_stop", "after"); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		s.audit(r, "loop-stop", name, "after this issue")
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "when": "after"})
-		return
-	}
-	if err := s.Tmux.KillLoop(r.Context(), name); err != nil {
+	when, err := s.stopLoop(r.Context(), *l, r.URL.Query().Get("when") == "after")
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r, "loop-stop", name, when)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "when": when})
+}
+
+// stopLoop stops l and says when: "after" queues the stop for a loop in the
+// middle of a run, when after is asked; anything else is killed "now".
+func (s *Server) stopLoop(ctx context.Context, l tmux.Loop, after bool) (string, error) {
+	if after && (l.State == "working" || l.State == "triaging") {
+		return "after", s.Tmux.SetLoopOption(ctx, l.Name, "@loop_stop", "after")
+	}
+	if err := s.Tmux.KillLoop(ctx, l.Name); err != nil {
+		return "", err
+	}
 	if l.Issue > 0 && l.Slug != "" {
-		claim := "wip:review"
-		if l.Role != "review" {
-			claim = "wip:" + cmpOr(l.Scope, "full")
-		}
 		gh := harness.GH{Slug: l.Slug}
-		for _, label := range []string{claim, "by:" + name} {
-			if err := gh.RemoveLabel(context.WithoutCancel(r.Context()), l.Issue, label); err != nil {
+		for _, label := range []string{claimLabel(l), "by:" + l.Name} {
+			if err := gh.RemoveLabel(context.WithoutCancel(ctx), l.Issue, label); err != nil {
 				log.Printf("loops: could not release %s#%d: %v", l.Slug, l.Issue, err)
 			}
 		}
 	}
-	s.audit(r, "loop-stop", name, "now")
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "when": "now"})
+	return "now", nil
+}
+
+// claimLabel is the wip label a loop puts on the item it works on.
+func claimLabel(l tmux.Loop) string {
+	switch l.Role {
+	case "review":
+		return "wip:review"
+	case "supervise":
+		return "wip:supervise"
+	}
+	return "wip:" + cmpOr(l.Scope, "full")
 }
 
 func cmpOr(a, b string) string {

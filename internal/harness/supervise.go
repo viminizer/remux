@@ -83,10 +83,16 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	n := it.Number
-	if err := l.gh.AddLabels(ctx, n, "wip:supervise"); err != nil {
+	// by:<session> too, so reapClaims frees the item when this loop dies
+	// mid-run; it only looks at by: labels.
+	if err := l.gh.AddLabels(ctx, n, "wip:supervise", "by:"+l.Session); err != nil {
 		return false, err
 	}
-	defer l.gh.RemoveLabel(context.WithoutCancel(ctx), n, "wip:supervise")
+	defer func() {
+		c := context.WithoutCancel(ctx)
+		l.gh.RemoveLabel(c, n, "wip:supervise")
+		l.gh.RemoveLabel(c, n, "by:"+l.Session)
+	}()
 
 	l.working(ctx, n, it.Title)
 	log.Printf("── supervising #%d: %s", n, it.Title)

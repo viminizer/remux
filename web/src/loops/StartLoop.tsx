@@ -1,16 +1,18 @@
 import { useState } from 'react'
 
-import type { HarnessRepo, LoopStart, Preset } from './types'
+import type { HarnessRepo, Loop, LoopStart, Preset } from './types'
 
 const OTHER = '__other__'
 
 /**
- * Start loops in one repo. Everything is pre-filled from the last start, and
- * a saved preset fills the instructions in one tap, so most starts are just
- * the Start button.
+ * The loops one repo should have. Start makes the repo match: missing loops
+ * start, extra ones stop, running ones take the new scope and instructions.
+ * The form shows the loops running in the repo, or the last start when none
+ * are, and a saved preset fills the instructions in one tap.
  */
 export function StartLoop({
   repos,
+  running,
   last,
   presets,
   onBack,
@@ -18,6 +20,7 @@ export function StartLoop({
   onSavePresets,
 }: {
   repos: HarnessRepo[]
+  running: Loop[]
   last: LoopStart | null
   presets: Preset[]
   onBack: () => void
@@ -28,16 +31,28 @@ export function StartLoop({
   const first = last?.repo ?? repos[0]?.path ?? ''
   const [repo, setRepo] = useState(first && known(first) ? first : first ? OTHER : '')
   const [path, setPath] = useState(first && !known(first) ? first : '')
-  const many = (a: string) => last?.agents.filter((x) => x === a).length ?? 0
-  const [claude, setClaude] = useState(last ? many('claude') : 1)
-  const [codex, setCodex] = useState(last ? many('codex') : 0)
-  const [reviews, setReviews] = useState(last ? (last.reviews ?? (last.review ? 1 : 0)) : 1)
-  const [supervise, setSupervise] = useState(last ? !!last.supervise : true)
-  const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(last?.superviseAgent ?? 'claude')
-  const [scope, setScope] = useState(last?.scope ?? 'full')
-  const [instr, setInstr] = useState(last?.instructions ?? '')
-  const [mode, setMode] = useState<'add' | 'replace'>(last?.instrMode ?? 'add')
+  const init = formFor(first, running, last)
+  const [claude, setClaude] = useState(init.claude)
+  const [codex, setCodex] = useState(init.codex)
+  const [reviews, setReviews] = useState(init.reviews)
+  const [supervise, setSupervise] = useState(init.supervise)
+  const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(init.supAgent)
+  const [scope, setScope] = useState(init.scope)
+  const [instr, setInstr] = useState(init.instr)
+  const [mode, setMode] = useState<'add' | 'replace'>(init.mode)
   const [busy, setBusy] = useState(false)
+
+  const fill = (p: string) => {
+    const f = formFor(p, running, last)
+    setClaude(f.claude)
+    setCodex(f.codex)
+    setReviews(f.reviews)
+    setSupervise(f.supervise)
+    setSupAgent(f.supAgent)
+    setScope(f.scope)
+    setInstr(f.instr)
+    setMode(f.mode)
+  }
 
   const apply = (p: Preset) => {
     setScope(p.scope || 'full')
@@ -55,6 +70,7 @@ export function StartLoop({
     ...Array<'codex'>(codex).fill('codex'),
   ]
   const ok = !!target && (agents.length > 0 || reviews > 0 || supervise) && !busy
+  const live = runningIn(target, running).length > 0
 
   return (
     <div className="screen on gh-screen">
@@ -90,7 +106,13 @@ export function StartLoop({
 
         <div className="field">
           <label>Project</label>
-          <select value={repo} onChange={(e) => setRepo(e.target.value)}>
+          <select
+            value={repo}
+            onChange={(e) => {
+              setRepo(e.target.value)
+              if (e.target.value !== OTHER) fill(e.target.value)
+            }}
+          >
             {repos.map((r) => (
               <option key={r.path} value={r.path}>
                 {r.slug}
@@ -183,11 +205,52 @@ export function StartLoop({
             )
           }}
         >
-          {busy ? 'Starting…' : 'Start'}
+          {busy ? 'Starting…' : live ? 'Update loops' : 'Start'}
         </button>
       </div>
     </div>
   )
+}
+
+/** The loops a start manages in repo p, running now. The chat supervisor is not one. */
+function runningIn(p: string, running: Loop[]): Loop[] {
+  return running.filter((l) => l.repo === p && (l.role === 'build' || l.role === 'review' || l.role === 'supervise'))
+}
+
+/**
+ * The form for repo p: what runs there now, so lowering a count stops a loop
+ * that is really running. With nothing running, the last start, if it was in
+ * this repo.
+ */
+function formFor(p: string, running: Loop[], last: LoopStart | null) {
+  const mine = runningIn(p, running)
+  if (mine.length) {
+    const builds = mine.filter((l) => l.role === 'build')
+    const sup = mine.find((l) => l.role === 'supervise')
+    const ref = builds[0] ?? mine[0]
+    return {
+      claude: builds.filter((l) => l.agent === 'claude').length,
+      codex: builds.filter((l) => l.agent === 'codex').length,
+      reviews: mine.filter((l) => l.role === 'review').length,
+      supervise: !!sup,
+      supAgent: (sup?.agent || 'claude') as 'claude' | 'codex',
+      scope: ref.scope || 'full',
+      instr: ref.instructions,
+      mode: (ref.instrMode || 'add') as 'add' | 'replace',
+    }
+  }
+  const l = last?.repo === p ? last : null
+  const many = (a: string) => l?.agents.filter((x) => x === a).length ?? 0
+  return {
+    claude: l ? many('claude') : 1,
+    codex: l ? many('codex') : 0,
+    reviews: l ? (l.reviews ?? (l.review ? 1 : 0)) : 1,
+    supervise: l ? !!l.supervise : true,
+    supAgent: l?.superviseAgent ?? ('claude' as const),
+    scope: l?.scope ?? 'full',
+    instr: l?.instructions ?? '',
+    mode: l?.instrMode ?? ('add' as const),
+  }
 }
 
 /** How many build loops of one agent: 0 to 5, each its own session. */

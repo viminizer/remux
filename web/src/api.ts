@@ -195,7 +195,7 @@ export const api = {
   loops: () => call<LoopsPayload>('/api/loops'),
 
   startLoops: (v: LoopStart) =>
-    call<{ started: string[]; skipped: string[] }>('/api/loops', {
+    call<{ started: string[]; stopped: string[]; updated: string[] }>('/api/loops', {
       method: 'POST',
       body: JSON.stringify(v),
     }),

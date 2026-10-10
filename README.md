@@ -188,7 +188,10 @@ Then fill in `.remux/harness.json` and commit it with `.remux/decisions.md`:
 
 Start loops from the phone: **drawer → Loops → Start loop**. The Start screen takes
 a count for each agent, up to 5: two Claude loops are `loop-claude-<repo>` and
-`loop-claude2-<repo>`. Each loop claims an issue with its own `by:<session>`
+`loop-claude2-<repo>`. The counts are the whole set for that repo: the screen
+shows what runs there now, and Start (Update loops, once some run) starts the
+missing loops, stops the extra ones after their current issue, and gives running
+ones the new scope and instructions. Each loop claims an issue with its own `by:<session>`
 label first, so two loops waking together never work the same one. Each loop is a
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
 `ready` issue per run (blockers first) in its own worktree under
