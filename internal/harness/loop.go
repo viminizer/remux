@@ -543,16 +543,23 @@ func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
 //
 // last is a file Codex writes its final message to; Claude prints only its
 // final message, so its stdout is that already.
+//
+// Both run at medium effort, whatever the interactive default is. Measured on
+// educenter, Claude at high effort spent 75% of a build run thinking and
+// writing, about 67k output tokens a run; Codex at medium built faster.
 func (l *Loop) command(wt, last string) []string {
 	if l.Agent == "codex" {
-		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-C", wt, "-o", last, "-"}
+		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", codexMedium, "-C", wt, "-o", last, "-"}
 	}
-	args := []string{"claude", "-p", "--dangerously-skip-permissions"}
+	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", "medium"}
 	for _, r := range l.set.References {
 		args = append(args, "--add-dir", expandHome(r))
 	}
 	return args
 }
+
+// codexMedium sets Codex's reasoning effort, as one -c argument.
+const codexMedium = `-cmodel_reasoning_effort="medium"`
 
 // agent runs one agent process in wt and returns its exit code and its final
 // message. Its output goes to the loop's own pane, which is where the phone
@@ -565,7 +572,7 @@ func (l *Loop) agent(ctx context.Context, wt, prompt string) (int, string) {
 // only reports findings; it does not change the branch.
 func (l *Loop) codexReview(ctx context.Context, wt, base string) (int, string) {
 	return l.spawn(ctx, wt, "", func(last string) []string {
-		return []string{"codex", "exec", "review", "--dangerously-bypass-approvals-and-sandbox", "--base", base, "-o", last}
+		return []string{"codex", "exec", "review", "--dangerously-bypass-approvals-and-sandbox", codexMedium, "--base", base, "-o", last}
 	})
 }
 
