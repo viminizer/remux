@@ -4,6 +4,7 @@ export interface Loop {
   pane: string
   role: 'build' | 'review' | 'supervise' | 'chat' | ''
   agent: 'claude' | 'codex' | ''
+  model?: string
   repo: string
   slug: string
   state: 'idle' | 'working' | 'triaging' | 'blocked' | ''
@@ -27,10 +28,12 @@ export interface Preset {
 export interface LoopStart {
   repo: string
   agents: ('claude' | 'codex')[]
+  models?: string[]
   review: boolean
   reviews?: number
   supervise: boolean
   superviseAgent?: 'claude' | 'codex'
+  superviseModel?: string
   scope: string
   instructions: string
   instrMode: 'add' | 'replace'
@@ -65,8 +68,9 @@ export function loopWho(l: Loop): string {
   // the second review loop.
   const n = /^loop-[a-z]+?(\d+)-/.exec(l.name)?.[1]
   if (l.role === 'review') return n ? `review ${n}` : 'review'
-  if (l.role === 'supervise') return `supervisor · ${l.agent}`
-  return n ? `${l.agent} ${n}` : l.agent
+  const model = l.model ? ` · ${l.model}` : ''
+  if (l.role === 'supervise') return `supervisor · ${l.agent}${model}`
+  return (n ? `${l.agent} ${n}` : l.agent) + model
 }
 
 /** The dot colour for a loop: problems stand out, idle is calm. */

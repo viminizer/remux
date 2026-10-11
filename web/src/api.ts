@@ -200,7 +200,7 @@ export const api = {
       body: JSON.stringify(v),
     }),
 
-  editLoop: (name: string, v: { scope?: string; instructions?: string; instrMode?: string }) =>
+  editLoop: (name: string, v: { model?: string; scope?: string; instructions?: string; instrMode?: string }) =>
     call(`/api/loops/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(v) }),
 
   stopLoop: (name: string, when: 'now' | 'after') =>

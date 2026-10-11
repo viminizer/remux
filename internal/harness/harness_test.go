@@ -121,6 +121,17 @@ func TestCommand(t *testing.T) {
 	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != `codex exec --dangerously-bypass-approvals-and-sandbox -cmodel_reasoning_effort="medium" -C /r/wt -o /tmp/last -` {
 		t.Errorf("codex command = %q", c)
 	}
+	l.Agent = "claude"
+	for _, model := range []string{"sonnet", "opus"} {
+		l.Model = model
+		if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); !strings.Contains(c, "--model "+model) || !strings.Contains(c, "--effort medium") {
+			t.Errorf("model not passed with medium effort: %q", c)
+		}
+	}
+	l.Agent = "codex"
+	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); strings.Contains(c, "--model") {
+		t.Errorf("Claude choice leaked into Codex: %q", c)
+	}
 }
 
 func TestSettings(t *testing.T) {
@@ -154,6 +165,9 @@ func TestStatusReadyCountsAsReady(t *testing.T) {
 
 // fakeGH stands in for the gh binary and records each call, one per line.
 func fakeGH(t *testing.T) func() []string {
+	// Harness outcomes write local run records; keep fixtures out of the
+	// user's real run history as well as out of GitHub.
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls")
 	bin := filepath.Join(dir, "gh")

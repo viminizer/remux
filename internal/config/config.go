@@ -80,18 +80,21 @@ type LoopPreset struct {
 
 // LoopStart is one tap on Start: a repo, the agents, and the instructions.
 type LoopStart struct {
-	Repo         string   `json:"repo"`
-	Agents       []string `json:"agents"`
-	Review       bool     `json:"review"`
+	Repo   string   `json:"repo"`
+	Agents []string `json:"agents"`
+	// Models aligns with Agents. Empty entries keep the CLI's configured model.
+	Models []string `json:"models,omitempty"`
+	Review bool     `json:"review"`
 	// Reviews is how many review loops; Review alone means one.
-	Reviews int `json:"reviews,omitempty"`
-	Supervise    bool     `json:"supervise"`
+	Reviews   int  `json:"reviews,omitempty"`
+	Supervise bool `json:"supervise"`
 	// SuperviseAgent is claude or codex, for the supervise loop and the
 	// supervisor Kevin talks to. Empty means claude.
-	SuperviseAgent string `json:"superviseAgent,omitempty"`
-	Scope        string   `json:"scope"`
-	Instructions string   `json:"instructions"`
-	InstrMode    string   `json:"instrMode"`
+	SuperviseAgent string  `json:"superviseAgent,omitempty"`
+	SuperviseModel *string `json:"superviseModel,omitempty"`
+	Scope          string  `json:"scope"`
+	Instructions   string  `json:"instructions"`
+	InstrMode      string  `json:"instrMode"`
 }
 
 func Default() *Config {

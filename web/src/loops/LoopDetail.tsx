@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Loop } from './types'
 import { itemURL, loopDot, loopWho, project, since } from './types'
+import { ModelSelect } from './ModelSelect'
 
 /**
  * One loop: what it is on, its instructions, and the last lines of its log.
@@ -19,12 +20,13 @@ export function LoopDetail({
   loop: Loop | null
   onBack: () => void
   onStop: (when: 'now' | 'after') => void
-  onSave: (v: { scope: string; instructions: string; instrMode: 'add' | 'replace' }) => Promise<void>
+  onSave: (v: { model: string; scope: string; instructions: string; instrMode: 'add' | 'replace' }) => Promise<void>
 }) {
   const [log, setLog] = useState<string[]>([])
   const [editing, setEditing] = useState(false)
   const [asking, setAsking] = useState(false)
   const [scope, setScope] = useState('')
+  const [model, setModel] = useState('')
   const [instr, setInstr] = useState('')
   const [mode, setMode] = useState<'add' | 'replace'>('add')
 
@@ -69,6 +71,7 @@ export function LoopDetail({
 
   const startEdit = () => {
     setScope(loop.scope || 'full')
+    setModel(loop.model ?? '')
     setInstr(loop.instructions)
     setMode(loop.instrMode === 'replace' ? 'replace' : 'add')
     setEditing(true)
@@ -117,6 +120,7 @@ export function LoopDetail({
           <h3>Instructions</h3>
           {editing ? (
             <div className="card loop-form">
+              {loop.agent === 'claude' && <ModelSelect label="Model" value={model} onChange={setModel} />}
               {loop.role === 'build' && (
                 <div className="field">
                   <label>Scope name</label>
@@ -182,7 +186,7 @@ export function LoopDetail({
             <button
               className="go"
               onClick={() =>
-                void onSave({ scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).then(() =>
+                void onSave({ model, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).then(() =>
                   setEditing(false),
                 )
               }

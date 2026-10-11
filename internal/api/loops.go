@@ -154,12 +154,16 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	if body.InstrMode != "replace" {
 		body.InstrMode = "add"
 	}
-	type plan struct{ name, role, agent string }
+	if len(body.Models) != 0 && len(body.Models) != len(body.Agents) {
+		writeErr(w, http.StatusBadRequest, "models must align with agents")
+		return
+	}
+	type plan struct{ name, role, agent, model string }
 	var plans []plan
 	// An agent named twice means two loops of it. The first is
 	// loop-claude-<repo>, the next loop-claude2-<repo>, and so on.
 	count := map[string]int{}
-	for _, a := range body.Agents {
+	for i, a := range body.Agents {
 		if a != "claude" && a != "codex" {
 			writeErr(w, http.StatusBadRequest, "agents are claude and codex")
 			return
@@ -173,7 +177,15 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		if count[a] > 1 {
 			who = fmt.Sprint(a, count[a])
 		}
-		plans = append(plans, plan{loopName(who, body.Repo), "build", a})
+		model := ""
+		if len(body.Models) > 0 {
+			model = body.Models[i]
+		}
+		if !harness.ValidModel(a, model) {
+			writeErr(w, http.StatusBadRequest, "Claude models are sonnet, opus or empty; Codex uses CLI settings")
+			return
+		}
+		plans = append(plans, plan{loopName(who, body.Repo), "build", a, model})
 	}
 	if body.Review && body.Reviews == 0 {
 		body.Reviews = 1
@@ -188,13 +200,21 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		if i > 1 {
 			who = fmt.Sprint("review", i)
 		}
-		plans = append(plans, plan{loopName(who, body.Repo), "review", "codex"})
+		plans = append(plans, plan{loopName(who, body.Repo), "review", "codex", ""})
 	}
 	if body.Supervise {
 		if body.SuperviseAgent != "codex" {
 			body.SuperviseAgent = "claude"
 		}
-		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", body.SuperviseAgent})
+		model := ""
+		if body.SuperviseModel != nil {
+			model = *body.SuperviseModel
+		}
+		if !harness.ValidModel(body.SuperviseAgent, model) {
+			writeErr(w, http.StatusBadRequest, "invalid supervisor model")
+			return
+		}
+		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", body.SuperviseAgent, model})
 	}
 	if len(plans) == 0 {
 		writeErr(w, http.StatusBadRequest, "pick at least one agent")
@@ -261,6 +281,14 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 				}
+				// Older clients omit model selection: preserve an existing
+				// choice rather than silently resetting it.
+				if p.role == "build" && body.Models != nil || p.role == "supervise" && body.SuperviseModel != nil {
+					if err := s.Tmux.SetLoopOption(ctx, p.name, "@loop_model", p.model); err != nil {
+						writeErr(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+				}
 				updated = append(updated, p.name)
 				continue
 			}
@@ -272,14 +300,14 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		}
 		argv := []string{exe, "loop", "--role", p.role, "--agent", p.agent, "--repo", body.Repo,
 			"--session", p.name, "--scope", body.Scope, "--instructions", body.Instructions,
-			"--mode", body.InstrMode}
+			"--mode", body.InstrMode, "--model", p.model}
 		if err := s.Tmux.NewLoopSession(ctx, p.name, body.Repo, argv); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		// Written here too, not only by the loop on its way up, so a start
 		// a moment later already knows whose loop this is.
-		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent} {
+		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent, "@loop_model": p.model} {
 			s.Tmux.SetLoopOption(ctx, p.name, opt, v)
 		}
 		s.audit(r, "loop-start", p.name, body.Repo)
@@ -317,6 +345,7 @@ func (s *Server) loopByName(ctx context.Context, name string) (*tmux.Loop, error
 func (s *Server) handleEditLoop(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
+		Model        *string `json:"model"`
 		Scope        *string `json:"scope"`
 		Instructions *string `json:"instructions"`
 		InstrMode    *string `json:"instrMode"`
@@ -331,6 +360,13 @@ func (s *Server) handleEditLoop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	set := map[string]string{}
+	if body.Model != nil {
+		if !harness.ValidModel(l.Agent, *body.Model) {
+			writeErr(w, http.StatusBadRequest, "invalid model for this agent")
+			return
+		}
+		set["@loop_model"] = *body.Model
+	}
 	if body.Scope != nil {
 		if !scopeRe.MatchString(*body.Scope) {
 			writeErr(w, http.StatusBadRequest, "scope is lowercase letters, digits and dashes")
@@ -509,11 +545,11 @@ func codexChat(home, brief string) []string {
 // InboxItem is one thing that needs Kevin: a stuck agent's question, or a
 // company pull request now with the supervisor (just so he knows).
 type InboxItem struct {
-	Slug     string   `json:"slug"`
-	Number   int      `json:"number"`
-	Kind     string   `json:"kind"` // issue or pr
-	Title    string   `json:"title"`
-	URL      string   `json:"url"`
+	Slug   string `json:"slug"`
+	Number int    `json:"number"`
+	Kind   string `json:"kind"` // issue or pr
+	Title  string `json:"title"`
+	URL    string `json:"url"`
 	// stuck waits on Kevin; checking is with the supervise loop, which will
 	// pass it on only if it needs him; supervisor is a company PR with his
 	// human supervisor.

@@ -21,6 +21,7 @@ import (
 type Loop struct {
 	Role    string // build or review
 	Agent   string // claude or codex
+	Model   string // empty keeps the CLI's configured model
 	Repo    string // the main checkout of the repo
 	Session string // its loop-* tmux session
 	Tmux    *tmux.Client
@@ -37,6 +38,7 @@ type Loop struct {
 	lastTriage  time.Time
 	lastCleanup time.Time
 	limit       time.Time // set when the last agent run ended on a usage limit
+	item        int       // issue or PR being worked; zero while triaging
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
@@ -57,7 +59,7 @@ var RunTimeout = 90 * time.Minute
 // (GitHub unreachable, gh logged out) fix themselves or get fixed at the laptop.
 func (l *Loop) Run(ctx context.Context) error {
 	for opt, v := range map[string]string{
-		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_repo": l.Repo,
+		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_model": l.Model, "@loop_repo": l.Repo,
 		"@loop_scope": l.Scope, "@loop_instr": l.Instructions, "@loop_mode": l.InstrMode,
 	} {
 		l.opt(ctx, opt, v)
@@ -90,6 +92,10 @@ func (l *Loop) Run(ctx context.Context) error {
 		}
 
 		var did bool
+		// Keep the model stable through this issue's runs. Phone edits apply
+		// on the next iteration, including clearing back to CLI settings.
+		l.Model = l.get(ctx, "@loop_model")
+		l.item = 0
 		l.limit = time.Time{}
 		switch l.Role {
 		case "review":
@@ -328,6 +334,14 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 // and the PR for its branch, if any.
 func (l *Loop) settle(ctx context.Context, title string, after Item, pr *Item, scope, wt, branch string, code int) error {
 	n := after.Number
+	outcome, prNumber := "no-pr", 0
+	if pr != nil {
+		outcome, prNumber = "pr-opened", pr.Number
+	}
+	if after.Has("needs-human") || after.Has("blocked") {
+		outcome = "blocked"
+	}
+	l.recordOutcome(outcome, n, prNumber)
 	// A PR always goes to review, whatever else happened to the issue. On
 	// educenter five partial PRs sat unreviewed for hours: each agent opened
 	// a PR for the part it could do, then marked the rest of the issue
@@ -552,6 +566,9 @@ func (l *Loop) command(wt, last string) []string {
 		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", codexMedium, "-C", wt, "-o", last, "-"}
 	}
 	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", "medium"}
+	if l.Model != "" {
+		args = append(args, "--model", l.Model)
+	}
 	for _, r := range l.set.References {
 		args = append(args, "--add-dir", expandHome(r))
 	}
@@ -589,6 +606,8 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 	defer os.Remove(f.Name())
 
 	args := argv(f.Name())
+	started := time.Now()
+	l.recordRun(started, "start", args, 0, 0)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = wt
 	cmd.Stdin = strings.NewReader(stdin)
@@ -609,6 +628,7 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 			l.limit = until
 		}
 	}
+	l.recordRun(started, "end", args, code, time.Since(started).Milliseconds())
 	if b, _ := os.ReadFile(f.Name()); len(bytes.TrimSpace(b)) > 0 {
 		return code, strings.TrimSpace(string(b))
 	}
@@ -643,6 +663,7 @@ func (l *Loop) state(ctx context.Context, state, note string) {
 }
 
 func (l *Loop) working(ctx context.Context, n int, title string) {
+	l.item = n
 	l.opt(ctx, "@loop_issue", strconv.Itoa(n))
 	l.opt(ctx, "@loop_title", title)
 	l.state(ctx, "working", "")
@@ -653,6 +674,7 @@ func (l *Loop) working(ctx context.Context, n int, title string) {
 // event records one of the three things worth a push: stuck, merged, sent.
 // The server watches the option and notifies on each new value.
 func (l *Loop) event(ctx context.Context, kind string, n int, title string) {
+	l.recordOutcome(kind, n, 0)
 	if kind == "stuck" && l.Role != "supervise" && l.supervised(ctx) {
 		return
 	}

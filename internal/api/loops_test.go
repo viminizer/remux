@@ -93,7 +93,7 @@ func TestLoopLifecycle(t *testing.T) {
 	defer tm.KillLoop(ctx, "loop-review-harness-api-test")
 
 	code, body := do(t, ts, "POST", "/api/loops", map[string]any{
-		"repo": repo, "agents": []string{"claude"}, "review": true, "scope": "backend",
+		"repo": repo, "agents": []string{"claude"}, "models": []string{"sonnet"}, "review": true, "scope": "backend",
 	})
 	if code != http.StatusOK || !strings.Contains(string(body), name) {
 		t.Fatalf("start: %d %s", code, body)
@@ -101,6 +101,18 @@ func TestLoopLifecycle(t *testing.T) {
 	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude"}, "review": true}); code != http.StatusOK ||
 		!strings.Contains(string(body), `"started":[]`) || !strings.Contains(string(body), `"updated":["`+name) {
 		t.Errorf("a running loop must be updated, not started twice: %d %s", code, body)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_model"); v != "sonnet" {
+		t.Errorf("older request reset model: %q", v)
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"model": "opus"}); code != http.StatusOK {
+		t.Fatalf("model edit: %d", code)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_model"); v != "opus" {
+		t.Errorf("model edit = %q", v)
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"model": "invalid"}); code != http.StatusBadRequest {
+		t.Errorf("invalid model = %d", code)
 	}
 
 	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"instructions": "only tests\nplease"}); code != http.StatusOK {
@@ -125,9 +137,21 @@ func TestLoopLifecycle(t *testing.T) {
 
 	// Claude twice means a second Claude loop, named so the two differ.
 	defer tm.KillLoop(ctx, "loop-claude2-harness-api-test")
-	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK ||
-		!strings.Contains(string(body), `"started":["loop-claude2-harness-api-test"]`) {
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "models": []string{"sonnet", "opus"}, "supervise": true, "superviseModel": "opus", "reviews": 1}); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["loop-claude2-harness-api-test"`) {
 		t.Errorf("a second Claude loop was not started: %d %s", code, body)
+	}
+	defer tm.KillLoop(ctx, "loop-supervise-harness-api-test")
+	for session, want := range map[string]string{name: "sonnet", "loop-claude2-harness-api-test": "opus", "loop-supervise-harness-api-test": "opus", "loop-review-harness-api-test": ""} {
+		if v, _ := tm.LoopOption(ctx, session, "@loop_model"); v != want {
+			t.Errorf("%s model = %q, want %q", session, v, want)
+		}
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"model": ""}); code != http.StatusOK {
+		t.Errorf("clear model = %d", code)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_model"); v != "" {
+		t.Errorf("cleared model = %q", v)
 	}
 	if code, _ := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude", "claude", "claude", "claude", "claude"}}); code != http.StatusBadRequest {
 		t.Errorf("six Claude loops must be refused, got %d", code)

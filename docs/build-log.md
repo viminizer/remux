@@ -1136,3 +1136,58 @@ Verification:
   removed their own temporary windows. Browser and Vite sessions were stopped.
 
 The installed service was not restarted during verification.
+
+## 2026-10-12 - Per-loop Claude models and trial history
+
+Added Sonnet, Opus and CLI-default selectors for each Claude build loop and
+the supervise loop independently. The individual loop Edit screen can change
+the choice for the next issue. New forms choose Opus; existing loops and older
+API requests preserve their current choices. Claude keeps medium effort;
+Codex review and repair commands retain their settings. The CLI accepts
+`--model`; the API accepts aligned `models` and a separate `superviseModel`.
+
+The harness appends owner-only JSONL records to
+`~/.config/remux/loop-runs.jsonl`: process starts/ends, requested model,
+issue/PR number, stage, elapsed milliseconds and exit status. Build outcomes
+link issue numbers to PR numbers, and stuck/merged events survive session
+cleanup. This is evidence for a Sonnet trial, not a usage meter: it records no
+tokens, billed usage, exact backend model version, prompts or agent output.
+No automatic routing or escalation was added, and no live trial was started.
+
+Verification:
+
+- `PATH="/tmp/remux-model-test-bin:$PATH" go test ./... -count=1` passed.
+  The temporary wrapper points every tmux call at the isolated
+  `remux-model-tests` server. It does not target the laptop's live server.
+- The lifecycle test exercises mixed Sonnet/Opus builds, an independent Opus
+  supervisor, unchanged Codex review, model edits, clearing to CLI default,
+  invalid edits and preservation when older requests omit model choices.
+  Command tests verify the Claude model flag and unchanged medium effort;
+  run-record tests verify persistence after a failed process, owner-only
+  permissions and exclusion of prompt text. Existing harness fixtures use
+  temporary homes so their outcomes do not pollute real run history.
+- `go vet ./...`, `go build ./...`, `npm --prefix web test`,
+  `npm --prefix web run build`, `./scripts/build.sh` and `git diff --check`
+  passed. The stripped binary measured 23,074,304 bytes.
+- Agent-browser exercised the real StartLoop component and API client in a
+  temporary harness at 390px width. Choosing Sonnet for Claude 1 and Opus for
+  Claude 2 submitted `models:["sonnet","opus"]` and
+  `superviseModel:"opus"`. There was no horizontal overflow or browser error.
+  The request was intercepted; it launched no agent. Browser, Vite and
+  temporary harness files were cleaned up.
+- The first suite run exposed a lifecycle assertion that expected only one
+  new session; it was corrected to account for the new supervisor. Existing
+  input tests also needed a clean shell in the isolated server: the user's
+  long prompt wrapped input, and plain sh lacked bracketed paste. Using
+  `/bin/zsh -f` at 200 columns let the final complete suite pass.
+- `laptop-invariant.sh before` and `after` surrounded tmux verification.
+  Final result: `PASS: laptop untouched (20 panes unchanged)`. It noted the
+  active window moving independently during the run; test writes used only
+  the isolated server. Its `remux-test` session was confirmed and removed.
+  The live workspace and live loops received no test writes.
+
+The installed service was not restarted. After deploying this build, use
+Loops → Start loop to set one Claude build loop to Sonnet and the remaining
+Claude loops and supervisor to Opus. Evaluate 10–20 bounded issues against
+subsequent Codex repair runs before expanding the trial. Issue selection and
+automatic usage accounting remain manual.

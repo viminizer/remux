@@ -29,6 +29,7 @@ type Loop struct {
 	Pane         string `json:"pane"`
 	Role         string `json:"role"`  // build or review
 	Agent        string `json:"agent"` // claude or codex
+	Model        string `json:"model"`
 	Repo         string `json:"repo"`  // local clone path
 	Slug         string `json:"slug"`  // owner/name
 	State        string `json:"state"` // idle, working, triaging, blocked
@@ -51,7 +52,7 @@ var loopFields = []string{
 	"#{session_name}", "#{pane_id}", "#{@loop_role}", "#{@loop_agent}", "#{@loop_repo}",
 	"#{@loop_slug}", "#{@loop_state}", "#{@loop_since}", "#{@loop_issue}", "#{@loop_title}",
 	"#{@loop_scope}", "#{@loop_instr}", "#{@loop_mode}", "#{@loop_stop}", "#{@loop_note}",
-	"#{@loop_event}",
+	"#{@loop_event}", "#{@loop_model}",
 }
 
 // Loops lists every harness session in one tmux call.
@@ -83,7 +84,7 @@ func parseLoop(line string) (Loop, bool) {
 		Name: f[0], Pane: f[1], Role: f[2], Agent: f[3], Repo: f[4], Slug: f[5],
 		State: f[6], Since: since, Issue: issue, Title: decode(f[9]), Scope: f[10],
 		Instructions: decode(f[11]), InstrMode: f[12], Stop: f[13], Note: decode(f[14]),
-		Event: f[15],
+		Event: f[15], Model: f[16],
 	}, true
 }
 

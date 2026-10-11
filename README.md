@@ -217,6 +217,28 @@ triage pass: the agent reads the open issues, finds up to 5 that can start now,
 marks them `ready` in the repo's own format, and says why in a comment. It
 changes no code, and it runs at most every 30 minutes.
 
+**Trying Sonnet.** Each Claude build loop has its own model selector: Sonnet,
+Opus, or CLI default. The supervisor has a separate selector. New forms start
+with Opus; existing loops retain their selection. Set Claude 1 to Sonnet and
+the other Claude loops and supervisor to Opus for a small trial. A loop's Edit
+screen also changes its model, starting with the next issue. All Claude runs
+keep medium effort. Codex review and repair keep their existing settings.
+
+For API clients, `POST /api/loops` accepts `models`, an array aligned with
+`agents`, and `superviseModel`. Use an empty string for CLI default; omit the
+fields to preserve running loops' choices. `PATCH /api/loops/{name}` accepts
+`{"model":"sonnet"}` (or `opus` or an empty string). The CLI also accepts
+`remux loop --model sonnet` with its usual repo/session arguments.
+
+Run history is appended to `~/.config/remux/loop-runs.jsonl`, with start/end
+records, the requested model alias, issue or PR number, exit code and duration.
+Build outcomes link issues to PRs; review-stage records distinguish review
+from agent runs, and merge/stuck events remain in the history after a loop
+stops. Compare build results with subsequent Codex runs using the PR number.
+The history contains no prompts or agent output. It does not measure tokens,
+billed usage or the exact model version behind an alias. A start without an
+end means the run was interrupted before it could record its result.
+
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user

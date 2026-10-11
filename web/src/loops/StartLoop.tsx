@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { HarnessRepo, Loop, LoopStart, Preset } from './types'
+import { ModelSelect } from './ModelSelect'
 
 const OTHER = '__other__'
 
@@ -33,6 +34,8 @@ export function StartLoop({
   const [path, setPath] = useState(first && !known(first) ? first : '')
   const init = formFor(first, running, last)
   const [claude, setClaude] = useState(init.claude)
+  const [models, setModels] = useState(init.models)
+  const [supModel, setSupModel] = useState(init.supModel)
   const [codex, setCodex] = useState(init.codex)
   const [reviews, setReviews] = useState(init.reviews)
   const [supervise, setSupervise] = useState(init.supervise)
@@ -45,6 +48,8 @@ export function StartLoop({
   const fill = (p: string) => {
     const f = formFor(p, running, last)
     setClaude(f.claude)
+    setModels(f.models)
+    setSupModel(f.supModel)
     setCodex(f.codex)
     setReviews(f.reviews)
     setSupervise(f.supervise)
@@ -140,6 +145,12 @@ export function StartLoop({
           <Stepper name="Codex" value={codex} onChange={setCodex} />
         </div>
 
+        {Array.from({ length: claude }, (_, i) => (
+          <ModelSelect key={i} label={`Claude ${i + 1} model`} value={models[i] ?? 'opus'} onChange={(v) => {
+            setModels((old) => Array.from({ length: claude }, (_, j) => j === i ? v : old[j] ?? 'opus'))
+          }} />
+        ))}
+
         <div className="field">
           <label>Review loops</label>
           <Stepper name="Review (Codex)" value={reviews} onChange={setReviews} />
@@ -167,6 +178,8 @@ export function StartLoop({
             </div>
           </div>
         )}
+
+        {supervise && supAgent === 'claude' && <ModelSelect label="Supervisor model" value={supModel} onChange={setSupModel} />}
 
         <div className="field">
           <label>Scope name</label>
@@ -200,7 +213,7 @@ export function StartLoop({
           disabled={!ok}
           onClick={() => {
             setBusy(true)
-            void onStart({ repo: target, agents, review: reviews > 0, reviews, supervise, superviseAgent: supAgent, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
+            void onStart({ repo: target, agents, models: [...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'), ...Array<string>(codex).fill('')], review: reviews > 0, reviews, supervise, superviseAgent: supAgent, superviseModel: supAgent === 'claude' ? supModel : '', scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
               () => setBusy(false),
             )
           }}
@@ -230,6 +243,8 @@ function formFor(p: string, running: Loop[], last: LoopStart | null) {
     const ref = builds[0] ?? mine[0]
     return {
       claude: builds.filter((l) => l.agent === 'claude').length,
+      models: builds.filter((l) => l.agent === 'claude').sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((l) => l.model ?? ''),
+      supModel: sup?.model ?? '',
       codex: builds.filter((l) => l.agent === 'codex').length,
       reviews: mine.filter((l) => l.role === 'review').length,
       supervise: !!sup,
@@ -243,6 +258,8 @@ function formFor(p: string, running: Loop[], last: LoopStart | null) {
   const many = (a: string) => l?.agents.filter((x) => x === a).length ?? 0
   return {
     claude: l ? many('claude') : 1,
+    models: l ? l.agents.flatMap((a, i) => a === 'claude' ? [l.models?.[i] ?? ''] : []) : ['opus'],
+    supModel: l ? l.superviseModel ?? '' : 'opus',
     codex: l ? many('codex') : 0,
     reviews: l ? (l.reviews ?? (l.review ? 1 : 0)) : 1,
     supervise: l ? !!l.supervise : true,
