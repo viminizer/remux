@@ -1191,3 +1191,42 @@ Loops → Start loop to set one Claude build loop to Sonnet and the remaining
 Claude loops and supervisor to Opus. Evaluate 10–20 bounded issues against
 subsequent Codex repair runs before expanding the trial. Issue selection and
 automatic usage accounting remain manual.
+
+## 2026-10-12 - Release and install 0.3.89
+
+Added a visible PR comment for future Claude build contributions. It names
+the selected model (Sonnet, Opus or CLI default), medium effort, source issue,
+scope and head commit. A marker prevents duplicate comments for the same
+contribution. It identifies a build run rather than claiming the final PR is
+entirely one model's work. Codex attribution is unchanged, and earlier PRs
+are not backfilled from guesses. Failure to post is logged and does not keep
+a PR out of review.
+
+Verification and deployment:
+
+- `go test ./internal/harness` passed, including a fake-GitHub test proving
+  the comment carries the Sonnet model, correct PR/issue and commit, is not
+  duplicated, and is not added for Codex. No real test comment was posted.
+- `go vet ./...`, `git diff --check`, and
+  `VERSION=0.3.89 ./scripts/build.sh` passed. The build compiles TypeScript and
+  Vite and embeds the result. The stripped binary measured 23,078,408 bytes.
+- Saved the previous installed binary at `/tmp/remux-before-0.3.89`.
+  `./bin/remux restart` copied the new binary to `~/.local/bin/remux` and
+  restarted the existing LaunchAgent. Its `version` and `status` report
+  0.3.89. `launchctl print` reports running, PID 95006, never exited.
+  The service log reports 0.3.89 and its tailnet URL ready.
+- The Mac cannot resolve the tailnet hostname, so direct authenticated HTTPS
+  verification from this terminal was unavailable. A temporary local-mode
+  server on port 17401, using the isolated tmux wrapper, returned
+  `version:"0.3.89"` and `ok:true` from `/api/health`. Its service worker uses
+  `remux-shell-0.3.89`. Agent-browser opened the real embedded UI at 390px and
+  confirmed the separate build and supervisor model selectors. The local
+  server and browser were stopped afterward.
+- `laptop-invariant.sh before` and `after` surrounded deployment and local
+  verification. Result: `PASS: laptop untouched (20 panes unchanged)`.
+  No scratch session was needed or left behind. No loop was stopped.
+
+Versioning uses the existing Git-tag convention, `v0.3.89`. The installed app
+is updated. Existing build-loop processes retain their old code until they
+finish and restart; restarting the Remux service does not replace them.
+Model selection and PR notes take effect in loops launched with this version.

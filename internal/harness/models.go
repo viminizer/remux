@@ -1,14 +1,42 @@
 package harness
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/viminizer/remux/internal/config"
 )
+
+// noteBuild identifies this Claude contribution, even when Codex later fixes
+// the PR. It is a run note rather than a claim that one model did all work.
+func (l *Loop) noteBuild(ctx context.Context, issue int, pr *Item, scope string) error {
+	if l.Agent != "claude" {
+		return nil
+	}
+	model := map[string]string{"sonnet": "Sonnet", "opus": "Opus", "": "CLI default"}[l.Model]
+	marker := fmt.Sprintf("<!-- remux-build issue=%d scope=%s model=%s head=%s -->", issue, scope, l.Model, pr.HeadOid)
+	var thread struct {
+		Comments []struct {
+			Body string `json:"body"`
+		} `json:"comments"`
+	}
+	if err := l.gh.JSON(ctx, &thread, "pr", "view", fmt.Sprint(pr.Number), "--json", "comments"); err != nil {
+		return err
+	}
+	for _, c := range thread.Comments {
+		if strings.Contains(c.Body, marker) {
+			return nil
+		}
+	}
+	body := fmt.Sprintf("%s\n**Remux build run: Claude · %s** (medium effort)\n\nIssue #%d · scope `%s` · commit `%s`.\n\nThis identifies the build run; subsequent Codex review and repair may change the PR.", marker, model, issue, scope, pr.HeadOid)
+	return l.gh.Comment(ctx, pr.Number, body)
+}
 
 // ValidModel deliberately limits the trial to Claude aliases. Codex keeps
 // its own configuration; an empty model preserves existing CLI defaults.

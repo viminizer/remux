@@ -59,3 +59,48 @@ func TestRunRecordsSurviveProcessFailure(t *testing.T) {
 		t.Errorf("permissions = %v", info.Mode())
 	}
 }
+
+func TestBuildModelNote(t *testing.T) {
+	dir := t.TempDir()
+	comments, calls := filepath.Join(dir, "comments"), filepath.Join(dir, "calls")
+	t.Setenv("REMUX_TEST_COMMENTS", comments)
+	t.Setenv("REMUX_TEST_CALLS", calls)
+	bin := filepath.Join(dir, "gh")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nif [ \"$1\" = pr ]; then cat \"$REMUX_TEST_COMMENTS\"; else printf '%s\\n' \"$@\" >> \"$REMUX_TEST_CALLS\"; fi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := ghBin
+	ghBin = bin
+	t.Cleanup(func() { ghBin = old })
+	os.WriteFile(comments, []byte(`{"comments":[]}`), 0o600)
+	l := &Loop{Agent: "claude", Model: "sonnet", gh: GH{Slug: "o/r", Dir: dir}}
+	pr := &Item{Number: 9, HeadOid: "abc123"}
+	if err := l.noteBuild(context.Background(), 42, pr, "full"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"repos/o/r/issues/9/comments", "Claude · Sonnet", "Issue #42", "abc123", "medium effort"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("missing %q in %s", want, b)
+		}
+	}
+	os.WriteFile(comments, []byte(`{"comments":[{"body":"<!-- remux-build issue=42 scope=full model=sonnet head=abc123 -->"}]}`), 0o600)
+	if err := l.noteBuild(context.Background(), 42, pr, "full"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(calls)
+	if string(after) != string(b) {
+		t.Fatal("duplicate model comment was posted")
+	}
+	l.Agent = "codex"
+	if err := l.noteBuild(context.Background(), 42, pr, "full"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ = os.ReadFile(calls)
+	if string(after) != string(b) {
+		t.Fatal("Codex was attributed to Claude")
+	}
+}

@@ -238,6 +238,13 @@ stops. Compare build results with subsequent Codex runs using the PR number.
 The history contains no prompts or agent output. It does not measure tokens,
 billed usage or the exact model version behind an alias. A start without an
 end means the run was interrupted before it could record its result.
+Claude builds also leave a PR comment naming the selected model, source issue,
+scope and commit. The note identifies the build contribution; Codex may repair
+the PR afterward. Repeating settlement for the same contribution does not add
+another comment. Earlier PRs are not retroactively attributed.
+After upgrading from a version without model selection, existing loop
+processes must finish and restart to use it. Restarting the service updates
+the phone UI but leaves those processes running their previous code.
 
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with

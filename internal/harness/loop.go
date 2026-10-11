@@ -347,6 +347,9 @@ func (l *Loop) settle(ctx context.Context, title string, after Item, pr *Item, s
 	// a PR for the part it could do, then marked the rest of the issue
 	// blocked, and the blocked case came first and skipped the PR.
 	if pr != nil {
+		if err := l.noteBuild(ctx, n, pr, scope); err != nil {
+			log.Printf("build model note: %v", err)
+		}
 		if err := l.gh.AddLabels(ctx, pr.Number, "needs-review"); err != nil {
 			return err
 		}
