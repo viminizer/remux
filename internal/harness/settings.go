@@ -38,6 +38,8 @@ type Settings struct {
 	// Supervisor is the company-mode fallback reviewer, used when the repo
 	// has no CODEOWNERS and its history names nobody.
 	Supervisor string `json:"supervisor"`
+	// Balanced routes each PR by its changes; fixed keeps the loop's selected agent.
+	ReviewPolicy string `json:"review_policy,omitempty"`
 }
 
 // LoadSettings reads the settings file from a repo. A repo without one runs
@@ -63,6 +65,9 @@ func ParseSettings(b []byte) (Settings, error) {
 	}
 	if s.Mode != "personal" && s.Mode != "company" {
 		return s, fmt.Errorf("%s: mode must be \"personal\" or \"company\", not %q", SettingsFile, s.Mode)
+	}
+	if s.ReviewPolicy != "" && s.ReviewPolicy != "balanced" && s.ReviewPolicy != "fixed" {
+		return s, fmt.Errorf("%s: review_policy must be balanced or fixed", SettingsFile)
 	}
 	return s, nil
 }

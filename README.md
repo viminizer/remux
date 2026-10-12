@@ -259,6 +259,34 @@ without retrying the item. `blocked:external` protects unavailable credentials,
 external prerequisites and time gates from automatic dependency unblocking.
 Use `RESOLVED READY` only after verifying the parked prerequisite is available.
 
+Review loops use a balanced policy by default. Documentation and small changes
+(at most three files and 80 changed lines) go to Claude Sonnet at medium effort.
+Other changes alternate Claude Sonnet and Codex, sharing a rotation across the
+repo's worktrees and review loops. Finance, authorization, migrations, destructive
+operations, binary changes and large diffs receive high effort (Claude Opus or
+Codex). Paths and changed code determine the route; this is a conservative
+classification, not a claim that the diff has a bug. Add `"review_policy":"fixed"`
+to `.remux/harness.json` to preserve a loop's explicitly selected provider/model.
+Both policies use the same review instructions and completion checks.
+
+Each finding must trace a reachable user action through existing validation to
+a wrong result, with file/line evidence. Ignore style, imagined scale, impossible
+states and redundant defensive checks. Reachable money, stored-data and privacy
+failures still matter when rare. Inspect the changed code and direct callers in
+one pass; expand only for a concrete failure. Ordinary inspection aims for 5–10
+minutes; builds and repairs can take longer. Review runs have a 20-minute ceiling
+(40 minutes for deep routes). A crash, usage limit, timeout or incomplete verdict
+hands preserved work and evidence to the other provider once. Neither a timeout
+nor passing checks counts as a completed review. Two incomplete runs leave the
+PR unmerged for supervision.
+
+The visible PR review records provider, model, effort, route, inspected commit,
+checks and elapsed review/repair time. Run history also records handoffs and
+completed review duration, with the reviewer's self-reported count of verified
+bugs repaired. Missing counts stay missing. Compare matching change classes and
+verify those repairs before favoring a provider; raw finding count is not a score.
+No automatic performance weighting or quota polling is introduced.
+
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user

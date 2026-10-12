@@ -101,27 +101,19 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	// Codex reviews with its own review mode first and its findings go on
-	// the PR as review comments. A clean review with no conflict goes
-	// straight to tests and merge; only findings or a conflict start a second
-	// run, which fixes them on this branch without reviewing again.
-	findings, role := "", "review"
-	if l.Agent == "codex" {
-		role = "fix"
-		var ok bool
-		findings, ok = l.retry(func() (int, string) { return l.codexReview(ctx, wt, def) })
-		if l.limited() {
-			return true, nil // still needs-review; tried again after the reset
-		}
-		if !ok {
-			return true, l.stuck(ctx, n, pr.Title, fmt.Sprintf("codex review crashed %d times in a row. See the loop's log.", ReviewTries))
-		}
-		if hasFindings(findings) {
-			if err := l.postFindings(ctx, n, wt, findings); err != nil {
-				log.Printf("review comments: %v", err)
-			}
-		}
+	choice, err := l.nextReviewChoice(ctx, wt, def)
+	if err != nil {
+		return true, err
 	}
+	originalAgent, originalModel, originalEffort := l.Agent, l.Model, l.effort
+	originalTimeout := l.runTimeout
+	defer func() {
+		l.Agent, l.Model, l.effort, l.runTimeout = originalAgent, originalModel, originalEffort, originalTimeout
+		l.opt(context.WithoutCancel(ctx), "@loop_reviewer", "")
+	}()
+	l.selectReviewer(ctx, choice)
+	log.Printf("review routing: %s → %s model=%s effort=%s", choice.Class, choice.Agent, choice.Model, choice.Effort)
+	started := time.Now()
 	run := func(role, conflict, findings string) (string, bool) {
 		return l.retry(func() (int, string) {
 			return l.agent(ctx, wt, Prompt(Run{
@@ -132,16 +124,25 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 			}))
 		})
 	}
-	summary := findings
-	if role == "review" || conflict != "" || hasFindings(findings) {
-		var ok bool
-		if summary, ok = run(role, conflict, findings); !ok {
-			if l.limited() {
-				return true, nil
-			}
-			return true, l.stuck(ctx, n, pr.Title, fmt.Sprintf("The %s run crashed %d times in a row. See the loop's log.", role, ReviewTries))
+	// A review gets one run per provider. Incomplete work is handed over with
+	// its evidence and the same branch; it never becomes an approval by timeout.
+	prompt := Prompt(Run{Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head,
+		Worktree: wt, Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread,
+		Conflict: conflict, Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode")})
+	choice, code, summary := l.inspectReview(ctx, wt, prompt, choice, n)
+	if code != 0 || l.limited() || !completedReview(summary) {
+		if err := l.gh.Review(ctx, n, "Review incomplete; no approval.\n\n"+tail(summary, 100)); err != nil {
+			return true, err
 		}
+		return true, l.stuck(ctx, n, pr.Title, "Both reviewers could not complete this review; see the review handoff and preserved worktree.")
 	}
+	l.runTimeout = 0 // build/check repair runs retain the normal tool budget
+	head, err := l.git(ctx, wt, "rev-parse", "HEAD")
+	if err != nil {
+		return true, err
+	}
+	summary = fmt.Sprintf("Reviewer: %s · model: %s · effort: %s · route: %s\nReviewed commit: `%s`\nReview and repair time: %.1f minutes\n\n%s", l.Agent, modelName(l.Model), l.effort, choice.Class, head, time.Since(started).Minutes(), summary)
+
 	// The review is posted by the loop, not left to the agent, so every
 	// reviewed PR says what the review found - "no real issues" too. It goes
 	// in as a GitHub review, so it sits in the PR's review timeline.
@@ -149,8 +150,13 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		summary = "The review finished, but the agent left no summary. See the loop's log."
 	}
 	if err := l.gh.Review(ctx, n, summary); err != nil {
-		log.Printf("review comment: %v", err)
+		return true, fmt.Errorf("review comment was not accepted: %w", err)
 	}
+
+	l.record(RunRecord{Started: started.UTC(), Event: "review-complete", Session: l.Session,
+		Repo: l.Repo, Role: l.Role, Agent: l.Agent, Model: modelName(l.Model), Item: n, PR: n,
+		Effort: l.effort, ReviewClass: choice.Class, DurationMS: time.Since(started).Milliseconds(),
+		ReportedFixedBugs: reportedFixedBugs(summary)})
 
 	after, err := l.gh.PR(ctx, n)
 	if err != nil {

@@ -1274,3 +1274,43 @@ dirty/later work preservation, active source claims, cross-worktree lock
 exclusion and replacement PRs across scopes. `laptop-invariant.sh before`
 and `after` passed with 20 panes unchanged. No live tmux mutations or scratch
 sessions were needed; cleanup tests use a tmux stub. Version 0.3.90 is preserved.
+
+## 2026-10-12 — balanced, evidence-based PR reviews (0.3.91)
+
+Kevin requested Claude alongside Codex, faster reviews, and findings grounded in
+normal user actions. Both providers now use one review-and-repair prompt, with
+changed-code scope and a concrete evidence filter. Small/docs PRs use Sonnet at
+medium; ordinary PRs alternate providers under the common Git queue lock;
+finance/access/migration/destructive or large changes receive deeper review.
+A failed/incomplete run hands its preserved work to the other provider once.
+Completion requires an explicit complete verdict; timeouts never approve.
+Project review_policy=fixed preserves an explicitly chosen reviewer.
+
+PR comments and private run history record provider, effort, route, time and
+self-reported evidence-backed repairs. Those counts are not independently
+audited performance scores. Build providers and effort remain unchanged.
+Verification: harness regressions for classification, removed authorization,
+shared worktree rotation, completion gating and CLI effort; go vet and full
+release build. Results are recorded in the PR before rollout.
+
+### PR #63 review repairs
+
+Inspected commit `781ab8502a033026bfab884ed142c7dbc45e8dd7` against GitHub's
+base `de905508eeea086b46ad40c9c2b40b251e0af937`; no closing issue was linked.
+One pass covered routing, settings, CLI effort, completion, handoff and their
+direct callers. Two regression failures reproduced before repair:
+
+- A small PR whose pre-review merge conflicts was routed to high-effort Opus
+  because tip-to-tip diff included an unrelated billing change on main.
+  Both classification diffs now use the merge base.
+- A timed-out reviewer left child tool commands running, delaying handoff and
+  allowing later edits in its shared worktree. Each runner now has a separate
+  process group, killed on cancellation; pipe draining has a bounded wait.
+
+The targeted regressions passed after repair, including a check that the child
+cannot write after handoff. Tests use temporary Git repositories and fake CLIs;
+no live tmux commands or workspace mutations were needed.
+The timeout regression was also run against the original runner: its child
+wrote `late.txt` and the fallback exited 7, confirming interference rather than
+only a timing difference. Final checks: `go test ./...`, `go vet ./...` and
+`git diff --check` all passed.
