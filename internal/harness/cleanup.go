@@ -63,6 +63,37 @@ func (l *Loop) cleanupMerged(ctx context.Context) error {
 // cleanupMergedPR removes only branch content that is included in the merged
 // PR head. It leaves dirty worktrees and branches with later commits intact.
 func (l *Loop) cleanupMergedPR(ctx context.Context, pr Item) error {
+	_, err := l.resumeMergedPR(ctx, pr)
+	return err
+}
+
+// Recovery uses the same cleanup path: readiness is published only after all
+// destructive work succeeds, while claims are excluded by the repository lock.
+func (l *Loop) resumeMergedPR(ctx context.Context, pr Item) (bool, error) {
+	unlock, err := l.queueLock(ctx)
+	if err != nil || unlock == nil {
+		return false, err
+	}
+	defer unlock()
+	if active, err := l.branchActive(ctx, pr); err != nil || active {
+		return false, err
+	}
+	if n, _, ok := branchWork(pr.Head); ok {
+		it, err := l.gh.Issue(ctx, n)
+		if err != nil {
+			return false, err
+		}
+		if it.HasPrefix("by:") || it.HasPrefix("wip:") {
+			return false, nil
+		}
+	}
+	if err := l.cleanupMergedPRLocked(ctx, pr); err != nil {
+		return false, err
+	}
+	return l.requeueMergedPR(ctx, pr)
+}
+
+func (l *Loop) cleanupMergedPRLocked(ctx context.Context, pr Item) error {
 	if pr.State != "MERGED" || pr.Head == "" || pr.HeadOid == "" {
 		return fmt.Errorf("PR #%d has no confirmed merged head", pr.Number)
 	}
@@ -70,14 +101,6 @@ func (l *Loop) cleanupMergedPR(ctx context.Context, pr Item) error {
 		return err
 	} else if open != nil {
 		return nil // a branch name can be reused for a new PR
-	}
-	if _, err := l.requeueMergedPR(ctx, pr); err != nil {
-		log.Printf("resume after merge: %v", err)
-	}
-	if active, err := l.branchActive(ctx, pr); err != nil {
-		return err
-	} else if active {
-		return nil
 	}
 	// GitHub keeps refs/pull/N/head after merge. Fetching it lets us check a
 	// squash-merged branch without assuming its commits are on default.
@@ -150,10 +173,7 @@ func (l *Loop) branchActive(ctx context.Context, pr Item) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	issue := 0
-	if n, _, ok := strings.Cut(strings.TrimPrefix(pr.Head, "issue-"), "-"); ok && strings.HasPrefix(pr.Head, "issue-") {
-		issue, _ = strconv.Atoi(n)
-	}
+	issue, _, _ := branchWork(pr.Head)
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 4 || fields[0] == l.Session || !strings.HasPrefix(fields[0], "loop-") || fields[2] == "idle" {

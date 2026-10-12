@@ -189,6 +189,18 @@ var ClaimSettle = 3 * time.Second
 //
 // kind is issue or pr, and wip the claim label the winner adds.
 func (l *Loop) claim(ctx context.Context, kind string, n int, wip string) (bool, error) {
+	unlock, err := l.queueLock(ctx)
+	if err != nil || unlock == nil {
+		return false, err
+	}
+	defer unlock()
+	// The candidate may have changed while cleanup or recovery held the lock.
+	if kind == "issue" {
+		fresh, err := l.gh.Issue(ctx, n)
+		if err != nil || fresh.State != "OPEN" || !free(fresh, strings.TrimPrefix(wip, "wip:")) {
+			return false, err
+		}
+	}
 	me := "by:" + l.Session
 	if err := l.gh.AddLabels(ctx, n, me); err != nil {
 		return false, err

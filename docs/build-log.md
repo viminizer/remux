@@ -1258,3 +1258,19 @@ Verification: existing `go test ./internal/harness`, `go vet ./...` and
 passed with the installed Node 22 toolchain: TypeScript, Vite, embedded UI and
 stripped Go binary. Application installation and loop restarts follow the
 reviewed merge; active issue work must finish before its process is replaced.
+
+### PR #62 review fixes
+
+Merged-branch cleanup, idle recovery and claims now share a nonblocking lock
+in Git's common directory, including across worktrees. Recovery runs cleanup
+before publishing readiness; failed cleanup or an active source claim defers
+requeueing. Active full-scope branches are recognized alongside scoped ones.
+Open replacement PRs on any harness branch for the source issue prevent
+requeueing, without using incidental issue references in PR text.
+
+Verification: `go test ./internal/harness`, `go vet ./...` and
+`git diff --check` passed. Regression tests exercise cleanup-before-ready,
+dirty/later work preservation, active source claims, cross-worktree lock
+exclusion and replacement PRs across scopes. `laptop-invariant.sh before`
+and `after` passed with 20 panes unchanged. No live tmux mutations or scratch
+sessions were needed; cleanup tests use a tmux stub. Version 0.3.90 is preserved.

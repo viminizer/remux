@@ -39,6 +39,7 @@ func continuable(it Item, scope string) bool {
 		!it.HasPrefix("wip:") && !it.HasPrefix("by:")
 }
 
+// Called with queueLock held, after branch cleanup has completed.
 // Only the machine-owned issue branch identifies the source issue. References
 // in a PR body often identify prerequisites, not work that should be requeued.
 func (l *Loop) requeueMergedPR(ctx context.Context, pr Item) (bool, error) {
@@ -53,10 +54,14 @@ func (l *Loop) requeueMergedPR(ctx context.Context, pr Item) (bool, error) {
 	if !continuable(it, scope) || isReady(it) {
 		return false, nil
 	}
-	if open, err := l.gh.PRForBranch(ctx, pr.Head); err != nil {
+	prs, err := l.gh.PRs(ctx, "")
+	if err != nil {
 		return false, err
-	} else if open != nil {
-		return false, nil
+	}
+	for _, open := range prs {
+		if source, _, ok := branchWork(open.Head); ok && source == n {
+			return false, nil
+		}
 	}
 	// Do not override a block/claim added while GitHub was being queried.
 	it, err = l.gh.Issue(ctx, n)
@@ -94,7 +99,7 @@ func (l *Loop) recoverMergedWork(ctx context.Context, scope string) (bool, error
 	}
 	var merged []Item
 	if err := l.gh.JSON(ctx, &merged, "pr", "list", "--state", "merged", "--limit", "1000",
-		"--json", "number,state,headRefName"); err != nil {
+		"--json", "number,state,headRefName,headRefOid"); err != nil {
 		return false, err
 	}
 	seen := make(map[int]bool)
@@ -105,7 +110,7 @@ func (l *Loop) recoverMergedWork(ctx context.Context, scope string) (bool, error
 			continue
 		}
 		seen[n] = true
-		did, err := l.requeueMergedPR(ctx, pr)
+		did, err := l.resumeMergedPR(ctx, pr)
 		if err != nil {
 			return changed, fmt.Errorf("resume #%d: %w", n, err)
 		}
