@@ -136,7 +136,7 @@ func TestTimedOutReviewStopsChildBeforeHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, body := range map[string]string{
-		"claude": "#!/bin/sh\ncat >/dev/null\necho started > started.txt\n(sleep 2; echo late-repair > late.txt) &\nwait\n",
+		"claude": "#!/bin/sh\ncat >/dev/null\necho started > started.txt\n(sleep 4; echo late-repair > late.txt) &\nwait\n",
 		"codex":  "#!/bin/sh\ncat >/dev/null\n[ ! -f late.txt ] || exit 7\necho REVIEW COMPLETE\n",
 		"tmux":   "#!/bin/sh\nexit 0\n",
 	} {
@@ -146,7 +146,7 @@ func TestTimedOutReviewStopsChildBeforeHandoff(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HOME", root)
-	l := Loop{Agent: "claude", Role: "review", Repo: root, Session: "loop-test", Tmux: tmux.New(), runTimeout: 500 * time.Millisecond}
+	l := Loop{Agent: "claude", Role: "review", Repo: root, Session: "loop-test", Tmux: tmux.New(), runTimeout: 1500 * time.Millisecond}
 	choice, code, summary := l.inspectReview(context.Background(), root, "Review", choiceFor("normal", ""), 42)
 	if choice.Agent != "codex" || code != 0 || !completedReview(summary) {
 		t.Fatalf("timed-out child affected fallback: choice=%+v code=%d output=%q", choice, code, summary)
@@ -156,7 +156,7 @@ func TestTimedOutReviewStopsChildBeforeHandoff(t *testing.T) {
 	}
 	// A descendant with redirected output could outlive Wait even without
 	// holding its pipes open. It must not edit the branch after handoff either.
-	time.Sleep(2100 * time.Millisecond)
+	time.Sleep(4100 * time.Millisecond)
 	if _, err := os.Stat(filepath.Join(root, "late.txt")); !os.IsNotExist(err) {
 		t.Fatal("timed-out child changed the worktree after handoff", err)
 	}
