@@ -246,6 +246,19 @@ After upgrading from a version without model selection, existing loop
 processes must finish and restart to use it. Restarting the service updates
 the phone UI but leaves those processes running their previous code.
 
+Idle loops check for work every 15 seconds. Queue triage runs at most once
+every five minutes per loop and checks readiness for the selected scope,
+including unfinished work left in review after partial merges. A confirmed
+merged `issue-N[-scope]` PR returns its open, unfinished source issue to ready;
+completed scopes, active claims, open replacement PRs, postponed and blocked
+work stay out. Idle builders also recover older merged work stuck in
+`status:review`, at most once a minute.
+
+A supervisor can finish with `RESOLVED PARKED` to record a waiting decision
+without retrying the item. `blocked:external` protects unavailable credentials,
+external prerequisites and time gates from automatic dependency unblocking.
+Use `RESOLVED READY` only after verifying the parked prerequisite is available.
+
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user

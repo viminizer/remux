@@ -71,6 +71,9 @@ func (l *Loop) cleanupMergedPR(ctx context.Context, pr Item) error {
 	} else if open != nil {
 		return nil // a branch name can be reused for a new PR
 	}
+	if _, err := l.requeueMergedPR(ctx, pr); err != nil {
+		log.Printf("resume after merge: %v", err)
+	}
 	if active, err := l.branchActive(ctx, pr); err != nil {
 		return err
 	} else if active {

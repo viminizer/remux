@@ -34,11 +34,12 @@ type Loop struct {
 	gh  GH
 	set Settings
 
-	labels      map[string]bool // the repo's labels, for mirroring its status:* ones
-	lastTriage  time.Time
-	lastCleanup time.Time
-	limit       time.Time // set when the last agent run ended on a usage limit
-	item        int       // issue or PR being worked; zero while triaging
+	labels       map[string]bool // the repo's labels, for mirroring its status:* ones
+	lastTriage   time.Time
+	lastCleanup  time.Time
+	lastRecovery time.Time
+	limit        time.Time // set when the last agent run ended on a usage limit
+	item         int       // issue or PR being worked; zero while triaging
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
@@ -46,7 +47,7 @@ type Loop struct {
 func (l *Loop) limited() bool { return !l.limit.IsZero() }
 
 // Idle is how long a loop waits before looking again when there is no work.
-var Idle = time.Minute
+var Idle = 15 * time.Second
 
 // PRLag is the wait between looks for a PR the agent has just opened.
 var PRLag = 5 * time.Second
@@ -232,7 +233,7 @@ func candidates(issues []Item, scope string) []Item {
 
 func free(it Item, scope string) bool {
 	return isReady(it) && !it.HasPrefix("wip:") && !it.HasPrefix("by:") && !it.Has("done:"+scope) &&
-		!it.Has("blocked") && !it.Has("needs-human")
+		!it.Has("done:full") && !queueExcluded(it) && !it.Has("needs-human") && !it.Has("escalated")
 }
 
 func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
@@ -256,6 +257,12 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		}
 	}
 	if it == nil {
+		// A partial merge may have happened while no reviewer was running.
+		if recovered, err := l.recoverMergedWork(ctx, scope); err != nil {
+			return false, err
+		} else if recovered {
+			return true, nil
+		}
 		// Nothing is marked ready, but a loop was started here, so the
 		// issues are meant to be worked. Look for ones that can start.
 		return l.triage(ctx, scope), nil
@@ -438,6 +445,9 @@ func (l *Loop) unblock(ctx context.Context) {
 		prs, _ = l.gh.PRs(ctx, "")
 	}
 	for _, it := range blocked {
+		if it.Has("blocked:external") || it.Has("postponed") || it.Has("status:postponed") {
+			continue // only verified supervision/triage may release these
+		}
 		blockers, err := l.gh.BlockedBy(ctx, it.Number)
 		if err != nil || len(blockers) == 0 {
 			continue

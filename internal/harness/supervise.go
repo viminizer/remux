@@ -33,6 +33,12 @@ Read it and all its comments below. It is one of two kinds.
 If you fixed or answered it, end your run with a final message whose first line is
 RESOLVED, followed by one line saying what you did.
 
+If the answer is to park the item for an unavailable external prerequisite or
+time-gated observation, post the concrete reason/deadline and end with
+RESOLVED PARKED as the first line. Resolving the decision does not make the work
+ready. To resume a previously parked item, verify its prerequisite and explicitly
+end with RESOLVED READY. Never replace a real waiting period with repeated retries.
+
 Otherwise pass it to Kevin. Post one comment that starts with the line
 ` + QuestionMarker + `
 then, in plain words: what is being decided, what each choice means for the product, and
@@ -111,6 +117,7 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 		prompt += "\n# Project defaults\n\n" + s + "\n"
 	}
 	prompt += fmt.Sprintf("\n# The %s\n\n%s\n", what, strings.TrimSpace(thread))
+	prompt += "\n# Queue result protocol\nFirst line: RESOLVED PARKED if the decision is to wait; RESOLVED READY only after verifying a parked prerequisite is available; RESOLVED for an ordinary completed repair. The harness changes labels. Do not describe a parking decision as an ordinary retry.\n"
 
 	_, last := l.agent(ctx, l.Repo, prompt)
 	if l.limited() {
@@ -118,6 +125,37 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 	}
 
 	if verdict(last) == "RESOLVED" {
+		fresh, err := l.read(ctx, kind, n)
+		if err != nil {
+			return true, err
+		}
+		if fresh.State != "OPEN" {
+			l.gh.RemoveLabel(ctx, n, "needs-human")
+			return true, nil
+		}
+		if supervisorParked(last) || fresh.Has("blocked:external") && !supervisorReady(last) {
+			label := "ready"
+			if kind == "pr" {
+				label = "needs-review"
+			}
+			l.gh.RemoveLabel(ctx, n, label)
+			if kind == "issue" {
+				l.unready(ctx, n)
+			}
+			if err := l.gh.AddLabels(ctx, n, "blocked", "blocked:external"); err != nil {
+				return true, err
+			}
+			l.gh.RemoveLabel(ctx, n, "needs-human")
+			if kind == "issue" {
+				l.mirrorN(ctx, n, "blocked")
+			}
+			l.recordOutcome("parked", n, 0)
+			return true, nil
+		}
+		l.gh.RemoveLabel(ctx, n, "blocked")
+		if supervisorReady(last) {
+			l.gh.RemoveLabel(ctx, n, "blocked:external")
+		}
 		next := "ready"
 		if kind == "pr" {
 			next = "needs-review"
@@ -155,6 +193,18 @@ func verdict(last string) string {
 		return ""
 	}
 	return strings.ToUpper(strings.Trim(f[0], "*:#. "))
+}
+
+func supervisorParked(last string) bool { return supervisorAction(last) == "PARKED" }
+func supervisorReady(last string) bool  { return supervisorAction(last) == "READY" }
+
+func supervisorAction(last string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(last), "\n")
+	words := strings.Fields(line)
+	if len(words) == 2 && verdict(line) == "RESOLVED" {
+		return strings.ToUpper(strings.Trim(words[1], "*:#. "))
+	}
+	return ""
 }
 
 // supervised reports whether a supervise loop runs on this repo. While one
