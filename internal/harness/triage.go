@@ -2,8 +2,10 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -94,8 +96,10 @@ have many ready issues; ready items with done:SCOPE are not work for this loop.
 Find the issues that can be started now and mark
 them so the loops take them. Do not write any code and do not change any files.
 
-1. List the open issues and the repo's labels:
-   gh issue list --state open --limit 300 --json number,title,labels
+1. Start with the scope-filtered shortlist and dispatch counts below. A generic
+   ready label is not evidence that THIS scope has work. Do not stop because
+   completed items still have ready labels. Verify each selected issue's fresh
+   state and labels before changing anything. Read the repo's labels:
    gh label list --limit 200
 2. Learn how this repo tracks its work: its status labels, its areas, how it writes
    dependencies ("blocked by #12", "depends on", task lists, GitHub's blocked-by links:
@@ -103,7 +107,7 @@ them so the loops take them. Do not write any code and do not change any files.
 3. Read the ones that look closest (gh issue view N --comments). A prerequisite can be
    satisfied for this scope while its issue remains open for another scope: verify its
    actual merged implementation and contract, not just the issue state or a done label.
-   Inspect unfinished status:review issues too: after a merged partial PR, remaining
+   Inspect unfinished status:review issues in the shortlist first: after a merged partial PR, remaining
    work may need requeueing. Never requeue work with an open PR or active worker.
    Prefer the oldest and the ones other issues depend on.
 4. For each one you choose, at most MAX, add the label ready. (This is the one run where
@@ -113,7 +117,76 @@ them so the loops take them. Do not write any code and do not change any files.
 5. Preserve postponed, post-deployment and held work. Preserve real external/time gates,
    including blocked:external; verify the prerequisite/deadline and runtime handoff
    before removing a block. Closed dependency edges alone do not resolve a time gate.
-6. If nothing can be started, change nothing and say why in one short paragraph.`
+6. If nothing can be started, change nothing and name the shortlisted issues you
+   checked and their concrete remaining blockers. Do not report ready items with
+   done:SCOPE as an available queue. Never add done:SCOPE during triage.`
+
+// Blocked items stay in this shortlist so the agent can verify changed
+// prerequisites and elapsed time gates. Completed, deferred and owned work
+// cannot become triage candidates just because a generic ready label remains.
+func triageCandidates(open []Item, scope string) []Item {
+	var out []Item
+	for _, it := range open {
+		if it.State != "OPEN" || it.Has("done:"+scope) || it.Has("done:full") ||
+			it.HasPrefix("wip:") || it.HasPrefix("by:") || it.Has("needs-human") || it.Has("escalated") ||
+			it.Has("postponed") || it.Has("status:postponed") || it.Has("post-deployment") ||
+			it.Has("queue:handoff-held") || it.Has("type:tracker") || it.Has("type:specification") || it.Has("type:release-review") {
+			continue
+		}
+		out = append(out, it)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		// Partial deliveries are the first place to look when a scoped
+		// queue is empty, rather than retreading ready work for other scopes.
+		ri, rj := out[i].Has("status:review"), out[j].Has("status:review")
+		if ri != rj {
+			return ri
+		}
+		bi, bj := out[i].Has("blocker"), out[j].Has("blocker")
+		if bi != bj {
+			return bi
+		}
+		return out[i].Number < out[j].Number
+	})
+	return out
+}
+
+func (l *Loop) triagePrompt(scope string, open []Item, instr, mode string) string {
+	rules := strings.NewReplacer("SLUG", l.gh.Slug, "MAX", fmt.Sprint(TriageMax), "SCOPE", scope).Replace(triageRules)
+	var b strings.Builder
+	b.WriteString("# Agent rules\n\n" + rules + "\n")
+	if mode != "replace" && strings.TrimSpace(l.set.Instructions) != "" {
+		b.WriteString("\n# Project defaults\n\n" + strings.TrimSpace(l.set.Instructions) + "\n")
+	}
+	if instr = strings.TrimSpace(instr); instr != "" {
+		b.WriteString("\n# Session instructions\n\nOnly mark issues these allow:\n\n" + instr + "\n")
+	}
+	ready := 0
+	for _, it := range open {
+		if isReady(it) {
+			ready++
+		}
+	}
+	shortlist := triageCandidates(open, scope)
+	fmt.Fprintf(&b, "\n# This run\n\n- Repository: %s\n- Scope of the loop: %s\n- Open issues: %d\n- Generic ready labels across all scopes: %d\n- Eligible ready issues for this scope: %d\n- Unfinished issues to inspect for this scope: %d\n",
+		l.gh.Slug, scope, len(open), ready, len(candidates(open, scope)), len(shortlist))
+	type entry struct {
+		Number int      `json:"number"`
+		Title  string   `json:"title"`
+		Labels []string `json:"labels"`
+	}
+	entries := make([]entry, 0, len(shortlist))
+	for _, it := range shortlist {
+		labels := make([]string, 0, len(it.Labels))
+		for _, label := range it.Labels {
+			labels = append(labels, label.Name)
+		}
+		entries = append(entries, entry{it.Number, it.Title, labels})
+	}
+	data, _ := json.Marshal(entries) // entries contain only strings and integers
+	fmt.Fprintf(&b, "\n# Scope-filtered shortlist\n\n```json\n%s\n```\n", data)
+	return b.String()
+}
 
 // triage runs one agent pass that picks issues to mark ready. It reports
 // whether it ran at all.
@@ -122,25 +195,13 @@ func (l *Loop) triage(ctx context.Context, scope string) bool {
 		return false
 	}
 	var open []Item
-	if err := l.gh.JSON(ctx, &open, "issue", "list", "--state", "open", "--limit", "1", "--json", "number"); err != nil || len(open) == 0 {
+	if err := l.gh.JSON(ctx, &open, "issue", "list", "--state", "open", "--limit", "1000", "--json", itemFields); err != nil || len(triageCandidates(open, scope)) == 0 {
 		return false
 	}
 	l.lastTriage = time.Now()
 	l.state(ctx, "triaging", "")
-	log.Printf("── no ready issues: looking for ones that can start")
-
-	rules := strings.NewReplacer("SLUG", l.gh.Slug, "MAX", fmt.Sprint(TriageMax), "SCOPE", scope).Replace(triageRules)
-	var b strings.Builder
-	b.WriteString("# Agent rules\n\n" + rules + "\n")
-	if mode := l.get(ctx, "@loop_mode"); mode != "replace" && strings.TrimSpace(l.set.Instructions) != "" {
-		b.WriteString("\n# Project defaults\n\n" + strings.TrimSpace(l.set.Instructions) + "\n")
-	}
-	if instr := strings.TrimSpace(l.get(ctx, "@loop_instr")); instr != "" {
-		b.WriteString("\n# Session instructions\n\nOnly mark issues these allow:\n\n" + instr + "\n")
-	}
-	fmt.Fprintf(&b, "\n# This run\n\n- Repository: %s\n- Scope of the loop: %s\n", l.gh.Slug, scope)
-
-	l.agent(ctx, l.Repo, b.String())
+	log.Printf("── no eligible %s issues: inspecting %d unfinished issues", scope, len(triageCandidates(open, scope)))
+	l.agent(ctx, l.Repo, l.triagePrompt(scope, open, l.get(ctx, "@loop_instr"), l.get(ctx, "@loop_mode")))
 	l.loadLabels(ctx)
 	return true
 }

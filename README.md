@@ -212,10 +212,16 @@ A repo with its own `status:*` labels works as it is. `status:ready` counts as
 `ready`, and the loops move an issue through the repo's own `status:in-progress`,
 `status:review` and `status:blocked` as they work it, when those labels exist.
 
-When no issue is marked ready, a build loop does not just wait. It runs one
-triage pass: the agent reads the open issues, finds up to 5 that can start now,
-marks them `ready` in the repo's own format, and says why in a comment. It
-changes no code, and it runs at most every 30 minutes.
+When no ready issue is eligible for its scope, a build loop runs a triage
+pass using a shortlist of unfinished work for that scope. Generic ready
+labels on completed scopes do not count as available work. The prompt shows
+both counts, prioritizes partial deliveries awaiting continuation, and excludes
+claimed, deferred, held and non-dispatchable tracking/release-review tickets.
+Blocked work is inspected against actual merged prerequisites and time gates;
+an open prerequisite for paused frontend does not by itself block backend.
+If the shortlist is empty, no agent triage run is launched. Otherwise the
+agent marks up to 5 issues `ready` in the repo's own format and says why in a
+comment. It changes no code and runs at most every 5 minutes.
 
 **Trying Sonnet.** Each Claude build loop has its own model selector: Sonnet,
 Opus, or CLI default. The supervisor has a separate selector. New forms start

@@ -1314,3 +1314,57 @@ The timeout regression was also run against the original runner: its child
 wrote `late.txt` and the fallback exited 7, confirming interference rather than
 only a timing difference. Final checks: `go test ./...`, `go vet ./...` and
 `git diff --check` all passed.
+
+## 2026-10-12 - Scope-filtered triage, 0.3.92
+
+The user's queue diagnosis was based on this checkout before it caught up
+with origin. Fetched origin/main before implementing; 0.3.90 already added
+locked partial-merge recovery and corrected the triage premise, and the
+installed 0.3.91 retained those changes plus review routing. Live logs showed
+the revised triage correcting #237's labels. Preserved all of that work.
+
+Strengthened triage with a machine-generated shortlist and separate generic
+ready/eligible-for-scope counts. It prioritizes unfinished review-state
+contributions, excludes completed scopes, owned/held/deferred work and the
+tracking/specification/release-review kinds the dispatcher cannot claim.
+Blocked items remain available for prerequisite/time-gate verification.
+The agent must refresh state, check active PRs/workers and merged scope
+contracts, and name concrete blockers if it finds no work. An empty shortlist
+skips the paid agent run. Session scope overrides are preserved.
+
+Verification and installation:
+
+- `go test ./internal/harness -run 'TestTriage|TestRequeue|TestQueueLock'
+  -count=1` passed. The fake CLI regression exercises a real triage invocation
+  with 95 ready issues already done for backend and one unfinished review
+  issue. The agent receives zero eligible backend issues and exactly one
+  continuation candidate. Tests also cover scope/ownership/deferral exclusions,
+  blocked items, cooldown, empty-shortlist skipping and session overrides.
+- The first parallel full suite hit the existing 500ms reviewer-start timing
+  fixture before its fake CLI could create `started.txt`. No review code or
+  test timeout was changed. `PATH="/tmp/remux-scope-triage-bin:$PATH"
+  go test -p 1 ./... -count=1` passed, and final `go test ./internal/harness
+  -count=1` passed after excluding non-dispatchable release-review candidates.
+  The wrapper routes tmux tests to the isolated `remux-scope-triage-tests`
+  server, with a clean zsh scratch session.
+- Read current EduCenter issues through paginated REST. A temporary pure Go
+  replay of the actual 210 issues returned 111 generic ready labels, zero
+  eligible backend issues and 10 unfinished backend candidates, excluding the
+  seven full-stack release reviews. No GitHub labels/comments were changed
+  and no live agent was launched for this replay; the temporary test was removed.
+- `go vet ./...`, `git diff --check` and
+  `VERSION=0.3.92 ./scripts/build.sh` passed, including TypeScript/Vite build.
+  The stripped binary measured 23,123,480 bytes.
+- Saved the prior installed binary at `/tmp/remux-before-0.3.92`.
+  `./bin/remux restart` updated `~/.local/bin/remux`. Its version is 0.3.92;
+  launchd reports running PID 74764, never exited, and the service log reports
+  0.3.92 with its tailnet URL ready. Existing loop tasks were not stopped.
+- The scratch session was confirmed as `remux-test` on the isolated socket
+  and removed. `laptop-invariant.sh before/after` passed with all 20 laptop
+  panes unchanged. It noted an independent active-window move during the run.
+
+The corrected scope premise and partial-merge recovery are already in running
+0.3.91 loops. The new shortlist is in installed 0.3.92 and takes effect when
+each loop is relaunched; restarting the service does not replace running
+loop processes. Real external, resource and postponed-scope gates remain
+blocked. No readiness was invented to make the loops appear busy.
