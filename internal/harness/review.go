@@ -129,7 +129,18 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	prompt := Prompt(Run{Role: "review", Slug: l.gh.Slug, Number: n, Branch: pr.Head,
 		Worktree: wt, Scope: "review", Mode: l.set.Mode, Settings: l.set, Thread: thread,
 		Conflict: conflict, Instructions: l.get(ctx, "@loop_instr"), InstrMode: l.get(ctx, "@loop_mode")})
-	choice, code, summary := l.inspectReview(ctx, wt, prompt, choice, n)
+	previous, reused, err := l.completedReviewOnHead(ctx, *pr)
+	if err != nil {
+		return true, err
+	}
+	code, summary := 0, previous
+	if reused {
+		log.Printf("reusing completed review of PR #%d at %s; checks and conflict repairs still required", n, pr.HeadOid)
+		l.recordOutcome("review-resumed", n, n)
+		summary = "Reused completed review of unchanged PR head `" + pr.HeadOid + "`.\n\n" + summary
+	} else {
+		choice, code, summary = l.inspectReview(ctx, wt, prompt, choice, n)
+	}
 	if code != 0 || l.limited() || !completedReview(summary) {
 		if err := l.gh.Review(ctx, n, "Review incomplete; no approval.\n\n"+tail(summary, 100)); err != nil {
 			return true, err
@@ -141,7 +152,9 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	summary = fmt.Sprintf("Reviewer: %s · model: %s · effort: %s · route: %s\nReviewed commit: `%s`\nReview and repair time: %.1f minutes\n\n%s", l.Agent, modelName(l.Model), l.effort, choice.Class, head, time.Since(started).Minutes(), summary)
+	if !reused {
+		summary = fmt.Sprintf("Reviewer: %s · model: %s · effort: %s · route: %s\nReviewed commit: `%s`\nReview and repair time: %.1f minutes\n\n%s", l.Agent, modelName(l.Model), l.effort, choice.Class, head, time.Since(started).Minutes(), summary)
+	}
 
 	// The review is posted by the loop, not left to the agent, so every
 	// reviewed PR says what the review found - "no real issues" too. It goes
@@ -153,10 +166,12 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return true, fmt.Errorf("review comment was not accepted: %w", err)
 	}
 
-	l.record(RunRecord{Started: started.UTC(), Event: "review-complete", Session: l.Session,
-		Repo: l.Repo, Role: l.Role, Agent: l.Agent, Model: modelName(l.Model), Item: n, PR: n,
-		Effort: l.effort, ReviewClass: choice.Class, DurationMS: time.Since(started).Milliseconds(),
-		ReportedFixedBugs: reportedFixedBugs(summary)})
+	if !reused {
+		l.record(RunRecord{Started: started.UTC(), Event: "review-complete", Session: l.Session,
+			Repo: l.Repo, Role: l.Role, Agent: l.Agent, Model: modelName(l.Model), Item: n, PR: n,
+			Effort: l.effort, ReviewClass: choice.Class, DurationMS: time.Since(started).Milliseconds(),
+			ReportedFixedBugs: reportedFixedBugs(summary)})
+	}
 
 	after, err := l.gh.PR(ctx, n)
 	if err != nil {
