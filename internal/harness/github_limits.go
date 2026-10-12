@@ -35,6 +35,13 @@ func rateError(err error) bool {
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "rate limit") || strings.Contains(s, "abuse detection") || strings.Contains(s, "too many requests")
 }
+func secondaryRateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "secondary rate limit") || strings.Contains(s, "abuse detection") || strings.Contains(s, "too many requests")
+}
 func (g GH) budget() githubBudget {
 	githubBudgets.Lock()
 	defer githubBudgets.Unlock()
@@ -51,6 +58,27 @@ func (g GH) setBudget(resource string, until time.Time) {
 		b.REST = until
 	}
 	githubBudgets.ByRepo[k] = b
+}
+
+func (g GH) pauseSecondary(h map[string]string) error {
+	now := time.Now()
+	until := retryAt(h, now)
+	if minimum := now.Add(time.Minute); until.Before(minimum) {
+		until = minimum
+	}
+	githubBudgets.Lock()
+	defer githubBudgets.Unlock()
+	k := ghBin + "\x00" + g.Dir
+	b := githubBudgets.ByRepo[k]
+	// A secondary pause must not shorten an exhausted primary budget.
+	if b.Graph.Before(until) {
+		b.Graph = until
+	}
+	if b.REST.Before(until) {
+		b.REST = until
+	}
+	githubBudgets.ByRepo[k] = b
+	return &githubWait{until, "secondary"}
 }
 
 // gh api --include exposes authoritative headers on both successful and
@@ -113,6 +141,9 @@ func (g GH) api(ctx context.Context, args ...string) ([]byte, error) {
 	argv = append(argv, "--include")
 	out, err := g.raw(ctx, argv...)
 	body, h := apiResponse(out)
+	if secondaryRateError(err) {
+		return nil, g.pauseSecondary(h)
+	}
 	if rateError(err) || err != nil && h["x-ratelimit-remaining"] == "0" {
 		until := retryAt(h, time.Now())
 		g.setBudget("REST", until)
@@ -139,11 +170,8 @@ func (g GH) withFallback(ctx context.Context, args ...string) ([]byte, error) {
 		return out, err
 	}
 	message := strings.ToLower(err.Error())
-	if strings.Contains(message, "secondary rate limit") || strings.Contains(message, "abuse detection") || strings.Contains(message, "too many requests") {
-		until := time.Now().Add(time.Minute)
-		g.setBudget("GraphQL", until)
-		g.setBudget("REST", until)
-		return nil, &githubWait{until, "secondary"}
+	if secondaryRateError(err) {
+		return nil, g.pauseSecondary(nil)
 	}
 	if !strings.Contains(message, "graphql") {
 		until := time.Now().Add(time.Minute)

@@ -9,3 +9,7 @@
 
 - Classify review changes from the base/HEAD merge base, matching a PR diff even when the pre-review merge conflicts. Comparing tips includes unrelated base changes and misroutes small PRs. Source: `reviewOnce` merge/abort flow and the conflicting-branch regression.
 - Give each agent runner its own process group and kill that group on timeout/cancellation before handoff; bound pipe draining with `WaitDelay`. This stops child tool commands from holding up or mutating the next review's worktree without touching other sessions. Source: existing `spawn` runner and the timed-out fake-CLI child regression.
+
+2026-10-13, PR #65 review repairs
+
+- Apply secondary-limit pauses to both existing transport budgets, honor REST Retry-After with a one-minute minimum, and retain any later primary reset. This prevents queue polling through the other API during a shared throttle without shortening an exhausted budget. Source: existing GraphQL secondary-limit policy and GitHub's REST rate-limit documentation (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).

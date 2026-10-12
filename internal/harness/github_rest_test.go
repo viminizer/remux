@@ -196,3 +196,82 @@ func TestRESTReviewShapePreservesAuthorAndCommit(t *testing.T) {
 		t.Fatalf("review metadata lost: %+v", p)
 	}
 }
+
+func TestRESTOrphanAdoptionKeepsCreationAge(t *testing.T) {
+	dir := t.TempDir()
+	bin, calls := filepath.Join(dir, "gh"), filepath.Join(dir, "calls")
+	now := time.Now()
+	script := fmt.Sprintf(`#!/bin/sh
+echo "$*" >> '%s'
+case "$2" in
+repos/o/r/pulls\?*) echo '[{"number":8,"state":"open","draft":true,"head":{"ref":"issue-7-backend"},"labels":[],"created_at":"%s"},{"number":9,"state":"open","draft":true,"head":{"ref":"issue-9-backend"},"labels":[],"created_at":"%s"}]' ;;
+-X) echo '{}' ;;
+*) exit 3 ;;
+esac
+`, calls, now.UTC().Format(time.RFC3339), now.Add(-2*OrphanAge).UTC().Format(time.RFC3339))
+	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := ghBin
+	ghBin = bin
+	defer func() { ghBin = old }()
+	g := GH{Dir: dir, Slug: "o/r"}
+	g.setBudget("GraphQL", now.Add(time.Minute))
+	l := Loop{gh: g}
+	l.adoptOrphans(context.Background())
+	b, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "issues/8/labels") {
+		t.Fatal("fresh draft was adopted while its builder is still settling", string(b))
+	}
+	if !strings.Contains(string(b), "issues/9/labels") {
+		t.Fatal("old orphan was not adopted", string(b))
+	}
+}
+
+func TestRESTSecondaryLimitPausesBothTransports(t *testing.T) {
+	for _, graphLimited := range []bool{false, true} {
+		t.Run(fmt.Sprint(graphLimited), func(t *testing.T) {
+			dir := t.TempDir()
+			bin, calls := filepath.Join(dir, "gh"), filepath.Join(dir, "calls")
+			script := fmt.Sprintf(`#!/bin/sh
+echo "$*" >> '%s'
+printf 'HTTP/2.0 403 Forbidden\nRetry-After: 120\nX-RateLimit-Remaining: 100\n\n'
+echo '{"message":"You have exceeded a secondary rate limit"}'
+echo 'HTTP 403: You have exceeded a secondary rate limit' >&2
+exit 1
+`, calls)
+			if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			old := ghBin
+			ghBin = bin
+			defer func() { ghBin = old }()
+			g := GH{Dir: dir, Slug: "o/r"}
+			graphReset := time.Now().Add(10 * time.Minute)
+			if graphLimited {
+				g.setBudget("GraphQL", graphReset)
+			}
+			before := time.Now()
+			if err := g.Comment(context.Background(), 8, "review handoff"); !githubLimited(err) {
+				t.Fatal("secondary limit must defer", err)
+			}
+			budget := g.budget()
+			if budget.Graph.Before(before.Add(120*time.Second)) || budget.REST.Before(before.Add(120*time.Second)) {
+				t.Fatalf("both transports must respect Retry-After: %+v", budget)
+			}
+			if graphLimited && budget.Graph.Before(graphReset) {
+				t.Fatal("secondary pause shortened an existing primary cooldown")
+			}
+			if _, err := g.PR(context.Background(), 8); !githubLimited(err) {
+				t.Fatal("PR polling must wait", err)
+			}
+			b, _ := os.ReadFile(calls)
+			if len(strings.Split(strings.TrimSpace(string(b)), "\n")) != 1 {
+				t.Fatal("polling issued a request during secondary cooldown", string(b))
+			}
+		})
+	}
+}

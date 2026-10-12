@@ -93,6 +93,8 @@ func projectREST(m map[string]any, fields string) map[string]any {
 			r[key] = strings.ToUpper(s)
 		case "isDraft":
 			r[key] = m["draft"]
+		case "createdAt":
+			r[key] = m["created_at"]
 		case "headRefName", "headRefOid":
 			h, _ := m["head"].(map[string]any)
 			name := "ref"
