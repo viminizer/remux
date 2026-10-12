@@ -286,11 +286,13 @@ func (l *Loop) check(ctx context.Context, n int, title, branch, wt string) (conf
 	}
 
 	if _, err := l.gh.run(ctx, "pr", "ready", fmt.Sprint(n)); err != nil && !strings.Contains(err.Error(), "already") {
+		if githubLimited(err) {
+			return "", "", err
+		}
 		return "", "", l.stuck(ctx, n, title, "Could not mark the pull request ready: "+err.Error())
 	}
-	l.gh.RemoveLabel(ctx, n, "needs-review")
-
 	if l.set.Mode == "company" {
+		l.gh.RemoveLabel(ctx, n, "needs-review")
 		if who := l.supervisor(ctx); who != "" {
 			if _, err := l.gh.run(ctx, "pr", "edit", fmt.Sprint(n), "--add-reviewer", who); err != nil {
 				log.Printf("could not request a review from %s: %v", who, err)
@@ -312,6 +314,9 @@ func (l *Loop) check(ctx context.Context, n int, title, branch, wt string) (conf
 		sleep(ctx, MergeRetry)
 	}
 	if err2 != nil {
+		if githubLimited(err2) {
+			return "", "", err2
+		}
 		if pr, err := l.gh.PR(ctx, n); err == nil && pr.State == "MERGED" {
 			return "", "", l.cleanupMergedPR(ctx, pr)
 		}
@@ -323,6 +328,7 @@ func (l *Loop) check(ctx context.Context, n int, title, branch, wt string) (conf
 		return "", "", l.stuck(ctx, n, title, "Could not merge: "+err2.Error())
 	}
 	// The merge is complete. Cleanup is retried by the review loop if it fails.
+	l.gh.RemoveLabel(ctx, n, "needs-review")
 	if pr, err := l.gh.PR(ctx, n); err == nil {
 		if err := l.cleanupMergedPR(ctx, pr); err != nil {
 			log.Printf("cleanup: %v", err)

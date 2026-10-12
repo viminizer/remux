@@ -258,7 +258,9 @@ including unfinished work left in review after partial merges. A confirmed
 merged `issue-N[-scope]` PR returns its open, unfinished source issue to ready;
 completed scopes, active claims, open replacement PRs, postponed and blocked
 work stay out. Idle builders also recover older merged work stuck in
-`status:review`, at most once a minute.
+`status:review`. The expensive recovery scan runs at most once every five minutes,
+shared by builders of the same repository and scope. Normal merged work is requeued
+immediately; new-work polling stays at 15 seconds.
 
 A supervisor can finish with `RESOLVED PARKED` to record a waiting decision
 without retrying the item. `blocked:external` protects unavailable credentials,
@@ -300,6 +302,20 @@ changed heads and newer incomplete verdicts require inspection. Reuse still
 runs the required checks and handles main-branch conflicts, without crediting a
 new provider review or repair count. Supervisor resumption also clears the
 mirrored `status:blocked` PR label so `needs-review` can actually be picked up.
+
+When a GitHub CLI operation reports a primary GraphQL rate limit, the harness
+uses REST for supported issue/PR listings, metadata, comments, review history,
+diffs, label setup, posted reviews and guarded squash merges. It keeps the same
+label, pagination, draft and tested-head rules. Permission and ordinary network
+errors are not retried through another transport. A per-process cooldown stops
+repeating exhausted GraphQL requests; normal commands resume after the reset.
+REST failures respect reset/Retry-After headers. Secondary limits pause both
+transports for at least a minute. Waiting is a queue delay, not a needs-human
+review failure, and a merge wait keeps needs-review attached.
+
+Draft-to-ready is still a GraphQL-only step and waits for that budget. Agent
+prompts also explain REST creation of draft PRs when their own gh commands hit
+the primary GraphQL limit; child CLI commands are not intercepted by the harness.
 
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with

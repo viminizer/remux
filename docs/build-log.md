@@ -1386,3 +1386,24 @@ The corrected scope premise and partial-merge recovery are already in running
 each loop is relaunched; restarting the service does not replace running
 loop processes. Real external, resource and postponed-scope gates remain
 blocked. No readiness was invented to make the loops appear busy.
+
+## 2026-10-13 — GitHub REST fallback and shared recovery (0.3.94)
+
+Primary GraphQL throttling now switches supported harness operations to REST.
+Item/PR reads, pagination/filtering, bodies/comments, review metadata, diff, label
+setup, comment reviews, reviewer requests and tested-head squash merges preserve
+the existing contracts. Normal errors do not trigger alternate mutations.
+Cooldowns defer exhausted budgets until reset/Retry-After; secondary throttling
+pauses both interfaces. Draft-to-ready remains GraphQL-only and waits without
+escalating or losing needs-review. Agent prompts include REST draft creation.
+
+Large recovery scans were duplicated by each idle builder every minute. They
+now share an atomic common-Git-directory timestamp per scope, at most once per
+five minutes. Immediate merge continuations and 15-second new-work polling stay.
+
+Harness regressions cover fallback selection/reset, REST response mapping,
+pagination excluding PRs from issue work, review authors/commits, shared scan
+claims, guarded merges, rate-wait queue retention and secondary/auth failures.
+A temporary live REST-only read of EduCenter PR #1800 verified its labels, draft,
+head, review history, full comments and diff (read only, no edits). Go tests/vet
+and release build results are posted on the PR before rollout.

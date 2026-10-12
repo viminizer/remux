@@ -34,6 +34,12 @@ const commonRules = `You are running unattended inside an agent loop. Nobody is 
   with the line ` + QuestionMarker + `, then ONE short question (it is read on a phone),
   then 2 or 3 options as a numbered list ("1. ..."), then add the label needs-human,
   and stop.
+- If a gh command fails specifically because GraphQL is rate limited, use gh api's
+  REST endpoints for supported reads, comments, issue creation and draft PR creation.
+  For a PR, POST repos/SLUG/pulls with the actual source branch, default base branch,
+  title, body and draft=true (use a JSON --input file). Keep it a draft. Do not change
+  credentials or bypass a permission error. Respect Retry-After/reset headers if REST
+  is limited too. Draft-to-ready still waits for GraphQL; the harness handles it.
 - Do not add or remove the labels ready, needs-review or wip:*. The loop does that.`
 
 const buildRules = commonRules + `
