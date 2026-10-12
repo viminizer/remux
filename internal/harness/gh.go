@@ -34,6 +34,10 @@ type GH struct {
 var ghBin = "gh"
 
 func (g GH) run(ctx context.Context, args ...string) ([]byte, error) {
+	return g.withFallback(ctx, args...)
+}
+
+func (g GH) raw(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ghBin, args...)
@@ -45,7 +49,7 @@ func (g GH) run(ctx context.Context, args ...string) ([]byte, error) {
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return out.Bytes(), fmt.Errorf("gh %s: %s", strings.Join(args[:min(len(args), 3)], " "), firstLine(errb.String(), err))
+		return out.Bytes(), fmt.Errorf("gh %s: %s", strings.Join(args[:min(len(args), 3)], " "), strings.TrimSpace(errb.String()))
 	}
 	return out.Bytes(), nil
 }

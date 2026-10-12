@@ -2,8 +2,11 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
@@ -78,12 +81,70 @@ func (l *Loop) requeueMergedPR(ctx context.Context, pr Item) (bool, error) {
 }
 
 // Repair review-state work left by older binaries or merges outside a loop.
-// This sweep runs only when no eligible work exists, at most once a minute.
-func (l *Loop) recoverMergedWork(ctx context.Context, scope string) (bool, error) {
-	if time.Since(l.lastRecovery) < time.Minute {
+// This sweep repairs old work. Normal merge completion requeues immediately.
+// Share the expensive history scan across builders of the same repo/scope.
+const RecoveryEvery = 5 * time.Minute
+
+func (l *Loop) recoveryTurn(ctx context.Context, scope string) (bool, error) {
+	if time.Since(l.lastRecovery) < RecoveryEvery {
 		return false, nil
 	}
+	unlock, err := l.queueLock(ctx)
+	if err != nil || unlock == nil {
+		return false, err
+	}
+	defer unlock()
+	dir, err := l.git(ctx, l.Repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return false, err
+	}
+	path := filepath.Join(dir, "remux-recovery-times.json")
+	times := map[string]time.Time{}
+	b, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	if len(b) > 0 {
+		if err = json.Unmarshal(b, &times); err != nil {
+			return false, err
+		}
+	}
+	if times == nil {
+		times = map[string]time.Time{}
+	}
+	if time.Since(times[scope]) < RecoveryEvery {
+		l.lastRecovery = time.Now()
+		return false, nil
+	}
+	times[scope] = time.Now()
+	b, err = json.Marshal(times)
+	if err != nil {
+		return false, err
+	}
+	f, err := os.CreateTemp(dir, "remux-recovery-times-*.tmp")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.Write(b); err != nil {
+		f.Close()
+		return false, err
+	}
+	if err = f.Close(); err != nil {
+		return false, err
+	}
+	if err = os.Rename(f.Name(), path); err != nil {
+		return false, err
+	}
 	l.lastRecovery = time.Now()
+	return true, nil
+}
+
+func (l *Loop) recoverMergedWork(ctx context.Context, scope string) (bool, error) {
+	turn, err := l.recoveryTurn(ctx, scope)
+	if err != nil || !turn {
+		return false, err
+	}
 	issues, err := l.gh.Issues(ctx, "status:review")
 	if err != nil {
 		return false, err
