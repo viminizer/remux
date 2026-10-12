@@ -8,6 +8,7 @@
 package harness
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,7 +21,42 @@ import (
 const (
 	SettingsFile = ".remux/harness.json"
 	DecisionLog  = ".remux/decisions.md"
+	// InstructionDir holds a repo's own session instructions, one file per
+	// scope and role, so starting a loop does not mean pasting prose.
+	InstructionDir = ".remux/instructions"
 )
+
+// InstructionFile is where a repo keeps the instructions for one scope and
+// role: "frontend-build.md" for a frontend builder, "review.md" for any
+// reviewer. Both parts are already validated by the caller - a scope is
+// lowercase letters, digits and dashes, a role is one of a fixed set - so
+// neither can escape the directory.
+func InstructionFile(scope, role string) string {
+	if scope != "" && scope != "full" {
+		return filepath.Join(InstructionDir, scope+"-"+role+".md")
+	}
+	return filepath.Join(InstructionDir, role+".md")
+}
+
+// Instructions reads a repo's own session instructions for one scope and role.
+// It prefers the scope-specific file and falls back to the role's own, so a
+// review loop shares one file across scopes while builders differ by scope.
+// The returned name is the file it used, for reporting; both are empty when the
+// repo keeps no such file and the caller's own text should stand.
+func Instructions(repo, scope, role string) (text, name string) {
+	candidates := []string{InstructionFile(scope, role)}
+	if other := InstructionFile("", role); other != candidates[0] {
+		candidates = append(candidates, other)
+	}
+	for _, candidate := range candidates {
+		b, err := os.ReadFile(filepath.Join(repo, candidate))
+		if err != nil || len(bytes.TrimSpace(b)) == 0 {
+			continue
+		}
+		return string(b), candidate
+	}
+	return "", ""
+}
 
 // Settings is the per-project file: the mode and layer 1 of the instructions.
 type Settings struct {

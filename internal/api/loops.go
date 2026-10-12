@@ -158,8 +158,19 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "models must align with agents")
 		return
 	}
-	type plan struct{ name, role, agent, model string }
+	type plan struct{ name, role, agent, model, instr, instrFrom string }
 	var plans []plan
+	// A repo that keeps its own instructions under .remux/instructions decides
+	// what each loop is told, so starting a frontend builder does not mean
+	// pasting prose into the form and a reviewer is not handed a builder's
+	// brief. The submitted text stands for any role the repo has no file for.
+	withInstructions := func(p plan) plan {
+		p.instr, p.instrFrom = harness.Instructions(body.Repo, body.Scope, p.role)
+		if p.instr == "" {
+			p.instr, p.instrFrom = body.Instructions, "the form"
+		}
+		return p
+	}
 	// An agent named twice means two loops of it. The first is
 	// loop-claude-<repo>, the next loop-claude2-<repo>, and so on.
 	count := map[string]int{}
@@ -185,7 +196,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "Claude models are sonnet, opus or empty; Codex uses CLI settings")
 			return
 		}
-		plans = append(plans, plan{loopName(who, body.Repo), "build", a, model})
+		plans = append(plans, withInstructions(plan{name: loopName(who, body.Repo), role: "build", agent: a, model: model}))
 	}
 	if body.Review && body.Reviews == 0 {
 		body.Reviews = 1
@@ -200,7 +211,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		if i > 1 {
 			who = fmt.Sprint("review", i)
 		}
-		plans = append(plans, plan{loopName(who, body.Repo), "review", "codex", ""})
+		plans = append(plans, withInstructions(plan{name: loopName(who, body.Repo), role: "review", agent: "codex"}))
 	}
 	if body.Supervise {
 		if body.SuperviseAgent != "codex" {
@@ -214,7 +225,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid supervisor model")
 			return
 		}
-		plans = append(plans, plan{loopName("supervise", body.Repo), "supervise", body.SuperviseAgent, model})
+		plans = append(plans, withInstructions(plan{name: loopName("supervise", body.Repo), role: "supervise", agent: body.SuperviseAgent, model: model}))
 	}
 	if len(plans) == 0 {
 		writeErr(w, http.StatusBadRequest, "pick at least one agent")
@@ -274,7 +285,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 			if l.Agent == p.agent || l.Agent == "" {
 				// The empty stop cancels a queued "after this issue": the
 				// loop is still wanted.
-				for opt, v := range map[string]string{"@loop_scope": body.Scope, "@loop_instr": body.Instructions,
+				for opt, v := range map[string]string{"@loop_scope": body.Scope, "@loop_instr": p.instr,
 					"@loop_mode": body.InstrMode, "@loop_stop": ""} {
 					if err := s.Tmux.SetLoopOption(ctx, p.name, opt, v); err != nil {
 						writeErr(w, http.StatusInternalServerError, err.Error())
@@ -299,15 +310,17 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 			stopped = append(stopped, p.name)
 		}
 		argv := []string{exe, "loop", "--role", p.role, "--agent", p.agent, "--repo", body.Repo,
-			"--session", p.name, "--scope", body.Scope, "--instructions", body.Instructions,
+			"--session", p.name, "--scope", body.Scope, "--instructions", p.instr,
 			"--mode", body.InstrMode, "--model", p.model}
 		if err := s.Tmux.NewLoopSession(ctx, p.name, body.Repo, argv); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Written here too, not only by the loop on its way up, so a start
-		// a moment later already knows whose loop this is.
-		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent, "@loop_model": p.model} {
+		// Written here too, not only by the loop on its way up, so a start a
+		// moment later already knows whose loop this is, and so the scope and
+		// the brief it was given are readable before its first run.
+		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent,
+			"@loop_model": p.model, "@loop_scope": body.Scope, "@loop_instr": p.instr, "@loop_mode": body.InstrMode} {
 			s.Tmux.SetLoopOption(ctx, p.name, opt, v)
 		}
 		s.audit(r, "loop-start", p.name, body.Repo)
@@ -321,7 +334,14 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	if _, err := config.Update(func(c *config.Config) { c.LastLoop = &last }); err != nil {
 		log.Printf("loops: could not save the last start: %v", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started), "updated": orEmpty(updated), "stopped": orEmpty(stopped)})
+	// Say where each loop's instructions came from: the whole point is that
+	// nobody has to trust that the right brief was loaded.
+	from := map[string]string{}
+	for _, p := range plans {
+		from[p.name] = p.instrFrom
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started), "updated": orEmpty(updated),
+		"stopped": orEmpty(stopped), "instructions": from})
 }
 
 // loopRoles are the roles a start manages. The chat supervisor is not one.

@@ -240,3 +240,80 @@ func TestClaimLabel(t *testing.T) {
 		}
 	}
 }
+
+// Live: one submission, two roles, two different briefs. A frontend builder
+// must get the repo's frontend-build.md and the reviewer its review.md, so
+// starting a frontend job does not mean pasting prose or handing a reviewer a
+// builder's instructions.
+func TestStartLoadsEachRolesInstructionsFromTheRepo(t *testing.T) {
+	tm := tmux.New()
+	ctx := context.Background()
+	if _, err := tm.Version(ctx); err != nil {
+		t.Skipf("no tmux: %v", err)
+	}
+	t.Setenv("HOME", t.TempDir())
+
+	repo := filepath.Join(t.TempDir(), "instr-api-test")
+	dir := filepath.Join(repo, harness.InstructionDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"frontend-build.md": "# Frontend build loop\nUse the shared runtime.\n",
+		"review.md":         "# Review loop\nA contract divergence is a finding.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := filepath.Join(t.TempDir(), "fake-remux")
+	os.WriteFile(fake, []byte("#!/bin/sh\nsleep 60\n"), 0o755)
+	loopExe = func() (string, error) { return fake, nil }
+	defer func() { loopExe = os.Executable }()
+
+	srv := NewServer(config.Default(), tm, nil)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	builder, reviewer := "loop-claude-instr-api-test", "loop-review-instr-api-test"
+	supervisor := "loop-supervise-instr-api-test"
+	for _, n := range []string{builder, reviewer, supervisor} {
+		defer tm.KillLoop(ctx, n)
+	}
+
+	code, body := do(t, ts, "POST", "/api/loops", map[string]any{
+		"repo": repo, "agents": []string{"claude"}, "review": true, "supervise": true,
+		"scope": "frontend", "instructions": "pasted into the form",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("start: %d %s", code, body)
+	}
+
+	for _, c := range []struct{ loop, want, from string }{
+		{builder, "# Frontend build loop\nUse the shared runtime.\n", ".remux/instructions/frontend-build.md"},
+		{reviewer, "# Review loop\nA contract divergence is a finding.\n", ".remux/instructions/review.md"},
+		// The repo keeps no supervise brief, so the submitted text still stands.
+		{supervisor, "pasted into the form", "the form"},
+	} {
+		got, err := tm.LoopOption(ctx, c.loop, "@loop_instr")
+		if err != nil {
+			t.Fatalf("%s: %v", c.loop, err)
+		}
+		if got != c.want {
+			t.Errorf("%s instructions = %q, want %q", c.loop, got, c.want)
+		}
+		if !strings.Contains(string(body), c.from) {
+			t.Errorf("response does not say %s came from %s: %s", c.loop, c.from, body)
+		}
+	}
+
+	// A second submission must reload the files, not leave stale text behind.
+	os.WriteFile(filepath.Join(dir, "frontend-build.md"), []byte("rewritten brief\n"), 0o644)
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{
+		"repo": repo, "agents": []string{"claude"}, "review": true, "supervise": true, "scope": "frontend",
+	}); code != http.StatusOK {
+		t.Fatalf("restart: %d %s", code, body)
+	}
+	if got, _ := tm.LoopOption(ctx, builder, "@loop_instr"); got != "rewritten brief\n" {
+		t.Errorf("a running loop kept stale instructions: %q", got)
+	}
+}

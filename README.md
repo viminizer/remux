@@ -186,6 +186,26 @@ Then fill in `.remux/harness.json` and commit it with `.remux/decisions.md`:
 | `instructions` | project default instructions, read before every run |
 | `supervisor` | company mode: the reviewer when there is no CODEOWNERS and no history |
 
+A repo can also keep a brief per scope and role under `.remux/instructions/`, so
+starting a loop does not mean pasting prose into a form on a phone, and a reviewer
+is never handed a builder's brief. A start reads
+`<scope>-<role>.md` first and falls back to `<role>.md`:
+
+| file | the loop it briefs |
+|---|---|
+| `.remux/instructions/frontend-build.md` | a build loop with scope `frontend` |
+| `.remux/instructions/backend-build.md` | a build loop with scope `backend` |
+| `.remux/instructions/build.md` | any build loop whose scope has no file of its own |
+| `.remux/instructions/review.md` | every review loop, whatever the scope |
+| `.remux/instructions/supervise.md` | the supervise loop |
+
+These are session instructions, layer 2: `harness.json`'s `instructions` are still
+the project defaults underneath, unless the start asks to replace them. Whatever the
+start submits itself stands for any role the repo keeps no file for, so a repo with
+no `.remux/instructions/` behaves exactly as before. The start's reply names the file
+each loop was given, under `instructions`, so nobody has to trust that the right brief
+loaded. Editing a file and starting again reloads it.
+
 Start loops from the phone: **drawer → Loops → Start loop**. The Start screen takes
 a count for each agent, up to 5: two Claude loops are `loop-claude-<repo>` and
 `loop-claude2-<repo>`. The counts are the whole set for that repo: the screen
