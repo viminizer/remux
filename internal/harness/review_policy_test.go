@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReviewClassification(t *testing.T) {
@@ -88,6 +89,76 @@ func TestSharedReviewRotation(t *testing.T) {
 	}
 	if c.Agent != "claude" || c.Model != "opus" || c.Class != "fixed" {
 		t.Fatalf("fixed route: %+v", c)
+	}
+}
+
+func TestReviewRoutingExcludesUnmergedBaseChanges(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-b", "main")
+	runGit(t, repo, "config", "user.name", "Test")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("service.go", "base\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "base")
+	runGit(t, repo, "checkout", "-b", "review")
+	write("service.go", "PR change\n")
+	runGit(t, repo, "commit", "-am", "small PR")
+	runGit(t, repo, "checkout", "main")
+	write("service.go", "main change\n")
+	write("BillingService.java", "amount\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "unrelated billing and conflicting service")
+	runGit(t, repo, "checkout", "review")
+	if _, err := (&Loop{}).git(context.Background(), repo, "merge", "--no-edit", "main"); err == nil {
+		t.Fatal("fixture must conflict, as reviewOnce does before routing")
+	}
+	runGit(t, repo, "merge", "--abort")
+	l := &Loop{Repo: repo}
+	c, err := l.nextReviewChoice(context.Background(), repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Class != "small" {
+		t.Fatalf("small PR routed using unrelated base changes: %+v", c)
+	}
+}
+
+func TestTimedOutReviewStopsChildBeforeHandoff(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"claude": "#!/bin/sh\ncat >/dev/null\necho started > started.txt\n(sleep 2; echo late-repair > late.txt) &\nwait\n",
+		"codex":  "#!/bin/sh\ncat >/dev/null\n[ ! -f late.txt ] || exit 7\necho REVIEW COMPLETE\n",
+		"tmux":   "#!/bin/sh\nexit 0\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HOME", root)
+	l := Loop{Agent: "claude", Role: "review", Repo: root, Session: "loop-test", Tmux: tmux.New(), runTimeout: 500 * time.Millisecond}
+	choice, code, summary := l.inspectReview(context.Background(), root, "Review", choiceFor("normal", ""), 42)
+	if choice.Agent != "codex" || code != 0 || !completedReview(summary) {
+		t.Fatalf("timed-out child affected fallback: choice=%+v code=%d output=%q", choice, code, summary)
+	}
+	if _, err := os.Stat(filepath.Join(root, "started.txt")); err != nil {
+		t.Fatal("fixture reviewer never started", err)
+	}
+	// A descendant with redirected output could outlive Wait even without
+	// holding its pipes open. It must not edit the branch after handoff either.
+	time.Sleep(2100 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(root, "late.txt")); !os.IsNotExist(err) {
+		t.Fatal("timed-out child changed the worktree after handoff", err)
 	}
 }
 

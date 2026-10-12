@@ -70,7 +70,9 @@ func (l *Loop) nextReviewChoice(ctx context.Context, wt, base string) (reviewCho
 	if l.set.ReviewPolicy == "fixed" {
 		return reviewChoice{Agent: l.Agent, Model: l.Model, Effort: "medium", Class: "fixed"}, nil
 	}
-	stat, err := l.git(ctx, wt, "diff", "--numstat", base, "HEAD")
+	// A failed pre-review merge leaves HEAD behind the base tip. Compare
+	// from the common ancestor so unrelated base changes cannot affect routing.
+	stat, err := l.git(ctx, wt, "diff", "--numstat", base+"...HEAD")
 	if err != nil {
 		return reviewChoice{}, err
 	}
@@ -88,7 +90,7 @@ func (l *Loop) nextReviewChoice(ctx context.Context, wt, base string) (reviewCho
 		}
 		changes = append(changes, reviewChange{fields[2], n})
 	}
-	diff, err := l.git(ctx, wt, "diff", "--unified=0", base, "HEAD")
+	diff, err := l.git(ctx, wt, "diff", "--unified=0", base+"...HEAD")
 	if err != nil {
 		return reviewChoice{}, err
 	}

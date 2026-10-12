@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/viminizer/remux/internal/tmux"
@@ -644,6 +645,19 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 	started := time.Now()
 	l.recordRun(started, "start", args, 0, 0)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	// Isolate this runner and its tool commands from the live workspace.
+	// Stop the whole group on timeout before another reviewer takes over.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+			if err == syscall.ESRCH {
+				return os.ErrProcessDone
+			}
+			return err
+		}
+		return nil
+	}
+	cmd.WaitDelay = time.Second
 	cmd.Dir = wt
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, all bytes.Buffer
