@@ -1274,3 +1274,21 @@ dirty/later work preservation, active source claims, cross-worktree lock
 exclusion and replacement PRs across scopes. `laptop-invariant.sh before`
 and `after` passed with 20 panes unchanged. No live tmux mutations or scratch
 sessions were needed; cleanup tests use a tmux stub. Version 0.3.90 is preserved.
+
+## 2026-10-12 — balanced, evidence-based PR reviews (0.3.91)
+
+Kevin requested Claude alongside Codex, faster reviews, and findings grounded in
+normal user actions. Both providers now use one review-and-repair prompt, with
+changed-code scope and a concrete evidence filter. Small/docs PRs use Sonnet at
+medium; ordinary PRs alternate providers under the common Git queue lock;
+finance/access/migration/destructive or large changes receive deeper review.
+A failed/incomplete run hands its preserved work to the other provider once.
+Completion requires an explicit complete verdict; timeouts never approve.
+Project review_policy=fixed preserves an explicitly chosen reviewer.
+
+PR comments and private run history record provider, effort, route, time and
+self-reported evidence-backed repairs. Those counts are not independently
+audited performance scores. Build providers and effort remain unchanged.
+Verification: harness regressions for classification, removed authorization,
+shared worktree rotation, completion gating and CLI effort; go vet and full
+release build. Results are recorded in the PR before rollout.

@@ -47,18 +47,22 @@ func ValidModel(agent, model string) bool {
 // RunRecord contains no prompts or agent output. Model is the requested
 // alias, not a claim about the exact backend model or billed usage.
 type RunRecord struct {
-	Started    time.Time `json:"started"`
-	Event      string    `json:"event"`
-	Session    string    `json:"session"`
-	Repo       string    `json:"repo"`
-	Role       string    `json:"role"`
-	Agent      string    `json:"agent"`
-	Model      string    `json:"model"`
-	Item       int       `json:"item"`
-	PR         int       `json:"pr,omitempty"`
-	Stage      string    `json:"stage"`
-	ExitCode   int       `json:"exitCode"`
-	DurationMS int64     `json:"durationMs"`
+	Started     time.Time `json:"started"`
+	Event       string    `json:"event"`
+	Session     string    `json:"session"`
+	Repo        string    `json:"repo"`
+	Role        string    `json:"role"`
+	Agent       string    `json:"agent"`
+	Model       string    `json:"model"`
+	Item        int       `json:"item"`
+	PR          int       `json:"pr,omitempty"`
+	Stage       string    `json:"stage"`
+	ExitCode    int       `json:"exitCode"`
+	DurationMS  int64     `json:"durationMs"`
+	Effort      string    `json:"effort,omitempty"`
+	ReviewClass string    `json:"reviewClass,omitempty"`
+	// Self-reported, evidence-backed repairs; not an independently audited score.
+	ReportedFixedBugs *int `json:"reportedFixedBugs,omitempty"`
 }
 
 func (l *Loop) recordRun(started time.Time, event string, args []string, code int, ms int64) {
@@ -72,6 +76,10 @@ func (l *Loop) recordRun(started time.Time, event string, args []string, code in
 	}
 	r := RunRecord{Started: started.UTC(), Event: event, Session: l.Session, Repo: l.Repo,
 		Role: l.Role, Agent: l.Agent, Model: model, Item: l.item, Stage: stage, ExitCode: code, DurationMS: ms}
+	r.Effort = l.effort
+	if r.Effort == "" {
+		r.Effort = "medium"
+	}
 	l.record(r)
 }
 

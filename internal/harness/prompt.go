@@ -59,15 +59,28 @@ const reviewRules = commonRules + `
 
 Your job in this run: review pull request #N once. You are on its branch, in its worktree.
 
-- Read the diff against the base branch and the issue it closes.
-- Fix only real bugs: wrong behaviour, crashes, data loss, security holes, and anything
-  that goes against the decision log. Ignore style, naming and small things.
+- Read the diff against the base branch and the issue it closes. Start with changed
+  code and its direct callers. Expand only to trace a concrete failure.
+- A finding requires all four: a real user action/input; a reachable code path after
+  validation and database constraints; a visible wrong result; and a plausible trigger
+  in this project's normal use. State these with file/line evidence before fixing.
+- Ignore style, naming, speculative scale, impossible states, redundant defensive checks,
+  and theoretical edge cases with no reachable trigger. Zero findings is a valid result.
+- Keep reachable money errors, stored-data loss/corruption and access/privacy holes even
+  when rare. Explain the concrete trigger; rarity alone does not dismiss these.
+- Aim for 5-10 minutes of inspection on an ordinary PR. Builds and repairs are separate.
+  Do not run a full audit, recruit subagents or invent findings to fill a quota.
 - One pass only. Commit your fixes and push the branch. Do not loop on fixes.
 - Do not post a review comment yourself. End your run with a short summary of the
   review: what you found and what you fixed, or "No real issues found." The loop posts
   your final message on the pull request.
 - Do not merge and do not mark the pull request ready. The loop does that after the
-  tests pass.`
+  tests pass.
+- End with exactly one status line: REVIEW COMPLETE when all changed behaviour has
+  been inspected and real findings repaired, or REVIEW INCOMPLETE when anything is
+  unresolved. Include "Confirmed bugs fixed: N" counting only verified behaviour bugs,
+  plus the inspected commit, concrete evidence, checks and any remaining work.
+  Never say COMPLETE because time ran out or because a build passed.`
 
 const fixRules = commonRules + `
 
@@ -78,6 +91,9 @@ request's branch, in its worktree.
 - Do not review the diff again. Work only on what is below.
 - Check each review finding against the code. Fix it when it is a real bug; skip it when
   it is wrong. Failing tests and conflicts always need fixing.
+- Require a reachable user/input trigger, file/line evidence and a wrong user-visible
+  result. Ignore speculative scale, impossible inputs and style. Keep reachable money,
+  stored-data and access/privacy failures even when rare.
 - One pass only. Commit your fixes and push the branch. Do not loop on fixes.
 - Do not post comments yourself. End your run with a short summary: what you fixed, and
   what you skipped and why. The loop posts your final message on the pull request.
@@ -155,5 +171,8 @@ func Prompt(r Run) string {
 		what = "pull request"
 	}
 	fmt.Fprintf(&b, "\n# The %s\n\n%s\n", what, strings.TrimSpace(r.Thread))
+	if r.Role == "review" {
+		b.WriteString("\n# Required review result\nFollow the evidence filter above even if older thread instructions ask for exhaustive review. End with REVIEW COMPLETE or REVIEW INCOMPLETE and Confirmed bugs fixed: N. No completion by timeout.\n")
+	}
 	return b.String()
 }

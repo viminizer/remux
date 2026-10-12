@@ -40,6 +40,8 @@ type Loop struct {
 	lastRecovery time.Time
 	limit        time.Time // set when the last agent run ended on a usage limit
 	item         int       // issue or PR being worked; zero while triaging
+	effort       string    // review override; builds keep medium
+	runTimeout   time.Duration
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
@@ -587,10 +589,14 @@ func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
 // educenter, Claude at high effort spent 75% of a build run thinking and
 // writing, about 67k output tokens a run; Codex at medium built faster.
 func (l *Loop) command(wt, last string) []string {
-	if l.Agent == "codex" {
-		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", codexMedium, "-C", wt, "-o", last, "-"}
+	effort := l.effort
+	if effort == "" {
+		effort = "medium"
 	}
-	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", "medium"}
+	if l.Agent == "codex" {
+		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", `-cmodel_reasoning_effort="` + effort + `"`, "-C", wt, "-o", last, "-"}
+	}
+	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", effort}
 	if l.Model != "" {
 		args = append(args, "--model", l.Model)
 	}
@@ -621,7 +627,11 @@ func (l *Loop) codexReview(ctx context.Context, wt, base string) (int, string) {
 // spawn runs argv(last) in wt with stdin on its input. The final message is
 // the file at last when the command wrote one (Codex), else its stdout.
 func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last string) []string) (int, string) {
-	ctx, cancel := context.WithTimeout(ctx, RunTimeout)
+	timeout := l.runTimeout
+	if timeout == 0 {
+		timeout = RunTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	f, err := os.CreateTemp("", "remux-last-*.txt")
 	if err != nil {
