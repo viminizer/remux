@@ -153,6 +153,13 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 			return true, nil
 		}
 		l.gh.RemoveLabel(ctx, n, "blocked")
+		// stuck mirrors this label onto PRs too. Leaving it behind makes
+		// the review queue reject a PR that the supervisor just resumed.
+		if kind == "pr" {
+			if err := l.gh.RemoveLabel(ctx, n, "status:blocked"); err != nil {
+				return true, err
+			}
+		}
 		if supervisorReady(last) {
 			l.gh.RemoveLabel(ctx, n, "blocked:external")
 		}

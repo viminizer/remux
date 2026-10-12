@@ -293,6 +293,14 @@ bugs repaired. Missing counts stay missing. Compare matching change classes and
 verify those repairs before favoring a provider; raw finding count is not a score.
 No automatic performance weighting or quota polling is introduced.
 
+Completed review statuses may put the confirmed repair count on the same line.
+Quoted examples and explicit incomplete verdicts still cannot approve a review.
+A resumed PR can reuse a trusted harness review of its exact current head;
+changed heads and newer incomplete verdicts require inspection. Reuse still
+runs the required checks and handles main-branch conflicts, without crediting a
+new provider review or repair count. Supervisor resumption also clears the
+mirrored `status:blocked` PR label so `needs-review` can actually be picked up.
+
 The agents run in yolo mode, on the Mac itself: Claude with
 `--dangerously-skip-permissions` and Codex with
 `--dangerously-bypass-approvals-and-sandbox`. They can run any command your user

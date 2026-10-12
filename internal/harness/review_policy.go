@@ -139,11 +139,24 @@ func (l *Loop) selectReviewer(ctx context.Context, c reviewChoice) {
 	}
 }
 
-var reviewComplete = regexp.MustCompile(`(?m)^REVIEW COMPLETE\s*$`)
-var reviewIncomplete = regexp.MustCompile(`(?m)^REVIEW INCOMPLETE\s*$`)
+// Accept the status on its own or followed by the reported count. Do not
+// interpret an arbitrary mention, example or incomplete verdict as completion.
+var reviewComplete = regexp.MustCompile(`(?im)^[ \t]*(?:\*\*)?REVIEW COMPLETE(?:\*\*)?(?:[ \t]*[.!]?[ \t]*$|[ \t]*[-—–:;,][ \t]*Confirmed bugs fixed:[ \t]*[0-9]+(?:[.!]?(?:[ \t]+[^\r\n]*)?)?[ \t]*$)`)
+var reviewIncomplete = regexp.MustCompile(`(?im)^[ \t]*(?:\*\*)?REVIEW INCOMPLETE\b`)
 
 func completedReview(out string) bool {
-	return reviewComplete.MatchString(out) && !reviewIncomplete.MatchString(out)
+	var plain strings.Builder
+	fenced := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") || strings.HasPrefix(strings.TrimSpace(line), "~~~") {
+			fenced = !fenced
+			continue
+		}
+		if !fenced {
+			plain.WriteString(line + "\n")
+		}
+	}
+	return reviewComplete.MatchString(plain.String()) && !reviewIncomplete.MatchString(plain.String())
 }
 
 func alternateReviewer(c reviewChoice) reviewChoice {
@@ -165,7 +178,7 @@ func modelName(model string) string {
 	return model
 }
 
-var confirmedBugs = regexp.MustCompile(`(?m)^Confirmed bugs fixed: ([0-9]+)\s*$`)
+var confirmedBugs = regexp.MustCompile(`(?im)(?:^[ \t]*|[-—–:;,][ \t]*)Confirmed bugs fixed:[ \t]*([0-9]+)\b`)
 
 func reportedFixedBugs(summary string) *int {
 	m := confirmedBugs.FindStringSubmatch(summary)

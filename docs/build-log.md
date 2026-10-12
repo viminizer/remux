@@ -1315,6 +1315,24 @@ wrote `late.txt` and the fallback exited 7, confirming interference rather than
 only a timing difference. Final checks: `go test ./...`, `go vet ./...` and
 `git diff --check` all passed.
 
+## 2026-10-12 — recover finished reviews and resumed PRs (0.3.92)
+
+Four EduCenter PRs were held after completed reviews used an inline status/count.
+The completion parser now accepts those explicit verdicts, while rejecting
+incomplete verdicts, quoted examples and arbitrary mentions. Resumed PRs reuse
+a trusted harness review of the exact current head; a changed head or a newer
+incomplete verdict requires review. Required checks and conflict repair remain.
+Reuse is logged separately and does not count as another provider review.
+
+Supervisor resolution also removes status:blocked from resumed PRs. Previously
+needs-review was restored but the mirrored blocked label kept selection idle.
+Real external/runtime gates remain parked. No credentials or observations are
+fabricated; issue backend completion stays separate from these partial PRs.
+
+Validation: harness tests for inline verdicts, explicit incomplete/quoted input,
+head-specific reuse, latest verdict, trusted authors and known harness wrappers;
+Go vet and diff checks. Full embedded app build for 0.3.92 before rollout.
+
 ## 2026-10-12 - Scope-filtered triage, 0.3.92
 
 The user's queue diagnosis was based on this checkout before it caught up
