@@ -1230,3 +1230,47 @@ Versioning uses the existing Git-tag convention, `v0.3.89`. The installed app
 is updated. Existing build-loop processes retain their old code until they
 finish and restart; restarting the Remux service does not replace them.
 Model selection and PR notes take effect in loops launched with this version.
+
+## 2026-10-12 — 0.3.90 queue pickup and parked work
+
+Idle polling now waits 15 seconds instead of one minute, and queue triage can
+run every five minutes instead of every thirty. Triage distinguishes the
+selected scope from ready work already completed for that scope, and checks
+actual merged prerequisite contracts rather than requiring all issue states
+to be closed.
+
+A confirmed merged `issue-N[-scope]` PR requeues its open, unfinished source
+issue. An idle builder also recovers older partial merges stranded in
+`status:review`, at most once per minute. The branch identifies the source;
+incidental issue references in PR text never select work. Completed scopes,
+active ownership, open replacement PRs, blocked/external, postponed, held and
+post-deployment items are excluded. Requeue/park outcomes are recorded in
+the existing run history.
+
+Supervision distinguishes `RESOLVED PARKED` from retry readiness. A parked
+item loses ready/review eligibility and carries `blocked:external`, so
+closed dependency edges cannot prematurely release a time gate. Resumption
+requires an explicit verified `RESOLVED READY`. Ordinary resolved repairs
+still retry; an item closed during supervision is never requeued.
+
+Verification: existing `go test ./internal/harness`, `go vet ./...` and
+`git diff --check` passed. The full `VERSION=0.3.90 ./scripts/build.sh` build
+passed with the installed Node 22 toolchain: TypeScript, Vite, embedded UI and
+stripped Go binary. Application installation and loop restarts follow the
+reviewed merge; active issue work must finish before its process is replaced.
+
+### PR #62 review fixes
+
+Merged-branch cleanup, idle recovery and claims now share a nonblocking lock
+in Git's common directory, including across worktrees. Recovery runs cleanup
+before publishing readiness; failed cleanup or an active source claim defers
+requeueing. Active full-scope branches are recognized alongside scoped ones.
+Open replacement PRs on any harness branch for the source issue prevent
+requeueing, without using incidental issue references in PR text.
+
+Verification: `go test ./internal/harness`, `go vet ./...` and
+`git diff --check` passed. Regression tests exercise cleanup-before-ready,
+dirty/later work preservation, active source claims, cross-worktree lock
+exclusion and replacement PRs across scopes. `laptop-invariant.sh before`
+and `after` passed with 20 panes unchanged. No live tmux mutations or scratch
+sessions were needed; cleanup tests use a tmux stub. Version 0.3.90 is preserved.

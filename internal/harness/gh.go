@@ -18,6 +18,7 @@ var Labels = []struct{ Name, Color, Desc string }{
 	{"ready", "0e8a16", "Waiting for an agent loop"},
 	{"blocker", "d93f0b", "Blocks another issue. Taken first."},
 	{"blocked", "fbca04", "Waiting for its blocker issues to close"},
+	{"blocked:external", "fbca04", "Waiting for a verified external prerequisite or time gate"},
 	{"needs-review", "1d76db", "Draft PR waiting for the Codex review loop"},
 	{"needs-human", "b60205", "An agent is stuck. One short question in a comment."},
 	{"escalated", "5319e7", "The supervisor passed this to Kevin"},

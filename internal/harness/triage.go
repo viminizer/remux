@@ -81,7 +81,7 @@ func (l *Loop) mirrorN(ctx context.Context, n int, state string) {
 // TriageEvery spaces out triage runs. Triage is an agent run, so it costs
 // money, and a repo where nothing can be started now will usually still be
 // that way in a minute.
-var TriageEvery = 30 * time.Minute
+var TriageEvery = 5 * time.Minute
 
 // TriageMax is how many issues one triage run may mark ready. Enough to keep
 // the loops busy; small enough that a wrong guess stays a small mistake.
@@ -89,8 +89,9 @@ const TriageMax = 5
 
 const triageRules = commonRules + `
 
-Your job in this run: no open issue is marked ready, but a loop was started on this
-repo, so Kevin wants its issues worked. Find the issues that can be started now and mark
+Your job in this run: no issue is eligible for THIS LOOP'S SCOPE. Other scopes may
+have many ready issues; ready items with done:SCOPE are not work for this loop.
+Find the issues that can be started now and mark
 them so the loops take them. Do not write any code and do not change any files.
 
 1. List the open issues and the repo's labels:
@@ -99,15 +100,19 @@ them so the loops take them. Do not write any code and do not change any files.
 2. Learn how this repo tracks its work: its status labels, its areas, how it writes
    dependencies ("blocked by #12", "depends on", task lists, GitHub's blocked-by links:
    gh api repos/SLUG/issues/N/dependencies/blocked_by).
-3. An issue can be started now when everything it depends on is closed or merged, and it
-   is clear enough to build. Read the ones that look closest (gh issue view N --comments).
+3. Read the ones that look closest (gh issue view N --comments). A prerequisite can be
+   satisfied for this scope while its issue remains open for another scope: verify its
+   actual merged implementation and contract, not just the issue state or a done label.
+   Inspect unfinished status:review issues too: after a merged partial PR, remaining
+   work may need requeueing. Never requeue work with an open PR or active worker.
    Prefer the oldest and the ones other issues depend on.
 4. For each one you choose, at most MAX, add the label ready. (This is the one run where
    adding ready is your job, not the loop's.) Then update its labels to
    match this repo's own format: for example, if the repo uses status:* labels, replace
    status:blocked with status:ready. Leave a one-line comment saying why it can start now.
-5. If an issue is labeled blocked but its blockers are all done, that is the most common
-   case: fix its labels the same way.
+5. Preserve postponed, post-deployment and held work. Preserve real external/time gates,
+   including blocked:external; verify the prerequisite/deadline and runtime handoff
+   before removing a block. Closed dependency edges alone do not resolve a time gate.
 6. If nothing can be started, change nothing and say why in one short paragraph.`
 
 // triage runs one agent pass that picks issues to mark ready. It reports
@@ -124,7 +129,7 @@ func (l *Loop) triage(ctx context.Context, scope string) bool {
 	l.state(ctx, "triaging", "")
 	log.Printf("── no ready issues: looking for ones that can start")
 
-	rules := strings.NewReplacer("SLUG", l.gh.Slug, "MAX", fmt.Sprint(TriageMax)).Replace(triageRules)
+	rules := strings.NewReplacer("SLUG", l.gh.Slug, "MAX", fmt.Sprint(TriageMax), "SCOPE", scope).Replace(triageRules)
 	var b strings.Builder
 	b.WriteString("# Agent rules\n\n" + rules + "\n")
 	if mode := l.get(ctx, "@loop_mode"); mode != "replace" && strings.TrimSpace(l.set.Instructions) != "" {

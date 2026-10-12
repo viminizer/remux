@@ -29,14 +29,14 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	// Re-read before claiming, for the same lag the build loop measured.
 	var pr *Item
 	for _, p := range prs {
-		if p.HasPrefix("wip:") || p.HasPrefix("by:") || p.Has("needs-human") {
+		if p.HasPrefix("wip:") || p.HasPrefix("by:") || p.Has("needs-human") || queueExcluded(p) {
 			continue
 		}
 		fresh, err := l.gh.PR(ctx, p.Number)
 		if err != nil {
 			return false, err
 		}
-		if fresh.State == "OPEN" && fresh.Has("needs-review") && !fresh.HasPrefix("wip:") && !fresh.HasPrefix("by:") && !fresh.Has("needs-human") {
+		if fresh.State == "OPEN" && fresh.Has("needs-review") && !fresh.HasPrefix("wip:") && !fresh.HasPrefix("by:") && !fresh.Has("needs-human") && !queueExcluded(fresh) {
 			pr = &fresh
 			break
 		}

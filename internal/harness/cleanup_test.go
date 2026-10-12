@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ func TestCleanupMergedPR(t *testing.T) {
 		{"merged head", "", true},
 		{"dirty worktree", "dirty", false},
 		{"new commit after merge", "commit", false},
+		{"active source claim", "claim", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -62,7 +64,23 @@ func TestCleanupMergedPR(t *testing.T) {
 			for _, name := range []string{"gh", "tmux"} {
 				body := "#!/bin/sh\nexit 0\n"
 				if name == "gh" {
-					body = "#!/bin/sh\nprintf '[]\\n'\n"
+					labels := "[]"
+					if tc.change == "claim" {
+						labels = `[{"name":"by:loop-builder"}]`
+					}
+					body = fmt.Sprintf(`#!/bin/sh
+case "$1 $2" in
+"issue view") echo '{"number":9000000,"state":"OPEN","labels":%s}' ;;
+"api -X")
+  if [ -d '%s' ] || git --git-dir='%s' show-ref --verify --quiet refs/heads/issue-9000000; then
+    echo 'ready published before cleanup' >&2
+    exit 1
+  fi
+  echo "$*" >> '%s'
+  ;;
+*) echo '[]' ;;
+esac
+`, labels, wt, origin, filepath.Join(root, "labels"))
 				}
 				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
 					t.Fatal(err)
@@ -78,8 +96,12 @@ func TestCleanupMergedPR(t *testing.T) {
 			if tc.wantGone && err != nil {
 				t.Fatal(err)
 			}
-			if !tc.wantGone && err == nil {
+			if !tc.wantGone && tc.change != "claim" && err == nil {
 				t.Fatal("cleanup removed work that was not in the merged PR")
+			}
+			labelCalls, _ := os.ReadFile(filepath.Join(root, "labels"))
+			if strings.Contains(string(labelCalls), "labels[]=ready") != tc.wantGone {
+				t.Fatalf("ready calls = %q, want requeued = %v", labelCalls, tc.wantGone)
 			}
 			_, statErr := os.Stat(wt)
 			if (statErr == nil) == tc.wantGone {
