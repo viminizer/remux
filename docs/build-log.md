@@ -1443,7 +1443,16 @@ owned smoke process afterward. Laptop invariant passed around tests, read-only
 live roster inspection and the smoke phase (19 panes unchanged). No scratch
 session remains from these phases.
 
-Installing a binary does not replace already-running loop processes. Live-loop
-activation waits for Kevin's explicit exception to the scratch-only tmux-write
-rule, and must finish current tasks before restarting, preserving scope, model,
-instructions and pre-existing stop requests. No live agent was interrupted.
+Installed v0.3.96 atomically with the previous binary retained privately, then
+restarted the launch agent; remux status confirmed the service loaded. Kevin
+explicitly approved the live-loop exception: "Yes, restart loops after their
+tasks finish." Queued graceful after-task stops, waited for each old session to
+exit, then recreated all seven existing EduCenter build/review/supervise loops
+with the installed binary. The separate chat supervisor was left untouched.
+Read-only verification confirmed new PIDs and exact preservation of role, agent,
+model, scope, instruction mode/text and original empty stop settings on all seven.
+The two active triage runs finished before rollover. No live agent was interrupted.
+The final laptop invariant passed (19 non-harness panes unchanged). Private
+rollout snapshots/logs/verification are in
+/Users/mac/.local/share/remux/rollout-0.3.96. Real idle-remediation decisions have
+not yet been claimed as observed; the control flow was exercised with stand-ins.
