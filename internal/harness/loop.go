@@ -31,6 +31,10 @@ type Loop struct {
 	// session by the loop itself, before anything reads them, and read back
 	// before every run so an edit from the phone applies to the next one.
 	Scope, Instructions, InstrMode string
+	Task                           int // custom loops work exactly one issue/PR, then exit
+	BudgetKey                      string
+	Reserve                        float64
+	Effort                         string
 
 	gh  GH
 	set Settings
@@ -70,6 +74,17 @@ func (l *Loop) Run(ctx context.Context) error {
 	} {
 		l.opt(ctx, opt, v)
 	}
+	if l.Task > 0 {
+		kind := "issue"
+		if l.Role == "review" {
+			kind = "pr"
+		}
+		l.opt(ctx, "@loop_custom", "1")
+		l.opt(ctx, "@loop_budget_key", l.BudgetKey)
+		l.opt(ctx, "@loop_reserve", strconv.FormatFloat(l.Reserve, 'f', -1, 64))
+		l.opt(ctx, assignmentOption, fmt.Sprintf("%s:%d", kind, l.Task))
+		l.effort = l.Effort
+	}
 	l.state(ctx, "idle", "")
 
 	// Setup needs GitHub, and GitHub being briefly unreachable is not a
@@ -84,6 +99,9 @@ func (l *Loop) Run(ctx context.Context) error {
 			break
 		}
 		log.Printf("setup: %v", err)
+		if l.Task > 0 {
+			return err
+		}
 		l.state(ctx, "blocked", err.Error())
 		sleep(ctx, Idle)
 	}
@@ -96,9 +114,15 @@ func (l *Loop) Run(ctx context.Context) error {
 		started := time.Now()
 		l.set, err = l.loadSettings(ctx)
 		if err != nil {
+			if l.Task > 0 {
+				return err
+			}
 			l.state(ctx, "blocked", err.Error())
 			sleep(ctx, Idle)
 			continue
+		}
+		if l.Task > 0 && l.Role == "review" {
+			l.set.ReviewPolicy = "fixed"
 		}
 
 		var did bool
@@ -125,6 +149,11 @@ func (l *Loop) Run(ctx context.Context) error {
 			did, err = l.buildOnce(ctx)
 		}
 		if l.limited() {
+			if l.Task > 0 {
+				l.rememberSpawnLimit()
+				l.recordOutcome("custom-usage-deferred", l.Task, 0)
+				return nil
+			}
 			msg := "usage limit, back at " + l.limit.Format("15:04")
 			if time.Until(l.limit) > 20*time.Hour {
 				msg = "usage limit, back " + l.limit.Format("Mon 15:04")
@@ -134,13 +163,26 @@ func (l *Loop) Run(ctx context.Context) error {
 			sleep(ctx, time.Until(l.limit)+time.Minute)
 			continue
 		}
+		if l.Task > 0 {
+			if err != nil || !did || l.item == l.Task {
+				l.recordOutcome("custom-finished", l.Task, 0)
+				return err
+			}
+			// A busy queue lock/lost claim is not a completed task.
+			sleep(ctx, Idle)
+			continue
+		}
 		switch {
 		case err != nil:
 			log.Printf("error: %v", err)
 			l.state(ctx, "blocked", err.Error())
 			sleep(ctx, Idle)
 		case !did:
-			l.state(ctx, "idle", "")
+			note := ""
+			if l.Role == "supervise" {
+				note = l.idleAuditSummary
+			}
+			l.state(ctx, "idle", note)
 			sleep(ctx, Idle)
 		default:
 			sleep(ctx, Idle-time.Since(started))
@@ -156,8 +198,10 @@ func (l *Loop) setup(ctx context.Context) error {
 	}
 	l.gh = GH{Slug: slug, Dir: l.Repo}
 	l.opt(ctx, "@loop_slug", slug)
-	if err := l.gh.EnsureLabels(ctx); err != nil {
-		return err
+	if l.Task == 0 {
+		if err := l.gh.EnsureLabels(ctx); err != nil {
+			return err
+		}
 	}
 	l.loadLabels(ctx)
 	return nil
@@ -274,6 +318,9 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	it = assigned
+	if it == nil && l.Task > 0 {
+		return false, nil
+	}
 	for _, c := range candidates(issues, scope) {
 		if it != nil {
 			break

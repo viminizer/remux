@@ -51,7 +51,12 @@ Choose actions by the actual cause:
   preserved work before releasing its claim. Never touch an active claim.
 - Build/conflict/worktree/runtime failure: repair only in the item's isolated
   worktree, or requeue/delegate that issue after removing the concrete blocker.
-- External dependency, credentials, quota or a real time gate: retain the block
+- A coding provider's expired login/quota: verify another supported provider's
+  authenticated access and usage, ownership/handoff and preserved work. If that
+  resolves the only operational gate, requeue and request a budget-checked worker
+  on the available provider. Do not require Claude login for a Codex-authorized
+  task. This never supplies missing business/runtime credentials.
+- External dependency, business/runtime credentials or a real time gate: retain the block
   and record the exact prerequisite/deadline. Do not repeatedly retry it.
 
 Preserve stop requests, ownership, worker scope/instructions, any project pause,
@@ -72,7 +77,33 @@ DELEGATE loop-review-session-name pr 456
 At most five assignments. The harness revalidates the worker and item's current
 eligibility and sets a one-shot preferred task; normal claim locking still runs.
 Do not assign active, stopped, limited, postponed or held work. Do not issue the
-same assignment repeatedly: verify the previous action's result first.`
+same assignment repeatedly: verify the previous action's result first.
+
+Kevin additionally authorizes routine scope/capacity/model decisions without
+another approval. If no suitable available worker exists, request a temporary
+builder or reviewer for an independent task. Up to FIVE custom builders and
+FIVE custom reviewers may run concurrently; start fewer when tasks overlap or
+usage headroom is insufficient. These workers do one task and clean up their
+own session afterward, retaining drafts and unfinished work. Do not create new
+work just to fill five slots. Existing stop requests and ownership still apply.
+Verify written prerequisites, current merged contracts, concrete file ownership
+and eligible labels. Group work that touches the same owned files sequentially.
+Backend prerequisites discovered during frontend work are real backend work:
+do not call the frontend queue healthy merely because all idle builders are
+frontend-only. An older "backend finished" note is not proof the new fixes shipped.
+
+Prefer DELEGATE to an available worker with suitable scope and instructions.
+When additional capacity or a different scope/provider is required, FINAL lines:
+SPAWN build backend 123 normal
+SPAWN build frontend 456 deep
+SPAWN review full 789 normal
+normal means bounded routine work; deep means sensitive financial/auth/schema or
+large work needing extra budget and reasoning. The harness checks live provider
+usage, active accounts, shared concurrent headroom, known limits and CLI availability
+before selecting a model. Missing/low usage fails closed. Percentages cannot
+guarantee a task's token cost; bound the task honestly. You must not bypass this
+check by starting a session yourself. Leave a visible task comment recording why
+the prerequisite or review needs capacity. Never silently take another owner's work.`
 
 func (l *Loop) superviseIdleOnce(ctx context.Context) (bool, error) {
 	loops, err := l.Tmux.Loops(ctx)
@@ -86,9 +117,18 @@ func (l *Loop) superviseIdleOnce(ctx context.Context) (bool, error) {
 			idle = append(idle, o)
 		}
 	}
-	if len(idle) == 0 || now.Sub(l.lastIdleAudit) < idleAuditEvery {
+	if now.Sub(l.lastIdleAudit) < idleAuditEvery {
 		return false, nil
 	}
+	workers := 0
+	for _, o := range loops {
+		if o.Slug == l.gh.Slug && (o.Role == "build" || o.Role == "review") && o.Stop == "" {
+			workers++
+		}
+	}
+	if workers == 0 {
+		return false, nil
+	} // Honor a deliberately stopped project.
 
 	var issues, prs []Item
 	if err := l.gh.JSON(ctx, &issues, "issue", "list", "--state", "open", "--limit", "500", "--json", itemFields); err != nil {
@@ -100,13 +140,25 @@ func (l *Loop) superviseIdleOnce(ctx context.Context) (bool, error) {
 
 	// Complete queues need no AI. Keep owned items in the roster/PR snapshot,
 	// while showing each builder only its unfinished scope shortlist.
-	scoped := map[string][]Item{}
+	scoped := map[string][]Item{"backend": triageCandidates(issues, "backend"), "frontend": triageCandidates(issues, "frontend")}
 	on := map[string]int{}
 	for _, o := range loops {
 		on[o.Name] = o.Issue
 	}
 	stale := staleIn(append(append([]Item{}, issues...), prs...), on)
 	needsAudit := len(stale) > 0
+	// Ready prerequisites in a missing scope are a capacity gap. All existing
+	// loops may be busy: temporary builders can still make independent progress.
+	for _, scope := range []string{"backend", "frontend"} {
+		if len(candidates(issues, scope)) > 0 {
+			needsAudit = true
+		}
+	}
+	for _, p := range prs {
+		if reviewEligible(p) {
+			needsAudit = true
+		}
+	}
 	for _, o := range idle {
 		if o.State == "blocked" {
 			needsAudit = true
@@ -171,6 +223,9 @@ func (l *Loop) superviseIdleOnce(ctx context.Context) (bool, error) {
 	if err := l.delegate(ctx, summary); err != nil {
 		return true, err
 	}
+	if err := l.spawnWorkers(ctx, summary); err != nil {
+		return true, err
+	}
 	return true, nil
 }
 
@@ -230,7 +285,7 @@ func (l *Loop) delegate(ctx context.Context, summary string) error {
 			usedItems[pending] = true
 		}
 	}
-	for _, line := range strings.Split(summary, "\n") {
+	for _, line := range controlLines(summary) {
 		f := strings.Fields(line)
 		if len(f) != 4 || f[0] != "DELEGATE" || len(usedLoops) >= 5 {
 			continue
@@ -280,4 +335,20 @@ func (l *Loop) delegate(ctx context.Context, summary string) error {
 		}
 	}
 	return nil
+}
+
+// Examples quoted inside Markdown fences are not executable requests.
+func controlLines(summary string) []string {
+	var out []string
+	fenced := false
+	for _, line := range strings.Split(summary, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") || strings.HasPrefix(strings.TrimSpace(line), "~~~") {
+			fenced = !fenced
+			continue
+		}
+		if !fenced {
+			out = append(out, line)
+		}
+	}
+	return out
 }

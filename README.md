@@ -294,7 +294,28 @@ It can delegate an eligible issue or PR to an available existing loop through a
 one-shot preferred task. Workers re-read eligibility and use normal claim locking;
 the preference cannot bypass scope completion, ownership, held/postponed work or
 external blocks. Working loops and their instructions/models remain untouched.
-Diagnosis and actions are recorded in visible issue/PR comments and local run logs.
+Diagnosis and actions are recorded in visible issue/PR comments and local run logs,
+and the last supervisor result remains visible on its loop card/detail.
+
+When no suitable worker is available, the supervisor can request one-task custom
+builders or reviewers without another approval. Up to five custom builders and
+five custom reviewers may run concurrently per repository. They use normal queue
+claims, preserve drafts/unfinished work and remove their own session after the run.
+Known overlapping code files keep builders sequential; the supervisor also checks
+written ownership before requesting parallel work. Stopped projects stay stopped.
+
+Before starting a custom worker, `bunx tokscale@latest usage --json` supplies live
+subscription headroom. Only authenticated supported providers with valid quota
+data are eligible; Codex must be the active account. Routine tasks need at least
+25% effective headroom, deep tasks 40%, after allowing 10/20 percentage points
+for each concurrent custom task sharing that account. These are conservative
+heuristics, not exact token estimates or a completion guarantee. Claude needs
+both session and weekly windows; Codex may expose only a weekly window. Unknown
+usage/CLI failures and observed limits fail closed. A custom review keeps its
+budget-selected provider rather than silently falling back to an unchecked one.
+Limit failures preserve work and defer that account until its native reset.
+This is an on-demand spawn check, not an automatic quota watcher or a rule that
+stops existing work. All first-release scope, privacy and financial rules remain.
 
 Queue reads use GraphQL and wait for its reset instead of falling back to REST.
 Dependency checks batch up to 25 blocked issues into one query and paginate every

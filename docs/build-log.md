@@ -1456,3 +1456,55 @@ The final laptop invariant passed (19 non-harness panes unchanged). Private
 rollout snapshots/logs/verification are in
 /Users/mac/.local/share/remux/rollout-0.3.96. Real idle-remediation decisions have
 not yet been claimed as observed; the control flow was exercised with stand-ins.
+
+## 2026-10-13 — Temporary builders/reviewers with verified usage headroom
+
+Kevin authorized routine scope/capacity/model decisions without another approval,
+up to five custom builders at once, temporary reviewers and cleanup after their
+work. This coordination exception is recorded in AGENTS.md; active tasks and stop
+requests remain protected. One idle existing Codex builder was moved to backend
+with a backend-only brief and preferred task #1849; fresh GitHub/session state
+confirmed it claimed the issue, rather than merely changing labels.
+
+The supervisor can request one-task builders/reviewers through validated SPAWN
+lines. Five custom builders and five custom reviewers are the per-repository caps.
+Fresh eligibility, normal claims, pending assignments, role stop requests and
+mentioned active code-file overlap are checked before starts. Custom loops never
+fall back to unrelated queue work; they remove only their own sessions after
+returning from the assigned run, including startup/limit failures. Draft PRs,
+uncommitted/unpushed work and evidence survive. Temporary reviewers keep their
+budget-selected provider; deep work receives high effort and the deep review
+window. Ordinary existing workers retain their previous quota/reset behavior.
+
+On-demand native `bunx tokscale@latest usage --json` supplies provider budgets.
+Observed JSON exposed an active Codex account with 84% weekly left; Claude was
+absent/unavailable and is not treated as 100% available. Selection ignores inactive
+accounts and unsupported providers, checks session/weekly/model-specific windows
+where available, and reserves shared headroom for concurrent custom workers
+across repositories. Routine/deep floors are 25/40%, with 10/20-point task
+allowances. These are conservative heuristics, not exact token predictions or a
+completion guarantee. Known native limit failures hold that account until reset.
+No automatic quota watcher, spending on credits or stopping existing work added.
+A provider login/limit alone may be resolved by handing free work to an available
+authorized provider; genuine business/runtime credential gates remain blocked.
+
+The last supervisor result now persists while idle and is shown on the loop
+card/detail; the idle polling text correctly says 30 seconds. Missing scope
+capacity is investigated even when the existing workers are busy.
+
+Verification: full go test ./... passed (harness 47.648s), go vet ./... passed,
+and focused budget/cap/ownership/lifecycle-routing tests passed after final
+refinements. Stand-ins exercised real spawn argv/metadata and the five-builder
+cap, duplicate-task refusal, shared-budget constraints, inactive/missing/low quota
+refusal, native reset holds and one-task queue isolation. Full TypeScript/Vite
+build passed; final Go builds reuse the matching v0.3.97 UI. Stripped Intel binary
+size: 23,283,360 bytes. Manual localhost port 17497 served health version 0.3.97,
+embedded UI and the real loop response. Owned smoke server stopped afterward.
+
+A real compiled CLI walkthrough with stand-in GitHub/tmux confirmed both builder
+and reviewer closed-task exits removed their own sessions without launching AI;
+a stand-in setup failure also cleaned up. Evidence is private under
+/var/folders/yr/bvzjfk1n2szdcz11h57pc1tm0000gn/T/remux-custom-lifecycle-jx66wy7z.
+These observations do not claim a full live task completed on the new spawner.
+Laptop invariants passed around full tests (19 panes) and the final smoke phase
+(20 panes); no non-harness layout changes or new database containers were made.

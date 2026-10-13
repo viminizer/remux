@@ -33,6 +33,9 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	pr = assigned
+	if pr == nil && l.Task > 0 {
+		return false, nil
+	}
 	for _, p := range prs {
 		if pr != nil {
 			break
@@ -149,6 +152,12 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 		summary = "Reused completed review of unchanged PR head `" + pr.HeadOid + "`.\n\n" + summary
 	} else {
 		choice, code, summary = l.inspectReview(ctx, wt, prompt, choice, n)
+	}
+	if l.Task > 0 && l.limited() {
+		if err := l.gh.Review(ctx, n, "Review incomplete; usage limit reached. No approval.\nHead: `"+pr.HeadOid+"`. Preserved work is available for a budget-checked reviewer."); err != nil {
+			return true, err
+		}
+		return true, nil
 	}
 	if code != 0 || l.limited() || !completedReview(summary) {
 		if err := l.gh.Review(ctx, n, "Review incomplete; no approval.\n\n"+tail(summary, 100)); err != nil {

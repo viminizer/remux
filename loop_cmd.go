@@ -24,11 +24,18 @@ func cmdLoop(args []string) error {
 	scope := fs.String("scope", "", "the scope name; empty means full")
 	instr := fs.String("instructions", "", "session instructions")
 	mode := fs.String("mode", "add", "add to the project defaults, or replace them")
+	task := fs.Int("task", 0, "one assigned issue or PR; exit after this task")
+	budget := fs.String("budget-key", "", "usage account for an automatically spawned task")
+	reserve := fs.Float64("reserve", 0, "shared usage headroom allowance")
+	effort := fs.String("effort", "medium", "medium or high reasoning effort")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *repo == "" || !tmux.ValidLoopName(*session) {
 		return fmt.Errorf("loop needs --repo and a loop-* --session")
+	}
+	if *task < 0 || (*task > 0 && *role != "build" && *role != "review") || (*effort != "medium" && *effort != "high") {
+		return fmt.Errorf("custom tasks need a build/review role and medium/high effort")
 	}
 	if !harness.ValidModel(*agent, *model) {
 		return fmt.Errorf("model must be sonnet or opus for Claude, or empty for CLI settings")
@@ -36,7 +43,16 @@ func cmdLoop(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	l := &harness.Loop{Role: *role, Agent: *agent, Model: *model, Repo: *repo, Session: *session, Tmux: tmux.New(),
-		Scope: *scope, Instructions: *instr, InstrMode: *mode}
+		Scope: *scope, Instructions: *instr, InstrMode: *mode, Task: *task, BudgetKey: *budget, Reserve: *reserve, Effort: *effort}
+	if *task > 0 {
+		defer func() {
+			// Run has returned: its agent and claim defers have finished. Only
+			// this task's own session may be removed, even with remain-on-exit.
+			if custom, err := l.Tmux.LoopOption(context.Background(), *session, "@loop_custom"); err == nil && custom == "1" {
+				l.Tmux.KillLoop(context.Background(), *session)
+			}
+		}()
+	}
 	return l.Run(ctx)
 }
 

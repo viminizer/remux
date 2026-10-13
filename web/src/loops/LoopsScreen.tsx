@@ -155,9 +155,9 @@ function LoopCard({ loop: l, onOpen }: { loop: Loop; onOpen: () => void }) {
   const who = loopWho(l)
   let what: string
   if (l.state === 'working') what = `#${l.issue} ${l.title}`
-  else if (l.state === 'triaging') what = 'finding issues that can start'
+  else if (l.state === 'triaging') what = l.note || 'finding issues that can start'
   else if (l.state === 'blocked') what = l.note || 'blocked'
-  else what = 'idle · no ready issues'
+  else what = l.note || 'idle · no ready issues'
   return (
     <button className="repo-card" onClick={onOpen}>
       <span className="av">{who.slice(0, 2)}</span>

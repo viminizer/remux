@@ -107,7 +107,7 @@ export function LoopDetail({
                   loop.note ||
                   (loop.state === 'triaging'
                     ? 'No issue was marked ready. Reading the issues to find ones that can start.'
-                    : 'No ready issues. Looks again every minute.')
+                    : 'No ready issues. Looks again every 30 seconds.')
                 )}
                 <small>{loop.slug || loop.repo}</small>
               </span>

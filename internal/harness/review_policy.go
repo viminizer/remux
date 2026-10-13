@@ -68,7 +68,15 @@ func choiceFor(class, last string) reviewChoice {
 // PRs never consume a normal/deep turn. Failure to read/write state fails closed.
 func (l *Loop) nextReviewChoice(ctx context.Context, wt, base string) (reviewChoice, error) {
 	if l.set.ReviewPolicy == "fixed" {
-		return reviewChoice{Agent: l.Agent, Model: l.Model, Effort: "medium", Class: "fixed"}, nil
+		effort := "medium"
+		if l.Task > 0 && l.Effort != "" {
+			effort = l.Effort
+		}
+		class := "fixed"
+		if l.Task > 0 && effort == "high" {
+			class = "deep"
+		}
+		return reviewChoice{Agent: l.Agent, Model: l.Model, Effort: effort, Class: class}, nil
 	}
 	// A failed pre-review merge leaves HEAD behind the base tip. Compare
 	// from the common ancestor so unrelated base changes cannot affect routing.
@@ -195,6 +203,9 @@ func reportedFixedBugs(summary string) *int {
 func (l *Loop) inspectReview(ctx context.Context, wt, prompt string, choice reviewChoice, n int) (reviewChoice, int, string) {
 	code, summary := l.agent(ctx, wt, prompt)
 	if code != 0 || l.limited() || !completedReview(summary) {
+		if l.Task > 0 {
+			return choice, code, summary
+		}
 		if ctx.Err() != nil {
 			return choice, -1, summary
 		}

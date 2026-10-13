@@ -25,23 +25,26 @@ func ValidLoopName(name string) bool { return loopNameRe.MatchString(name) }
 
 // Loop is one harness loop as its session options describe it.
 type Loop struct {
-	Name         string `json:"name"`
-	Pane         string `json:"pane"`
-	Role         string `json:"role"`  // build or review
-	Agent        string `json:"agent"` // claude or codex
-	Model        string `json:"model"`
-	Repo         string `json:"repo"`  // local clone path
-	Slug         string `json:"slug"`  // owner/name
-	State        string `json:"state"` // idle, working, triaging, blocked
-	Since        int64  `json:"since"` // unix seconds the state began
-	Issue        int    `json:"issue"`
-	Title        string `json:"title"`
-	Scope        string `json:"scope"`
-	Instructions string `json:"instructions"`
-	InstrMode    string `json:"instrMode"` // add or replace
-	Stop         string `json:"stop"`      // "after" once a stop is queued
-	Note         string `json:"note"`
-	Event        string `json:"-"`
+	Name         string  `json:"name"`
+	Pane         string  `json:"pane"`
+	Role         string  `json:"role"`  // build or review
+	Agent        string  `json:"agent"` // claude or codex
+	Model        string  `json:"model"`
+	Repo         string  `json:"repo"`  // local clone path
+	Slug         string  `json:"slug"`  // owner/name
+	State        string  `json:"state"` // idle, working, triaging, blocked
+	Since        int64   `json:"since"` // unix seconds the state began
+	Issue        int     `json:"issue"`
+	Title        string  `json:"title"`
+	Scope        string  `json:"scope"`
+	Instructions string  `json:"instructions"`
+	InstrMode    string  `json:"instrMode"` // add or replace
+	Stop         string  `json:"stop"`      // "after" once a stop is queued
+	Note         string  `json:"note"`
+	Event        string  `json:"-"`
+	Custom       bool    `json:"custom,omitempty"`
+	BudgetKey    string  `json:"-"`
+	Reserve      float64 `json:"-"`
 }
 
 // Options that hold free text from the phone or an error message. They are
@@ -53,6 +56,7 @@ var loopFields = []string{
 	"#{@loop_slug}", "#{@loop_state}", "#{@loop_since}", "#{@loop_issue}", "#{@loop_title}",
 	"#{@loop_scope}", "#{@loop_instr}", "#{@loop_mode}", "#{@loop_stop}", "#{@loop_note}",
 	"#{@loop_event}", "#{@loop_model}",
+	"#{@loop_custom}", "#{@loop_budget_key}", "#{@loop_reserve}",
 }
 
 // Loops lists every harness session in one tmux call.
@@ -75,16 +79,25 @@ func (c *Client) Loops(ctx context.Context) ([]Loop, error) {
 
 func parseLoop(line string) (Loop, bool) {
 	f := strings.Split(line, fieldSep)
-	if len(f) != len(loopFields) || !strings.HasPrefix(f[0], LoopPrefix) {
+	if (len(f) != len(loopFields) && len(f) != 17) || !strings.HasPrefix(f[0], LoopPrefix) {
 		return Loop{}, false
 	}
 	since, _ := strconv.ParseInt(f[7], 10, 64)
 	issue, _ := strconv.Atoi(f[8])
+	var custom bool
+	var budget string
+	var reserve float64
+	if len(f) > 17 {
+		custom = f[17] == "1"
+		budget = f[18]
+		reserve, _ = strconv.ParseFloat(f[19], 64)
+	}
 	return Loop{
 		Name: f[0], Pane: f[1], Role: f[2], Agent: f[3], Repo: f[4], Slug: f[5],
 		State: f[6], Since: since, Issue: issue, Title: decode(f[9]), Scope: f[10],
 		Instructions: decode(f[11]), InstrMode: f[12], Stop: f[13], Note: decode(f[14]),
 		Event: f[15], Model: f[16],
+		Custom: custom, BudgetKey: budget, Reserve: reserve,
 	}, true
 }
 

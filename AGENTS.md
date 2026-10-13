@@ -1,5 +1,21 @@
 # Build instructions for agents
 
+## Live loop coordination — Kevin's 2026-10-13 authorization
+
+Routine loop coordination needs no further approval: investigate idle loops,
+move idle builders between authorized scopes when needed, and start temporary
+builders/reviewers for independent eligible tasks. Check native model usage before
+spawning and preserve existing task ownership, scope restrictions and stop requests.
+Up to five custom builders and five custom reviewers may run concurrently. Custom
+loops work one assigned issue/PR, then remove their own session; preserve drafts,
+worktrees with unfinished changes and evidence. Never interrupt a running task to
+change its scope/model or to clean up its session. Prefer available suitable loops.
+
+This is an explicit exception to the scratch-only tmux-write rule below for
+authorized live loop coordination. Verification tests still use scratch sessions
+or stand-in commands. All attach/select/resize/global tmux prohibitions remain.
+Model budget checks are on-demand for spawn decisions, not a revived quota watcher.
+
 You are building **remux** from scratch, unattended, overnight. Kevin is asleep. He will read the
 result in the morning.
 
