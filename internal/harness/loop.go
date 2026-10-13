@@ -3,12 +3,14 @@ package harness
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -664,6 +666,13 @@ func (l *Loop) removeWorktree(ctx context.Context, wt, branch string) error {
 // Both run at medium effort, whatever the interactive default is. Measured on
 // educenter, Claude at high effort spent 75% of a build run thinking and
 // writing, about 67k output tokens a run; Codex at medium built faster.
+//
+// Claude skips Kevin's user settings: his plugins, hooks and MCP servers are
+// for his own sessions, and every call of a run sends them again. Measured on
+// educenter, a bare start was 39k tokens with them and 22k without, and a run
+// makes 100-200 calls. The repo's own settings and CLAUDE.md, and his global
+// CLAUDE.md, still load. His deny rules are carried over, except reading .env
+// files, which the loops need.
 func (l *Loop) command(wt, last string) []string {
 	effort := l.effort
 	if effort == "" {
@@ -672,7 +681,10 @@ func (l *Loop) command(wt, last string) []string {
 	if l.Agent == "codex" {
 		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", `-cmodel_reasoning_effort="` + effort + `"`, "-C", wt, "-o", last, "-"}
 	}
-	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", effort}
+	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", effort, "--setting-sources", "project,local"}
+	if deny := userDeny(); deny != "" {
+		args = append(args, "--settings", deny)
+	}
 	if l.Model != "" {
 		args = append(args, "--model", l.Model)
 	}
@@ -680,6 +692,34 @@ func (l *Loop) command(wt, last string) []string {
 		args = append(args, "--add-dir", expandHome(r))
 	}
 	return args
+}
+
+// userDeny is the deny rules from ~/.claude/settings.json as a --settings
+// value, or empty when there are none.
+func userDeny() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		return ""
+	}
+	var user struct {
+		Permissions struct {
+			Deny []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	if json.Unmarshal(b, &user) != nil {
+		return ""
+	}
+	// Loops may read .env files: Kevin's call, the apps they run need them.
+	deny := slices.DeleteFunc(user.Permissions.Deny, func(r string) bool { return strings.Contains(r, ".env") })
+	if len(deny) == 0 {
+		return ""
+	}
+	out, _ := json.Marshal(map[string]any{"permissions": map[string]any{"deny": deny}})
+	return string(out)
 }
 
 // codexMedium sets Codex's reasoning effort, as one -c argument.

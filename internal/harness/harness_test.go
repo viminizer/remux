@@ -113,9 +113,18 @@ func TestPromptOrder(t *testing.T) {
 }
 
 func TestCommand(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	l := &Loop{Agent: "claude", Repo: "/r", set: Settings{References: []string{"/ref"}}}
-	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != "claude -p --dangerously-skip-permissions --effort medium --add-dir /ref" {
+	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != "claude -p --dangerously-skip-permissions --effort medium --setting-sources project,local --add-dir /ref" {
 		t.Errorf("claude command = %q", c)
+	}
+	// The user's settings are skipped, but not their deny rules - except .env reads.
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
+	os.WriteFile(filepath.Join(home, ".claude", "settings.json"),
+		[]byte(`{"model":"opus","enabledPlugins":{"x":true},"permissions":{"allow":["Bash(*)"],"deny":["Bash(sudo *)","Read(.env)","Read(**/.env*)"]}}`), 0o644)
+	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); !strings.Contains(c, `--settings {"permissions":{"deny":["Bash(sudo *)"]}}`) {
+		t.Errorf("deny rules not carried over: %q", c)
 	}
 	l.Agent = "codex"
 	if c := strings.Join(l.command("/r/wt", "/tmp/last"), " "); c != `codex exec --dangerously-bypass-approvals-and-sandbox -cmodel_reasoning_effort="medium" -C /r/wt -o /tmp/last -` {
