@@ -28,7 +28,15 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	}
 	// Re-read before claiming, for the same lag the build loop measured.
 	var pr *Item
+	assigned, err := l.assignedItem(ctx, "pr", "review")
+	if err != nil {
+		return false, err
+	}
+	pr = assigned
 	for _, p := range prs {
+		if pr != nil {
+			break
+		}
 		if p.HasPrefix("wip:") || p.HasPrefix("by:") || p.Has("needs-human") || queueExcluded(p) {
 			continue
 		}
@@ -51,6 +59,7 @@ func (l *Loop) reviewOnce(ctx context.Context) (bool, error) {
 	if err != nil || !won {
 		return !won && err == nil, err
 	}
+	l.clearAssignment(ctx, "pr", n)
 	defer func() {
 		c := context.WithoutCancel(ctx)
 		l.gh.RemoveLabel(c, n, "wip:review")

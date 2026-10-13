@@ -35,14 +35,16 @@ type Loop struct {
 	gh  GH
 	set Settings
 
-	labels       map[string]bool // the repo's labels, for mirroring its status:* ones
-	lastTriage   time.Time
-	lastCleanup  time.Time
-	lastRecovery time.Time
-	limit        time.Time // set when the last agent run ended on a usage limit
-	item         int       // issue or PR being worked; zero while triaging
-	effort       string    // review override; builds keep medium
-	runTimeout   time.Duration
+	labels           map[string]bool // the repo's labels, for mirroring its status:* ones
+	lastTriage       time.Time
+	lastCleanup      time.Time
+	lastRecovery     time.Time
+	lastIdleAudit    time.Time
+	idleAuditSummary string
+	limit            time.Time // set when the last agent run ended on a usage limit
+	item             int       // issue or PR being worked; zero while triaging
+	effort           string    // review override; builds keep medium
+	runTimeout       time.Duration
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
@@ -50,7 +52,7 @@ type Loop struct {
 func (l *Loop) limited() bool { return !l.limit.IsZero() }
 
 // Idle is how long a loop waits before looking again when there is no work.
-var Idle = 15 * time.Second
+var Idle = 30 * time.Second
 
 // PRLag is the wait between looks for a PR the agent has just opened.
 var PRLag = 5 * time.Second
@@ -261,7 +263,15 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 	// issue whose ready label had just been removed was listed as ready again
 	// a second later and worked twice. Reading the issue itself is current.
 	var it *Item
+	assigned, err := l.assignedItem(ctx, "issue", scope)
+	if err != nil {
+		return false, err
+	}
+	it = assigned
 	for _, c := range candidates(issues, scope) {
+		if it != nil {
+			break
+		}
 		fresh, err := l.gh.Issue(ctx, c.Number)
 		if err != nil {
 			return false, err
@@ -288,6 +298,7 @@ func (l *Loop) buildOnce(ctx context.Context) (bool, error) {
 		// Lost to another loop: look again straight away, not in a minute.
 		return !won && err == nil, err
 	}
+	l.clearAssignment(ctx, "issue", n)
 	defer func() {
 		c := context.WithoutCancel(ctx)
 		l.gh.RemoveLabel(c, n, "wip:"+scope)

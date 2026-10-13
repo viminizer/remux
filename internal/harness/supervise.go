@@ -86,7 +86,7 @@ func (l *Loop) superviseOnce(ctx context.Context) (bool, error) {
 		}
 	}
 	if it == nil {
-		return false, nil
+		return l.superviseIdleOnce(ctx)
 	}
 	n := it.Number
 	// by:<session> too, so reapClaims frees the item when this loop dies
