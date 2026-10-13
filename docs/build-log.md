@@ -1407,3 +1407,43 @@ claims, guarded merges, rate-wait queue retention and secondary/auth failures.
 A temporary live REST-only read of EduCenter PR #1800 verified its labels, draft,
 head, review history, full comments and diff (read only, no edits). Go tests/vet
 and release build results are posted on the PR before rollout.
+
+## 2026-10-13 — Active idle supervision and 30-second polling
+
+The supervisor still prioritizes needs-human issues/PRs, then inspects builders
+and reviewers idle or blocked for two minutes in the same repository. Healthy
+empty queues cost no AI invocation. Investigations are spaced 15 minutes apart,
+include worker scope/instructions, unfinished scope queues, open PRs, possible
+stale claims and the preceding intervention, and verify outcomes before retrying.
+The diagnosis covers label/partial-delivery drift, missing prerequisites, review
+waits, stale ownership and build/runtime failures. External/time/credential gates
+remain explicit. Stopped, working, triaging and usage-limited workers are excluded.
+
+Final-message DELEGATE directives become one-shot preferred issue/PR assignments.
+The harness checks live worker state, role, repository, pending preferences and
+fresh item eligibility; workers revalidate before normal claim locking. Stale,
+held, postponed, completed, owned and externally blocked preferences are discarded.
+The supervisor can file a bounded missing prerequisite and enqueue eligible work;
+it cannot alter worker instructions/models, merge PRs or kill/restart agents.
+Quota failures do not execute directives; existing reset-time waiting remains.
+
+Idle queue checks now use 30 seconds, including short successful runs. Preserved
+the already-installed dependency GraphQL batching and redundant-label-write
+optimizations from fix/loop-poll-minute rather than overwriting them.
+
+Verified: go test ./... passed all packages; go vet ./... passed. Focused new
+checks passed after the final pending-assignment guard: eligibility, quota/stop
+exclusions, stale preferences, healthy-empty/cooldown behavior, and a stand-in
+agent investigation that delegated through stand-in GitHub/tmux commands. These
+checks did not start a real AI agent or change live GitHub labels/loop options.
+Full UI + stripped build passed; final Go rebuild reused the matching 0.3.96 UI.
+Binary size: 23,234,168 bytes. Manual localhost smoke at port 17496 returned
+/api/health 200 with version 0.3.96 and served embedded index/assets; stopped that
+owned smoke process afterward. Laptop invariant passed around tests, read-only
+live roster inspection and the smoke phase (19 panes unchanged). No scratch
+session remains from these phases.
+
+Installing a binary does not replace already-running loop processes. Live-loop
+activation waits for Kevin's explicit exception to the scratch-only tmux-write
+rule, and must finish current tasks before restarting, preserving scope, model,
+instructions and pre-existing stop requests. No live agent was interrupted.

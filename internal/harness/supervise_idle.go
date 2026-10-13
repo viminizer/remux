@@ -54,7 +54,7 @@ Choose actions by the actual cause:
 - External dependency, credentials, quota or a real time gate: retain the block
   and record the exact prerequisite/deadline. Do not repeatedly retry it.
 
-Preserve stop requests, ownership, worker scope/instructions, paused frontend,
+Preserve stop requests, ownership, worker scope/instructions, any project pause,
 postponed/held scope, privacy and financial rules. Do not change worker models,
 instructions or stop settings. Do not send keys, attach, select, resize, kill or
 restart tmux sessions/processes. All tmux use in this run is READ-ONLY. Never
@@ -212,6 +212,24 @@ func (l *Loop) clearAssignment(ctx context.Context, kind string, n int) {
 
 func (l *Loop) delegate(ctx context.Context, summary string) error {
 	usedLoops, usedItems := map[string]bool{}, map[string]bool{}
+	// Preserve preferences left by the previous intervention. Another idle
+	// worker must not receive the same item while its first delegate wakes up.
+	current, err := l.Tmux.Loops(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range current {
+		if o.Slug != l.gh.Slug || (o.Role != "build" && o.Role != "review") {
+			continue
+		}
+		pending, err := l.Tmux.LoopOption(ctx, o.Name, assignmentOption)
+		if err != nil {
+			return err
+		}
+		if pending != "" {
+			usedItems[pending] = true
+		}
+	}
 	for _, line := range strings.Split(summary, "\n") {
 		f := strings.Fields(line)
 		if len(f) != 4 || f[0] != "DELEGATE" || len(usedLoops) >= 5 {
