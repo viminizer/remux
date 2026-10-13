@@ -49,8 +49,8 @@ type Loop struct {
 // everything they would do with its result: there is none.
 func (l *Loop) limited() bool { return !l.limit.IsZero() }
 
-// Idle is how long a loop waits before looking again when there is no work.
-var Idle = 15 * time.Second
+// Idle is the minimum interval between queue checks, including short failed runs.
+var Idle = time.Minute
 
 // PRLag is the wait between looks for a PR the agent has just opened.
 var PRLag = 5 * time.Second
@@ -88,6 +88,7 @@ func (l *Loop) Run(ctx context.Context) error {
 			log.Printf("stop requested, exiting")
 			return nil
 		}
+		started := time.Now()
 		l.set, err = l.loadSettings(ctx)
 		if err != nil {
 			l.state(ctx, "blocked", err.Error())
@@ -136,6 +137,8 @@ func (l *Loop) Run(ctx context.Context) error {
 		case !did:
 			l.state(ctx, "idle", "")
 			sleep(ctx, Idle)
+		default:
+			sleep(ctx, Idle-time.Since(started))
 		}
 	}
 	return nil

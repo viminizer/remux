@@ -272,7 +272,8 @@ After upgrading from a version without model selection, existing loop
 processes must finish and restart to use it. Restarting the service updates
 the phone UI but leaves those processes running their previous code.
 
-Idle loops check for work every 15 seconds. Queue triage runs at most once
+Each loop checks the queue at most once a minute, including after short runs.
+Idle and failed checks wait a full minute before retrying. Queue triage runs at most once
 every five minutes per loop and checks readiness for the selected scope,
 including unfinished work left in review after partial merges. A confirmed
 merged `issue-N[-scope]` PR returns its open, unfinished source issue to ready;
@@ -280,7 +281,7 @@ completed scopes, active claims, open replacement PRs, postponed and blocked
 work stay out. Idle builders also recover older merged work stuck in
 `status:review`. The expensive recovery scan runs at most once every five minutes,
 shared by builders of the same repository and scope. Normal merged work is requeued
-immediately; new-work polling stays at 15 seconds.
+immediately; new-work polling stays at once a minute per loop.
 
 A supervisor can finish with `RESOLVED PARKED` to record a waiting decision
 without retrying the item. `blocked:external` protects unavailable credentials,
