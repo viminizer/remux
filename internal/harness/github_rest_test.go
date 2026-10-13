@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestRESTFallbackAfterGraphLimit(t *testing.T) {
+func TestQueueReadsWaitAfterGraphLimit(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls")
 	bin := filepath.Join(dir, "gh")
@@ -34,20 +34,18 @@ esac
 	defer func() { ghBin = old }()
 	g := GH{Dir: dir, Slug: "o/r"}
 	ctx := context.Background()
-	it, err := g.Issue(ctx, 7)
-	if err != nil || it.State != "OPEN" || !it.Has("ready") || it.URL != "https://github.com/o/r/issues/7" {
-		t.Fatalf("issue=%+v err=%v", it, err)
+	if _, err := g.Issue(ctx, 7); !githubLimited(err) {
+		t.Fatalf("expected GraphQL wait, got %v", err)
 	}
-	pr, err := g.PR(ctx, 8)
-	if err != nil || pr.HeadOid != "abc" || !pr.IsDraft || pr.Head != "issue-7-backend" {
-		t.Fatalf("pr=%+v err=%v", pr, err)
+	if _, err := g.PR(ctx, 8); !githubLimited(err) {
+		t.Fatalf("expected GraphQL wait, got %v", err)
 	}
 	b, _ := os.ReadFile(log)
-	if strings.Contains(string(b), "pr view") {
-		t.Fatal("exhausted GraphQL was retried", string(b))
+	if strings.Contains(string(b), "repos/") || strings.Contains(string(b), "pr view") {
+		t.Fatal("queue polling used an exhausted budget or REST", string(b))
 	}
 	g.setBudget("GraphQL", time.Now().Add(-time.Second))
-	// Reset permits the next normal GraphQL command rather than sticky REST.
+	// Reset permits the next normal GraphQL command.
 	_, _ = g.PR(ctx, 8)
 	b, _ = os.ReadFile(log)
 	if !strings.Contains(string(b), "pr view 8") {
@@ -78,7 +76,11 @@ esac
 	defer func() { ghBin = old }()
 	g := GH{Dir: dir, Slug: "o/r"}
 	g.setBudget("GraphQL", time.Now().Add(time.Minute))
-	items, err := g.Issues(context.Background(), "ready")
+	data, err := g.restList(context.Background(), "o/r", "issue", []string{"--label", "ready", "--limit", "200", "--json", itemFields})
+	var items []Item
+	if err == nil {
+		err = json.Unmarshal(data, &items)
+	}
 	if err != nil || len(items) != 100 || items[0].Number != 2 || items[99].Number != 101 {
 		t.Fatalf("items=%v err=%v", items, err)
 	}
@@ -197,14 +199,14 @@ func TestRESTReviewShapePreservesAuthorAndCommit(t *testing.T) {
 	}
 }
 
-func TestRESTOrphanAdoptionKeepsCreationAge(t *testing.T) {
+func TestGraphOrphanAdoptionKeepsCreationAge(t *testing.T) {
 	dir := t.TempDir()
 	bin, calls := filepath.Join(dir, "gh"), filepath.Join(dir, "calls")
 	now := time.Now()
 	script := fmt.Sprintf(`#!/bin/sh
 echo "$*" >> '%s'
 case "$2" in
-repos/o/r/pulls\?*) echo '[{"number":8,"state":"open","draft":true,"head":{"ref":"issue-7-backend"},"labels":[],"created_at":"%s"},{"number":9,"state":"open","draft":true,"head":{"ref":"issue-9-backend"},"labels":[],"created_at":"%s"}]' ;;
+list) echo '[{"number":8,"state":"OPEN","isDraft":true,"headRefName":"issue-7-backend","labels":[],"createdAt":"%s"},{"number":9,"state":"OPEN","isDraft":true,"headRefName":"issue-9-backend","labels":[],"createdAt":"%s"}]' ;;
 -X) echo '{}' ;;
 *) exit 3 ;;
 esac
@@ -216,7 +218,6 @@ esac
 	ghBin = bin
 	defer func() { ghBin = old }()
 	g := GH{Dir: dir, Slug: "o/r"}
-	g.setBudget("GraphQL", now.Add(time.Minute))
 	l := Loop{gh: g}
 	l.adoptOrphans(context.Background())
 	b, err := os.ReadFile(calls)

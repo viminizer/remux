@@ -51,7 +51,7 @@ type Loop struct {
 // everything they would do with its result: there is none.
 func (l *Loop) limited() bool { return !l.limit.IsZero() }
 
-// Idle is how long a loop waits before looking again when there is no work.
+// Idle is the minimum interval between queue checks, including short failed runs.
 var Idle = 30 * time.Second
 
 // PRLag is the wait between looks for a PR the agent has just opened.
@@ -77,6 +77,9 @@ func (l *Loop) Run(ctx context.Context) error {
 	// setup was enough to leave a loop dead until someone restarted it.
 	var err error
 	for ctx.Err() == nil {
+		if l.get(ctx, "@loop_stop") != "" {
+			return nil
+		}
 		if err = l.setup(ctx); err == nil {
 			break
 		}
@@ -90,6 +93,7 @@ func (l *Loop) Run(ctx context.Context) error {
 			log.Printf("stop requested, exiting")
 			return nil
 		}
+		started := time.Now()
 		l.set, err = l.loadSettings(ctx)
 		if err != nil {
 			l.state(ctx, "blocked", err.Error())
@@ -138,6 +142,8 @@ func (l *Loop) Run(ctx context.Context) error {
 		case !did:
 			l.state(ctx, "idle", "")
 			sleep(ctx, Idle)
+		default:
+			sleep(ctx, Idle-time.Since(started))
 		}
 	}
 	return nil
@@ -470,12 +476,23 @@ func (l *Loop) unblock(ctx context.Context) {
 	if l.set.Mode == "company" {
 		prs, _ = l.gh.PRs(ctx, "")
 	}
+	var numbers []int
+	for _, it := range blocked {
+		if !it.Has("blocked:external") && !it.Has("postponed") && !it.Has("status:postponed") {
+			numbers = append(numbers, it.Number)
+		}
+	}
+	dependencies, err := l.gh.Blockers(ctx, numbers)
+	if err != nil {
+		log.Printf("dependency check: %v", err)
+		return
+	}
 	for _, it := range blocked {
 		if it.Has("blocked:external") || it.Has("postponed") || it.Has("status:postponed") {
 			continue // only verified supervision/triage may release these
 		}
-		blockers, err := l.gh.BlockedBy(ctx, it.Number)
-		if err != nil || len(blockers) == 0 {
+		blockers := dependencies[it.Number]
+		if len(blockers) == 0 {
 			continue
 		}
 		free := true

@@ -154,3 +154,45 @@ func TestHealthyIdleAndCooldownDoNotLaunchAgent(t *testing.T) {
 		t.Fatalf("cooldown ignored: %v %v", did, err)
 	}
 }
+
+func TestIdleInvestigationDispatchAndQuota(t *testing.T) {
+	l, root, assignment := idleHarness(t)
+	writeIdleRoster(t, root, "idle", "", "")
+	it := openItem(12, "ready")
+	b, _ := json.Marshal(it)
+	os.WriteFile(filepath.Join(root, "item"), b, 0o600)
+	b, _ = json.Marshal([]Item{it})
+	os.WriteFile(filepath.Join(root, "items"), b, 0o600)
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	l.Agent = "claude"
+	l.set.Instructions = "Preserve financial integrity."
+	script := "#!/bin/sh\ncat > '" + filepath.Join(root, "prompt") + "'\necho 'DELEGATE loop-builder issue 12'\n"
+	os.WriteFile(filepath.Join(root, "claude"), []byte(script), 0o755)
+	did, err := l.superviseIdleOnce(context.Background())
+	if err != nil || !did {
+		t.Fatalf("investigation failed: %v %v", did, err)
+	}
+	b, _ = os.ReadFile(assignment)
+	if string(b) != "issue:12" {
+		t.Fatalf("investigation did not dispatch: %q", b)
+	}
+	prompt, _ := os.ReadFile(filepath.Join(root, "prompt"))
+	for _, want := range []string{"Preserve financial integrity.", "unfinishedByScope", "loop-builder", "READ-ONLY", "normal claim locking"} {
+		if !strings.Contains(string(prompt), want) {
+			t.Fatalf("missing safety/context %q", want)
+		}
+	}
+	// An exhausted supervisor must not execute directives from failed output.
+	os.WriteFile(assignment, nil, 0o600)
+	l.lastIdleAudit = time.Time{}
+	script = "#!/bin/sh\ncat > /dev/null\necho 'DELEGATE loop-builder issue 12'\necho 'usage limit reached'\nexit 1\n"
+	os.WriteFile(filepath.Join(root, "claude"), []byte(script), 0o755)
+	did, err = l.superviseIdleOnce(context.Background())
+	if err != nil || !did || !l.limited() {
+		t.Fatalf("quota not respected: %v %v", did, err)
+	}
+	b, _ = os.ReadFile(assignment)
+	if len(b) != 0 {
+		t.Fatal("failed quota run delegated work")
+	}
+}

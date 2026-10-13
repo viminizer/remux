@@ -272,7 +272,8 @@ After upgrading from a version without model selection, existing loop
 processes must finish and restart to use it. Restarting the service updates
 the phone UI but leaves those processes running their previous code.
 
-Idle loops check for work every 15 seconds. Queue triage runs at most once
+Each loop checks the queue at most once every 30 seconds, including after short runs.
+Idle and failed checks wait 30 seconds before retrying. Queue triage runs at most once
 every five minutes per loop and checks readiness for the selected scope,
 including unfinished work left in review after partial merges. A confirmed
 merged `issue-N[-scope]` PR returns its open, unfinished source issue to ready;
@@ -280,7 +281,25 @@ completed scopes, active claims, open replacement PRs, postponed and blocked
 work stay out. Idle builders also recover older merged work stuck in
 `status:review`. The expensive recovery scan runs at most once every five minutes,
 shared by builders of the same repository and scope. Normal merged work is requeued
-immediately; new-work polling stays at 15 seconds.
+immediately; new-work polling stays at once every 30 seconds per loop.
+
+The supervisor checks `needs-human` first, then inspects same-repository builders
+and reviewers idle or blocked for at least two minutes. It can investigate stale
+labels/claims, merged partial work, missing prerequisites, review waits and
+build/runtime failures, with at most one investigation per 15 minutes. An empty
+unfinished queue costs no AI run. Stopped and usage-limited workers are excluded.
+The previous intervention is included so the next investigation verifies its result.
+
+It can delegate an eligible issue or PR to an available existing loop through a
+one-shot preferred task. Workers re-read eligibility and use normal claim locking;
+the preference cannot bypass scope completion, ownership, held/postponed work or
+external blocks. Working loops and their instructions/models remain untouched.
+Diagnosis and actions are recorded in visible issue/PR comments and local run logs.
+
+Queue reads use GraphQL and wait for its reset instead of falling back to REST.
+Dependency checks batch up to 25 blocked issues into one query and paginate every
+dependency list. Startup reads the harness labels through GraphQL and creates only
+missing labels, avoiding repeated updates to existing labels from every loop.
 
 A supervisor can finish with `RESOLVED PARKED` to record a waiting decision
 without retrying the item. `blocked:external` protects unavailable credentials,
