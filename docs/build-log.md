@@ -1508,3 +1508,21 @@ a stand-in setup failure also cleaned up. Evidence is private under
 These observations do not claim a full live task completed on the new spawner.
 Laptop invariants passed around full tests (19 panes) and the final smoke phase
 (20 panes); no non-harness layout changes or new database containers were made.
+
+Deployment: v0.3.97 tag and published GitHub Release contain Intel/Apple Silicon
+binaries and SHA256SUMS, with uploaded assets verified. Installed the clean release
+Intel binary atomically and restarted the launch agent; remux status reports
+0.3.97. The supervisor finished its existing investigation before graceful
+rollover; fresh PID/argv and exact role/agent/model/scope/instruction/stop settings
+were verified afterward. Existing builders/reviewers were left on their active
+runs rather than interrupted.
+
+To remove a real capacity gap immediately, a fresh native usage check found 77%
+weekly Codex headroom. A one-task temporary backend worker for #1889 was started
+after ready/ownership/code-overlap checks and was observed working on that issue
+with custom=1. A visible diagnosis/delegation comment was accepted on GitHub.
+This is a live start/claim observation, not a claim that the fix or cleanup after
+that still-running task has completed. New supervisor spawn requests use the
+same checked budgets and one-task lifecycle. Final laptop invariant passed with
+20 non-harness panes unchanged. No additional user approval was requested for
+this routine coordination, per Kevin's standing authorization.
