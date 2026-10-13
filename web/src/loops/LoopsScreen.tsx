@@ -14,6 +14,7 @@ import { loopDot, loopWho, project, since } from './types'
 export function LoopsScreen({
   tab,
   loops,
+  missing,
   inbox,
   inboxErrors,
   loading,
@@ -23,10 +24,12 @@ export function LoopsScreen({
   onOpenLoop,
   onOpenItem,
   onStart,
+  onRestore,
   onAsk,
 }: {
   tab: 'loops' | 'supervisor' | 'inbox'
   loops: Loop[] | null
+  missing: string[]
   inbox: HarnessItem[] | null
   inboxErrors: string[]
   loading: boolean
@@ -36,6 +39,7 @@ export function LoopsScreen({
   onOpenLoop: (l: Loop) => void
   onOpenItem: (it: HarnessItem) => void
   onStart: () => void
+  onRestore: () => void
   onAsk: (agent: 'claude' | 'codex') => void
 }) {
   const [asking, setAsking] = useState(false)
@@ -74,6 +78,11 @@ export function LoopsScreen({
 
       {tab === 'loops' ? (
         <div className="screen-body loops-body">
+          {missing.length > 0 && (
+            <div className="scopenote warn">
+              Not running since a crash or restart: {missing.join(', ')}. Restore starts them as they were.
+            </div>
+          )}
           {work?.map((l) => <LoopCard key={l.name} loop={l} onOpen={() => onOpenLoop(l)} />)}
           {work && !work.length && (
             <div className="msg" style={{ paddingBottom: 8 }}>
@@ -141,6 +150,15 @@ export function LoopsScreen({
           <button className="go" onClick={() => setAsking(true)}>
             Ask the supervisor
           </button>
+        ) : missing.length > 0 ? (
+          <div className="foot-row">
+            <button className="go" onClick={onRestore}>
+              ↻ Restore {missing.length}
+            </button>
+            <button className="go" onClick={onStart}>
+              ✚ Start loop
+            </button>
+          </div>
         ) : (
           <button className="go" onClick={onStart}>
             ✚ Start loop

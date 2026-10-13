@@ -39,6 +39,7 @@ func (s *Server) loopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/loops/{name}", s.handleEditLoop)
 	mux.HandleFunc("DELETE /api/loops/{name}", s.handleStopLoop)
 	mux.HandleFunc("PUT /api/loops/presets", s.handlePutPresets)
+	mux.HandleFunc("POST /api/loops/restore", s.handleRestoreLoops)
 	mux.HandleFunc("GET /api/harness/inbox", s.handleHarnessInbox)
 	mux.HandleFunc("POST /api/loops/supervisor", s.handleSupervisor)
 	mux.HandleFunc("POST /api/harness/resume", s.handleResume)
@@ -74,7 +75,26 @@ func (s *Server) handleLoops(w http.ResponseWriter, r *http.Request) {
 		"presets": orEmpty(presets),
 		"last":    last,
 		"repos":   orEmpty(s.repoChoices()),
+		"missing": orEmpty(s.missingLoops(loops)),
 	})
+}
+
+// missingLoops are the saved loops with no live session: what a crash or a
+// reboot took away, and what Restore would start.
+func (s *Server) missingLoops(running []tmux.Loop) []string {
+	live := map[string]bool{}
+	for _, l := range running {
+		live[l.Name] = l.Role != ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, sl := range s.Cfg.SavedLoops {
+		if !live[sl.Name] {
+			out = append(out, sl.Name)
+		}
+	}
+	return out
 }
 
 func orEmpty[T any](v []T) []T {
@@ -158,7 +178,6 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "models must align with agents")
 		return
 	}
-	type plan struct{ name, role, agent, model, instr, instrFrom string }
 	var plans []plan
 	// A repo that keeps its own instructions under .remux/instructions decides
 	// what each loop is told, so starting a frontend builder does not mean
@@ -278,7 +297,8 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		s.audit(r, "loop-stop", l.Name, when)
 		stopped = append(stopped, l.Name)
 	}
-	for _, p := range plans {
+	for i := range plans {
+		p := &plans[i]
 		if l, ok := byName[p.name]; ok {
 			// Another agent cannot take over a running session, so the
 			// supervisor is replaced; its claim goes back for the new one.
@@ -294,11 +314,13 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 				}
 				// Older clients omit model selection: preserve an existing
 				// choice rather than silently resetting it.
-				if p.role == "build" && body.Models != nil || p.role == "supervise" && body.SuperviseModel != nil {
+					if p.role == "build" && body.Models != nil || p.role == "supervise" && body.SuperviseModel != nil {
 					if err := s.Tmux.SetLoopOption(ctx, p.name, "@loop_model", p.model); err != nil {
 						writeErr(w, http.StatusInternalServerError, err.Error())
 						return
 					}
+				} else {
+					p.model = l.Model
 				}
 				updated = append(updated, p.name)
 				continue
@@ -309,23 +331,20 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 			}
 			stopped = append(stopped, p.name)
 		}
-		argv := []string{exe, "loop", "--role", p.role, "--agent", p.agent, "--repo", body.Repo,
-			"--session", p.name, "--scope", body.Scope, "--instructions", p.instr,
-			"--mode", body.InstrMode, "--model", p.model}
-		if err := s.Tmux.NewLoopSession(ctx, p.name, body.Repo, argv); err != nil {
+		if err := s.startLoop(ctx, exe, p.saved(body)); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
-		}
-		// Written here too, not only by the loop on its way up, so a start a
-		// moment later already knows whose loop this is, and so the scope and
-		// the brief it was given are readable before its first run.
-		for opt, v := range map[string]string{"@loop_repo": body.Repo, "@loop_role": p.role, "@loop_agent": p.agent,
-			"@loop_model": p.model, "@loop_scope": body.Scope, "@loop_instr": p.instr, "@loop_mode": body.InstrMode} {
-			s.Tmux.SetLoopOption(ctx, p.name, opt, v)
 		}
 		s.audit(r, "loop-start", p.name, body.Repo)
 		started = append(started, p.name)
 	}
+	s.saveLoops(func(saved []config.SavedLoop) []config.SavedLoop {
+		saved = slices.DeleteFunc(saved, func(sl config.SavedLoop) bool { return sl.Repo == body.Repo })
+		for _, p := range plans {
+			saved = append(saved, p.saved(body))
+		}
+		return saved
+	})
 
 	last := body
 	s.mu.Lock()
@@ -342,6 +361,76 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started), "updated": orEmpty(updated),
 		"stopped": orEmpty(stopped), "instructions": from})
+}
+
+type plan struct{ name, role, agent, model, instr, instrFrom string }
+
+func (p plan) saved(body config.LoopStart) config.SavedLoop {
+	return config.SavedLoop{Name: p.name, Role: p.role, Agent: p.agent, Model: p.model, Repo: body.Repo,
+		Scope: body.Scope, Instructions: p.instr, InstrMode: body.InstrMode}
+}
+
+// startLoop starts one loop session.
+func (s *Server) startLoop(ctx context.Context, exe string, sl config.SavedLoop) error {
+	argv := []string{exe, "loop", "--role", sl.Role, "--agent", sl.Agent, "--repo", sl.Repo,
+		"--session", sl.Name, "--scope", sl.Scope, "--instructions", sl.Instructions,
+		"--mode", sl.InstrMode, "--model", sl.Model}
+	if err := s.Tmux.NewLoopSession(ctx, sl.Name, sl.Repo, argv); err != nil {
+		return err
+	}
+	// Written here too, not only by the loop on its way up, so a start a
+	// moment later already knows whose loop this is, and so the scope and
+	// the brief it was given are readable before its first run.
+	for opt, v := range map[string]string{"@loop_repo": sl.Repo, "@loop_role": sl.Role, "@loop_agent": sl.Agent,
+		"@loop_model": sl.Model, "@loop_scope": sl.Scope, "@loop_instr": sl.Instructions, "@loop_mode": sl.InstrMode} {
+		s.Tmux.SetLoopOption(ctx, sl.Name, opt, v)
+	}
+	return nil
+}
+
+// saveLoops changes the saved loops, in memory and on disk.
+func (s *Server) saveLoops(fn func([]config.SavedLoop) []config.SavedLoop) {
+	s.mu.Lock()
+	s.Cfg.SavedLoops = fn(s.Cfg.SavedLoops)
+	s.mu.Unlock()
+	if _, err := config.Update(func(c *config.Config) { c.SavedLoops = fn(c.SavedLoops) }); err != nil {
+		log.Printf("loops: could not save the loops: %v", err)
+	}
+}
+
+// handleRestoreLoops starts every saved loop that has no live session, as it
+// was last started or edited. A loop that is running is left alone.
+func (s *Server) handleRestoreLoops(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	running, err := s.Tmux.Loops(ctx)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	exe, err := loopExe()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	missing := s.missingLoops(running)
+	s.mu.Lock()
+	saved := slices.Clone(s.Cfg.SavedLoops)
+	s.mu.Unlock()
+	var started []string
+	for _, sl := range saved {
+		if !slices.Contains(missing, sl.Name) {
+			continue
+		}
+		// An empty shell tmux restored under the same name would block it.
+		s.Tmux.KillLoop(ctx, sl.Name)
+		if err := s.startLoop(ctx, exe, sl); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.audit(r, "loop-restore", sl.Name, sl.Repo)
+		started = append(started, sl.Name)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"started": orEmpty(started)})
 }
 
 // loopRoles are the roles a start manages. The chat supervisor is not one.
@@ -410,6 +499,26 @@ func (s *Server) handleEditLoop(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.saveLoops(func(saved []config.SavedLoop) []config.SavedLoop {
+		for i := range saved {
+			if saved[i].Name != name {
+				continue
+			}
+			if v, ok := set["@loop_model"]; ok {
+				saved[i].Model = v
+			}
+			if v, ok := set["@loop_scope"]; ok {
+				saved[i].Scope = v
+			}
+			if v, ok := set["@loop_instr"]; ok {
+				saved[i].Instructions = v
+			}
+			if v, ok := set["@loop_mode"]; ok {
+				saved[i].InstrMode = v
+			}
+		}
+		return saved
+	})
 	s.audit(r, "loop-edit", name, "")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -432,6 +541,9 @@ func (s *Server) handleStopLoop(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.saveLoops(func(saved []config.SavedLoop) []config.SavedLoop {
+		return slices.DeleteFunc(saved, func(sl config.SavedLoop) bool { return sl.Name == name })
+	})
 	s.audit(r, "loop-stop", name, when)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "when": when})
 }
@@ -769,13 +881,29 @@ func (s *Server) knownSlug(slug string) bool {
 // there: a development server would double every notification.
 func (s *Server) WatchLoops(ctx context.Context, store *push.Store) {
 	seen := map[string]string{}
+	empty := map[string]bool{}
 	first := true
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for {
 		loops, err := s.Tmux.Loops(ctx)
 		if err == nil {
+			wasEmpty := empty
+			empty = map[string]bool{}
 			for _, l := range loops {
+				// Every start writes @loop_role at once. A session without
+				// it on two reads in a row is an empty shell tmux-resurrect
+				// brought back after a crash: it runs no loop, but its name
+				// would block a restore and keep its claims looking live.
+				if l.Role == "" {
+					if wasEmpty[l.Name] {
+						log.Printf("loops: removing %s, a restored session with no loop in it", l.Name)
+						s.Tmux.KillLoop(ctx, l.Name)
+					} else {
+						empty[l.Name] = true
+					}
+					continue
+				}
 				s.rememberRepo(l)
 				if l.Event == "" || seen[l.Name] == l.Event {
 					continue

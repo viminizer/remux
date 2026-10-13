@@ -400,6 +400,15 @@ with its options as buttons, and **Send and resume** posts your answer and puts
 the item back in the queue. The other two pushes are a merged PR and a company
 PR sent to the supervisor.
 
+**After a crash or a reboot.** tmux keeps a loop's settings only in memory, so
+remux also saves every loop you start or edit in its config, and forgets it when
+you stop it. The Loops screen then lists the saved loops that are not running,
+and **Restore** starts them again as they were. A loop's work is not lost: its
+worktree is on disk, and the loop that takes the issue again reuses it. Two
+things a crash leaves behind are cleaned up on their own: `loop-*` sessions
+tmux-resurrect brings back as empty shells are removed, and `by:<session>`
+claim labels of loops that no longer exist are taken off.
+
 ## Development
 
 ```bash

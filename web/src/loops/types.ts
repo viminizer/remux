@@ -49,6 +49,8 @@ export interface LoopsPayload {
   presets: Preset[]
   last: LoopStart | null
   repos: HarnessRepo[]
+  /** Saved loops with no live session: what a crash or reboot took away. */
+  missing: string[]
 }
 
 export interface HarnessItem {

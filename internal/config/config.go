@@ -64,6 +64,22 @@ type Config struct {
 	HarnessRepos []HarnessRepo `json:"harnessRepos,omitempty"`
 	LoopPresets  []LoopPreset  `json:"loopPresets,omitempty"`
 	LastLoop     *LoopStart    `json:"lastLoop,omitempty"`
+	// SavedLoops are the loops that should be running, kept on disk because
+	// tmux keeps a loop's settings only in memory: after a crash or a reboot
+	// they are what Restore starts again.
+	SavedLoops []SavedLoop `json:"savedLoops,omitempty"`
+}
+
+// SavedLoop is one loop as it was started or last edited.
+type SavedLoop struct {
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	Agent        string `json:"agent"`
+	Model        string `json:"model,omitempty"`
+	Repo         string `json:"repo"`
+	Scope        string `json:"scope"`
+	Instructions string `json:"instructions,omitempty"`
+	InstrMode    string `json:"instrMode"`
 }
 
 type HarnessRepo struct {

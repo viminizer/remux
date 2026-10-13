@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/viminizer/remux/internal/config"
 	"github.com/viminizer/remux/internal/harness"
@@ -209,6 +210,108 @@ func TestLoopLifecycle(t *testing.T) {
 	}
 	if code, _ := do(t, ts, "DELETE", "/api/loops/main", nil); code != http.StatusNotFound {
 		t.Errorf("stopping a non-loop session must be refused, got %d", code)
+	}
+}
+
+// Live: a crash kills every loop session and tmux-resurrect brings some back
+// as empty shells. Restore starts each saved loop again, as last edited, and
+// leaves out the ones stopped by hand.
+func TestRestoreAfterCrash(t *testing.T) {
+	tm := tmux.New()
+	ctx := context.Background()
+	if _, err := tm.Version(ctx); err != nil {
+		t.Skipf("no tmux: %v", err)
+	}
+	t.Setenv("HOME", t.TempDir())
+
+	repo := filepath.Join(t.TempDir(), "restore-api-test")
+	os.MkdirAll(repo, 0o755)
+	fake := filepath.Join(t.TempDir(), "fake-remux")
+	os.WriteFile(fake, []byte("#!/bin/sh\nsleep 60\n"), 0o755)
+	loopExe = func() (string, error) { return fake, nil }
+	defer func() { loopExe = os.Executable }()
+
+	srv := NewServer(config.Default(), tm, nil)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	build, build2, review := "loop-claude-restore-api-test", "loop-claude2-restore-api-test", "loop-review-restore-api-test"
+	for _, n := range []string{build, build2, review} {
+		defer tm.KillLoop(ctx, n)
+	}
+
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK {
+		t.Fatalf("start: %d %s", code, body)
+	}
+	do(t, ts, "PATCH", "/api/loops/"+build, map[string]any{"scope": "frontend"})
+	do(t, ts, "DELETE", "/api/loops/"+build2, nil)
+
+	// The crash: every session gone, one back as an empty shell.
+	tm.KillLoop(ctx, build)
+	tm.KillLoop(ctx, review)
+	tm.NewLoopSession(ctx, review, repo, []string{"sh", "-c", "sleep 60"})
+
+	missing := func() []string {
+		_, body := do(t, ts, "GET", "/api/loops", nil)
+		var got struct {
+			Missing []string `json:"missing"`
+		}
+		json.Unmarshal(body, &got)
+		return got.Missing
+	}
+	if got := strings.Join(missing(), ","); got != build+","+review {
+		t.Fatalf("missing = %q, want both saved loops and not the stopped one", got)
+	}
+	if code, body := do(t, ts, "POST", "/api/loops/restore", nil); code != http.StatusOK ||
+		!strings.Contains(string(body), `"started":["`+build+`","`+review+`"]`) {
+		t.Fatalf("restore: %d %s", code, body)
+	}
+	if v, _ := tm.LoopOption(ctx, build, "@loop_scope"); v != "frontend" {
+		t.Errorf("restored scope = %q, want the edited one", v)
+	}
+	if v, _ := tm.LoopOption(ctx, review, "@loop_role"); v != "review" {
+		t.Errorf("the empty shell was not replaced: role %q", v)
+	}
+	if l, _ := srv.loopByName(ctx, build2); l != nil {
+		t.Error("a loop stopped by hand came back")
+	}
+	if got := missing(); len(got) != 0 {
+		t.Errorf("missing after restore = %v", got)
+	}
+	// Saved on disk, so a restarted server still knows them.
+	if c, _ := config.Load(); len(c.SavedLoops) != 2 {
+		t.Errorf("saved on disk = %+v", c.SavedLoops)
+	}
+}
+
+// Live: the watcher removes a loop session that has no loop in it, the way
+// tmux-resurrect restores one, and leaves a real loop alone.
+func TestWatchRemovesEmptyLoopSessions(t *testing.T) {
+	tm := tmux.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := tm.Version(ctx); err != nil {
+		t.Skipf("no tmux: %v", err)
+	}
+	empty, real := "loop-empty-watch-api-test", "loop-real-watch-api-test"
+	for _, n := range []string{empty, real} {
+		tm.NewLoopSession(ctx, n, t.TempDir(), []string{"sh", "-c", "sleep 60"})
+		defer tm.KillLoop(context.Background(), n)
+	}
+	tm.SetLoopOption(ctx, real, "@loop_role", "build")
+
+	go NewServer(config.Default(), tm, nil).WatchLoops(ctx, nil)
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if l, _ := (&Server{Tmux: tm}).loopByName(ctx, empty); l == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the empty loop session was not removed")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if l, _ := (&Server{Tmux: tm}).loopByName(ctx, real); l == nil {
+		t.Error("a real loop was removed")
 	}
 }
 

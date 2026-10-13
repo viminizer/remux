@@ -14,9 +14,11 @@ import (
 // every other loop, and held five more issues behind them.
 //
 // reapClaims takes a claim off when its loop is no longer on that item: the
-// session is gone, or it is working on something else. Only finished claims
-// count - those with a wip:* label - and every one is checked twice, ReapWait
-// apart, so a claim a loop is making right now is never touched.
+// session is gone, or it is working on something else. A claim with no wip:*
+// label yet may be one a loop is making right now, so it goes only when its
+// session is gone - a crash can leave a lone by:<session> too (measured on
+// educenter, a PR kept one after the Mac died). Every claim is checked twice,
+// ReapWait apart, so a loop that started between the two reads keeps its own.
 
 var ReapWait = 10 * time.Second
 
@@ -54,7 +56,10 @@ func (l *Loop) staleClaims(ctx context.Context) map[string]Item {
 	}
 	on := map[string]int{}
 	for _, o := range loops {
-		on[o.Name] = o.Issue
+		// No role is an empty shell tmux restored after a crash, not a loop.
+		if o.Role != "" {
+			on[o.Name] = o.Issue
+		}
 	}
 	out := map[string]Item{}
 	for _, kind := range []string{"issue", "pr"} {
@@ -70,17 +75,17 @@ func (l *Loop) staleClaims(ctx context.Context) map[string]Item {
 	return out
 }
 
-// staleIn is the rule itself: a finished claim whose loop is gone or on
-// another item. on maps each loop session to the item it is working on.
+// staleIn is the rule itself: a claim whose loop is gone, or a finished
+// claim whose loop is on another item. on maps each loop session to the item
+// it is working on.
 func staleIn(items []Item, on map[string]int) map[string]Item {
 	out := map[string]Item{}
 	for _, it := range items {
-		if !it.HasPrefix("wip:") {
-			continue
-		}
+		wip := it.HasPrefix("wip:")
 		for _, x := range it.Labels {
 			name, ok := strings.CutPrefix(x.Name, "by:")
-			if ok && on[name] != it.Number {
+			issue, alive := on[name]
+			if ok && (!alive || wip && issue != it.Number) {
 				out[itemKey(it.Number, x.Name)] = it
 			}
 		}

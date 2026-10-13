@@ -470,18 +470,19 @@ func TestDropWorktree(t *testing.T) {
 }
 
 func TestStaleClaims(t *testing.T) {
-	on := map[string]int{"loop-claude-x": 5, "loop-claude2-x": 9}
+	on := map[string]int{"loop-claude-x": 5, "loop-claude2-x": 9, "loop-codex-x": 0}
 	items := []Item{
 		item(5, "wip:backend", "by:loop-claude-x"),    // its loop is on it
 		item(172, "wip:backend", "by:loop-codex2-x"),  // loop gone
 		item(196, "wip:backend", "by:loop-claude2-x"), // loop moved on to #9
-		item(7, "by:loop-gone-x"),                     // claim still being made
+		item(7, "by:loop-codex-x"),                    // claim still being made
+		item(8, "by:loop-gone-x"),                     // left behind by a crash
 	}
 	got := staleIn(items, on)
-	if len(got) != 2 {
-		t.Fatalf("stale = %v, want #172 and #196", got)
+	if len(got) != 3 {
+		t.Fatalf("stale = %v, want #172, #196 and #8", got)
 	}
-	for _, k := range []string{"172 by:loop-codex2-x", "196 by:loop-claude2-x"} {
+	for _, k := range []string{"172 by:loop-codex2-x", "196 by:loop-claude2-x", "8 by:loop-gone-x"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("%s should be stale", k)
 		}

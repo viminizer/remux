@@ -156,6 +156,7 @@ export function LoopsRoutes({
     <LoopsScreen
       tab={tab}
       loops={data?.loops ?? null}
+      missing={data?.missing ?? []}
       inbox={inbox}
       inboxErrors={errors}
       loading={loading}
@@ -167,6 +168,15 @@ export function LoopsRoutes({
         it.why === 'supervisor' ? window.open(it.url, '_blank') : go({ name: 'loopQ', slug: it.slug, number: it.number })
       }
       onStart={() => go({ name: 'loopStart' })}
+      onRestore={async () => {
+        try {
+          const r = await api.restoreLoops()
+          toast(`restored ${r.started.length}`)
+          await refresh()
+        } catch (e) {
+          say(e)
+        }
+      }}
       onAsk={async (agent) => {
         try {
           const r = await api.supervisor(agent)

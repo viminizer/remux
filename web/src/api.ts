@@ -208,6 +208,8 @@ export const api = {
       method: 'DELETE',
     }),
 
+  restoreLoops: () => call<{ started: string[] }>('/api/loops/restore', { method: 'POST' }),
+
   savePresets: (presets: Preset[]) =>
     call<Preset[]>('/api/loops/presets', { method: 'PUT', body: JSON.stringify(presets) }),
 
