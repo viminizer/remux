@@ -75,6 +75,9 @@ func (l *Loop) Run(ctx context.Context) error {
 	// setup was enough to leave a loop dead until someone restarted it.
 	var err error
 	for ctx.Err() == nil {
+		if l.get(ctx, "@loop_stop") != "" {
+			return nil
+		}
 		if err = l.setup(ctx); err == nil {
 			break
 		}
@@ -462,12 +465,23 @@ func (l *Loop) unblock(ctx context.Context) {
 	if l.set.Mode == "company" {
 		prs, _ = l.gh.PRs(ctx, "")
 	}
+	var numbers []int
+	for _, it := range blocked {
+		if !it.Has("blocked:external") && !it.Has("postponed") && !it.Has("status:postponed") {
+			numbers = append(numbers, it.Number)
+		}
+	}
+	dependencies, err := l.gh.Blockers(ctx, numbers)
+	if err != nil {
+		log.Printf("dependency check: %v", err)
+		return
+	}
 	for _, it := range blocked {
 		if it.Has("blocked:external") || it.Has("postponed") || it.Has("status:postponed") {
 			continue // only verified supervision/triage may release these
 		}
-		blockers, err := l.gh.BlockedBy(ctx, it.Number)
-		if err != nil || len(blockers) == 0 {
+		blockers := dependencies[it.Number]
+		if len(blockers) == 0 {
 			continue
 		}
 		free := true

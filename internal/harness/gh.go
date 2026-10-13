@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -240,16 +241,44 @@ func (g GH) ReviewComments(ctx context.Context, n int, body string, comments []R
 
 // BlockedBy lists the issues GitHub records as blocking n.
 func (g GH) BlockedBy(ctx context.Context, n int) ([]Item, error) {
-	var items []Item
-	err := g.JSON(ctx, &items, "api", fmt.Sprintf("repos/%s/issues/%d/dependencies/blocked_by", g.Slug, n))
-	return items, err
+	items, err := g.Blockers(ctx, []int{n})
+	return items[n], err
 }
 
 // EnsureLabels creates the harness labels, and is safe to run again.
 func (g GH) EnsureLabels(ctx context.Context) error {
-	for _, l := range Labels {
-		if _, err := g.run(ctx, "label", "create", l.Name, "--color", l.Color,
-			"--description", l.Desc, "--force"); err != nil {
+	owner, repo, ok := strings.Cut(g.Slug, "/")
+	if !ok {
+		return fmt.Errorf("invalid repository slug")
+	}
+	var query strings.Builder
+	fmt.Fprintf(&query, "query { repository(owner:%s,name:%s) { id", strconv.Quote(owner), strconv.Quote(repo))
+	for i, label := range Labels {
+		fmt.Fprintf(&query, " l%d:label(name:%s) { id }", i, strconv.Quote(label.Name))
+	}
+	query.WriteString("} }")
+	data, err := g.graph(ctx, query.String())
+	if err != nil {
+		return err
+	}
+	var response struct{ Repository map[string]json.RawMessage }
+	if err := json.Unmarshal(data, &response); err != nil {
+		return err
+	}
+	var id string
+	if err := json.Unmarshal(response.Repository["id"], &id); err != nil || id == "" {
+		return fmt.Errorf("missing repository ID")
+	}
+	for i, label := range Labels {
+		value, exists := response.Repository[fmt.Sprintf("l%d", i)]
+		if !exists {
+			return fmt.Errorf("missing label lookup for %s", label.Name)
+		}
+		if string(value) != "null" {
+			continue
+		}
+		mutation := fmt.Sprintf("mutation { createLabel(input:{repositoryId:%s,name:%s,color:%s,description:%s}) { label { id } } }", strconv.Quote(id), strconv.Quote(label.Name), strconv.Quote(label.Color), strconv.Quote(label.Desc))
+		if _, err := g.graph(ctx, mutation); err != nil {
 			return err
 		}
 	}

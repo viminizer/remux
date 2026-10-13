@@ -159,6 +159,9 @@ func (g GH) withFallback(ctx context.Context, args ...string) ([]byte, error) {
 		return g.api(ctx, args[1:]...)
 	}
 	if until := g.budget().Graph; until.After(time.Now()) {
+		if graphRead(args) {
+			return nil, &githubWait{until, "GraphQL"}
+		}
 		out, ok, err := g.restFallback(ctx, args)
 		if ok {
 			return out, err
@@ -180,9 +183,21 @@ func (g GH) withFallback(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	until := g.graphReset(ctx)
 	g.setBudget("GraphQL", until)
+	if graphRead(args) {
+		return nil, &githubWait{until, "GraphQL"}
+	}
 	log.Printf("GitHub GraphQL limited; using REST until %s", until.Local().Format("15:04:05"))
 	if out, ok, e := g.restFallback(ctx, args); ok {
 		return out, e
 	}
 	return nil, &githubWait{until, "GraphQL"}
+}
+
+// Queue reads stay on GraphQL instead of exhausting REST while GraphQL resets.
+func graphRead(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	return (args[0] == "issue" || args[0] == "pr" || args[0] == "label" || args[0] == "repo") &&
+		(args[1] == "list" || args[1] == "view")
 }

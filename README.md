@@ -283,6 +283,11 @@ work stay out. Idle builders also recover older merged work stuck in
 shared by builders of the same repository and scope. Normal merged work is requeued
 immediately; new-work polling stays at once a minute per loop.
 
+Queue reads use GraphQL and wait for its reset instead of falling back to REST.
+Dependency checks batch up to 25 blocked issues into one query and paginate every
+dependency list. Startup reads the harness labels through GraphQL and creates only
+missing labels, avoiding repeated updates to existing labels from every loop.
+
 A supervisor can finish with `RESOLVED PARKED` to record a waiting decision
 without retrying the item. `blocked:external` protects unavailable credentials,
 external prerequisites and time gates from automatic dependency unblocking.
