@@ -438,3 +438,7 @@ tmux new-session -d -s remux-test
 - Scrollback is whatever `capture-pane -S -N` returns (400 lines by default).
   Panes in an alternate screen (vim, htop) have no history - only the visible
   screen.
+
+A manually started review loop can use `--review-policy fixed --agent claude`
+to keep Claude for every review and repair, including after a failed run.
+Without an explicit policy, the project review policy still applies.

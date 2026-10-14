@@ -36,6 +36,7 @@ type Loop struct {
 	Task                           int // custom loops work exactly one issue/PR, then exit
 	BudgetKey                      string
 	Reserve                        float64
+	ReviewPolicy                   string // optional per-loop provider policy
 	Effort                         string
 
 	gh  GH
@@ -73,6 +74,7 @@ func (l *Loop) Run(ctx context.Context) error {
 	for opt, v := range map[string]string{
 		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_model": l.Model, "@loop_repo": l.Repo,
 		"@loop_scope": l.Scope, "@loop_instr": l.Instructions, "@loop_mode": l.InstrMode,
+		"@loop_review_policy": l.ReviewPolicy,
 	} {
 		l.opt(ctx, opt, v)
 	}

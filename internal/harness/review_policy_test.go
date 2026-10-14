@@ -231,3 +231,38 @@ func TestReviewEffortAndFallback(t *testing.T) {
 		t.Fatal("invalid policy accepted")
 	}
 }
+
+func TestExplicitReviewerPolicyOverridesProject(t *testing.T) {
+	l := Loop{Agent: "claude", Model: "sonnet", ReviewPolicy: "fixed", set: Settings{ReviewPolicy: "balanced"}}
+	choice, err := l.nextReviewChoice(context.Background(), "", "")
+	if err != nil || choice.Agent != "claude" || choice.Model != "sonnet" || !l.fixedReviewer() {
+		t.Fatalf("explicit Claude choice lost: %+v %v", choice, err)
+	}
+	l.ReviewPolicy, l.set.ReviewPolicy = "balanced", "fixed"
+	if l.fixedReviewer() {
+		t.Fatal("explicit balanced policy did not override project")
+	}
+}
+
+func TestPinnedClaudeReviewDoesNotHandOffIncompleteWork(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"claude": "#!/bin/sh\ncat >/dev/null\necho REVIEW INCOMPLETE\n",
+		"codex":  "#!/bin/sh\necho unexpected > codex-ran\necho REVIEW COMPLETE\n",
+		"tmux":   "#!/bin/sh\nexit 0\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HOME", root)
+	l := Loop{Agent: "claude", Model: "sonnet", Role: "review", ReviewPolicy: "fixed", Repo: root, Session: "loop-test", Tmux: tmux.New()}
+	choice, code, summary := l.inspectReview(context.Background(), root, "Review", choiceFor("normal", ""), 42)
+	if choice.Agent != "claude" || code != 0 || completedReview(summary) {
+		t.Fatalf("pin lost: %+v %d %s", choice, code, summary)
+	}
+	if _, err := os.Stat(filepath.Join(root, "codex-ran")); !os.IsNotExist(err) {
+		t.Fatal("pinned Claude review started Codex")
+	}
+}

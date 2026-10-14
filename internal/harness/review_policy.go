@@ -67,7 +67,7 @@ func choiceFor(class, last string) reviewChoice {
 // Rotation is shared by all review loops/worktrees in the repository. Small
 // PRs never consume a normal/deep turn. Failure to read/write state fails closed.
 func (l *Loop) nextReviewChoice(ctx context.Context, wt, base string) (reviewChoice, error) {
-	if l.set.ReviewPolicy == "fixed" {
+	if l.fixedReviewer() {
 		effort := "medium"
 		if l.Task > 0 && l.Effort != "" {
 			effort = l.Effort
@@ -203,7 +203,7 @@ func reportedFixedBugs(summary string) *int {
 func (l *Loop) inspectReview(ctx context.Context, wt, prompt string, choice reviewChoice, n int) (reviewChoice, int, string) {
 	code, summary := l.agent(ctx, wt, prompt)
 	if code != 0 || l.limited() || !completedReview(summary) {
-		if l.Task > 0 {
+		if l.Task > 0 || l.fixedReviewer() {
 			return choice, code, summary
 		}
 		if ctx.Err() != nil {
@@ -221,4 +221,9 @@ func (l *Loop) inspectReview(ctx context.Context, wt, prompt string, choice revi
 		code, summary = l.agent(ctx, wt, prompt+handoff)
 	}
 	return choice, code, summary
+}
+
+// An explicit loop choice overrides project rotation, including failure handoffs.
+func (l *Loop) fixedReviewer() bool {
+	return l.ReviewPolicy == "fixed" || (l.ReviewPolicy == "" && l.set.ReviewPolicy == "fixed")
 }
