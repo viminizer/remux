@@ -11,6 +11,11 @@ import (
 )
 
 func TestCustomSpawnsEnforceFiveAndExplicitTask(t *testing.T) {
+	t.Run("codex", func(t *testing.T) { checkCustomSpawns(t, "codex", false) })
+	t.Run("claude-without-usage", func(t *testing.T) { checkCustomSpawns(t, "claude", true) })
+}
+
+func checkCustomSpawns(t *testing.T, provider string, unavailable bool) {
 	l, root, _ := idleHarness(t)
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
@@ -53,11 +58,15 @@ f.write_text(json.dumps(state))
 `
 	script = strings.ReplaceAll(script, "ROOT", strconvQuote(root))
 	os.WriteFile(filepath.Join(root, "tmux"), []byte(script), 0o755)
-	for name, content := range map[string]string{
-		"codex": "#!/bin/sh\nexit 0\n",
-		"bunx": `#!/bin/sh
+	usageCommand := `#!/bin/sh
 echo '[{"provider":"Codex","account":{"id":"active","is_active":true},"metrics":[{"label":"Weekly","remaining_percent":100}]}]'
-`,
+`
+	if unavailable {
+		usageCommand = "#!/bin/sh\nexit 1\n"
+	}
+	for name, content := range map[string]string{
+		provider: "#!/bin/sh\nexit 0\n",
+		"bunx":   usageCommand,
 	} {
 		os.WriteFile(filepath.Join(root, name), []byte(content), 0o755)
 	}
@@ -92,7 +101,7 @@ echo '[{"provider":"Codex","account":{"id":"active","is_active":true},"metrics":
 	}
 	for _, a := range server.Starts {
 		joined := strings.Join(a, " ")
-		for _, want := range []string{"--task", "--scope backend", "--agent codex", "--reserve 10", "--budget-key"} {
+		for _, want := range []string{"--task", "--scope backend", "--agent " + provider, "--reserve 0", "--budget-key"} {
 			if !strings.Contains(joined, want) {
 				t.Fatalf("task/budget argument %q missing", want)
 			}

@@ -305,17 +305,15 @@ Known overlapping code files keep builders sequential; the supervisor also check
 written ownership before requesting parallel work. Stopped projects stay stopped.
 
 Before starting a custom worker, `bunx tokscale@latest usage --json` supplies live
-subscription headroom. Only authenticated supported providers with valid quota
-data are eligible; Codex must be the active account. Routine tasks need at least
-25% effective headroom, deep tasks 40%, after allowing 10/20 percentage points
-for each concurrent custom task sharing that account. These are conservative
-heuristics, not exact token estimates or a completion guarantee. Claude needs
-both session and weekly windows; Codex may expose only a weekly window. Unknown
-usage/CLI failures and observed limits fail closed. A custom review keeps its
-budget-selected provider rather than silently falling back to an unchecked one.
-Limit failures preserve work and defer that account until its native reset.
-This is an on-demand spawn check, not an automatic quota watcher or a rule that
-stops existing work. All first-release scope, privacy and financial rules remain.
+subscription headroom. Codex requires the active account and more than 30% actual
+weekly quota remaining, without predicted reservations for concurrent tasks.
+Claude builders have no usage gate, including when quota data is unavailable or
+another Claude worker is waiting for a native limit reset. Claude still enforces
+its own limits; failed runs preserve unfinished work. Claude reviewers retain the
+25% normal / 40% deep effective-headroom checks and 10/20-point concurrent task
+reservations. Installed CLI, task ownership, overlap and worker-count checks still
+apply. This is an on-demand spawn policy, not an automatic quota watcher or a rule
+that stops existing work. All first-release scope, privacy and financial rules remain.
 
 Queue reads use GraphQL and wait for its reset instead of falling back to REST.
 Dependency checks batch up to 25 blocked issues into one query and paginate every
