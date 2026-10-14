@@ -126,12 +126,16 @@ func (l *Loop) spawnWorkers(ctx context.Context, summary string) error {
 			}
 			if !loaded || time.Since(checkedAt) > 2*time.Minute {
 				usage, err = readSpawnUsage(ctx)
-				if err != nil {
+				if err != nil && role != "build" {
 					l.spawnNote(err.Error())
 					return nil
 				}
-				loaded = true
+				loaded = err == nil
 				checkedAt = time.Now()
+			}
+			// Missing quota data must not block an installed Claude builder.
+			if role == "build" && !hasClaudeUsage(usage) {
+				usage = append(usage, providerUsage{Provider: "Claude"})
 			}
 			var available []providerUsage
 			for _, p := range usage {
@@ -139,7 +143,7 @@ func (l *Loop) spawnWorkers(ctx context.Context, summary string) error {
 					available = append(available, p)
 				}
 			}
-			choice, ok := chooseSpawn(available, loops, class, spawnHolds())
+			choice, ok := chooseSpawn(available, loops, role, class, spawnHolds())
 			if !ok {
 				l.spawnNote("Spawn deferred: no supported model has verified usage headroom")
 				return nil
@@ -154,6 +158,7 @@ func (l *Loop) spawnWorkers(ctx context.Context, summary string) error {
 			}
 			name := customName(l.gh.Slug, role, n)
 			instructions, _ := Instructions(l.Repo, scope, role)
+			instructions += "\nKevin's 2026-10-14 usage policy supersedes older project guards: create new Codex workers only while actual weekly remaining usage is above 30%, with no predicted task reservations. Claude builders may be created regardless of remaining usage or missing quota data. Native provider limits still apply, and existing work is preserved.\n"
 			if role == "build" && scope == "backend" {
 				instructions += "\nLatest user authorization: newly filed ready backend prerequisites may be implemented by this budget-selected builder. Older notes saying the backend queue was finished or requiring a different coding provider do not override this assigned scope. Existing active ownership and genuine external blocks remain binding.\n"
 			}
@@ -204,4 +209,13 @@ func customName(slug, role string, n int) string {
 func (l *Loop) spawnNote(note string) {
 	log.Printf("supervisor: %s", note)
 	l.idleAuditSummary = note + "\n" + l.idleAuditSummary
+}
+
+func hasClaudeUsage(usage []providerUsage) bool {
+	for _, p := range usage {
+		if strings.EqualFold(p.Provider, "claude") {
+			return true
+		}
+	}
+	return false
 }

@@ -37,9 +37,9 @@ type spawnChoice struct {
 	Remaining, Reserve        float64
 }
 
-// Percentages are subscription headroom, not exact task token estimates. Keep
-// a cushion and account for concurrent custom workers sharing the same quota.
-func chooseSpawn(usage []providerUsage, loops []tmux.Loop, class string, held map[string]bool) (spawnChoice, bool) {
+// Codex stops new workers at 30% weekly remaining. Claude builders have no
+// quota gate; Claude reviewers retain their shared-headroom checks.
+func chooseSpawn(usage []providerUsage, loops []tmux.Loop, role, class string, held map[string]bool) (spawnChoice, bool) {
 	floor, reserve, effort := 25.0, 10.0, "medium"
 	if class == "deep" {
 		floor, reserve, effort = 40, 20, "high"
@@ -64,6 +64,7 @@ func chooseSpawn(usage []providerUsage, loops []tmux.Loop, class string, held ma
 			}
 		}
 		remaining, session, weekly := 100.0, false, false
+		unrestrictedClaude := agent == "claude" && role == "build"
 		valid := true
 		for _, m := range p.Metrics {
 			label := strings.ToLower(m.Label)
@@ -76,13 +77,15 @@ func chooseSpawn(usage []providerUsage, loops []tmux.Loop, class string, held ma
 				valid = false
 				break
 			}
-			remaining = min(remaining, *m.Remaining)
+			if agent != "codex" || label == "weekly" {
+				remaining = min(remaining, *m.Remaining)
+			}
 			weekly = weekly || label == "weekly"
 			session = session || label == "session" || label == "5h" || label == "5-hour"
 		}
 		// Claude needs both short and long windows. Codex plans may expose only
 		// a weekly window; an absent supported provider is never "100% left".
-		if !valid || !weekly || (agent == "claude" && !session) {
+		if !unrestrictedClaude && (!valid || !weekly || (agent == "claude" && !session)) {
 			continue
 		}
 		account := "default"
@@ -90,20 +93,30 @@ func chooseSpawn(usage []providerUsage, loops []tmux.Loop, class string, held ma
 			account = p.Account.ID
 		}
 		key := fmt.Sprintf("%x", sha256.Sum256([]byte(agent+":"+account)))
-		if held[key] {
+		if !unrestrictedClaude && held[key] {
 			continue
 		}
 		for _, o := range loops {
-			if o.Custom && (o.BudgetKey == key || o.BudgetKey == "" && o.Agent == agent) {
+			if agent == "claude" && !unrestrictedClaude && o.Custom && (o.BudgetKey == key || o.BudgetKey == "" && o.Agent == agent) {
 				remaining -= max(10, o.Reserve)
 			}
 			// A manual worker's known provider limit also excludes the provider.
-			if o.Agent == agent && o.State == "blocked" && strings.Contains(strings.ToLower(o.Note), "usage limit") {
+			if !unrestrictedClaude && o.Agent == agent && o.State == "blocked" && strings.Contains(strings.ToLower(o.Note), "usage limit") {
 				valid = false
 			}
 		}
-		if valid && remaining >= floor && (best.Agent == "" || remaining > best.Remaining) {
-			best = spawnChoice{agent, model, effort, key, remaining, reserve}
+		eligible, allowance := valid && remaining >= floor, reserve
+		if agent == "codex" {
+			eligible, allowance = valid && weekly && remaining > 30, 0
+		}
+		if unrestrictedClaude {
+			eligible, allowance = true, 0
+			if !valid || !weekly || !session {
+				remaining = 0 // Usage is unknown; eligibility does not assume a full quota.
+			}
+		}
+		if eligible && (best.Agent == "" || remaining > best.Remaining) {
+			best = spawnChoice{agent, model, effort, key, remaining, allowance}
 		}
 	}
 	return best, best.Agent != ""

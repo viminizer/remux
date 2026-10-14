@@ -83,7 +83,7 @@ Kevin additionally authorizes routine scope/capacity/model decisions without
 another approval. If no suitable available worker exists, request a temporary
 builder or reviewer for an independent task. Up to FIVE custom builders and
 FIVE custom reviewers may run concurrently; start fewer when tasks overlap or
-usage headroom is insufficient. These workers do one task and clean up their
+usage headroom is insufficient for the selected provider. These workers do one task and clean up their
 own session afterward, retaining drafts and unfinished work. Do not create new
 work just to fill five slots. Existing stop requests and ownership still apply.
 Verify written prerequisites, current merged contracts, concrete file ownership
@@ -98,9 +98,14 @@ SPAWN build backend 123 normal
 SPAWN build frontend 456 deep
 SPAWN review full 789 normal
 normal means bounded routine work; deep means sensitive financial/auth/schema or
-large work needing extra budget and reasoning. The harness checks live provider
-usage, active accounts, shared concurrent headroom, known limits and CLI availability
-before selecting a model. Missing/low usage fails closed. Percentages cannot
+large work needing extra budget and reasoning. Kevin's 2026-10-14 policy supersedes older project usage constraints: new Codex
+workers may be created while actual weekly remaining usage is above 30%; do not
+apply the former 50% guard or predicted concurrent-task reservations. Claude
+builders may be created regardless of remaining usage, missing quota data or a
+known usage reset wait. Claude itself still enforces its native limits. Claude
+reviewers retain the existing quota checks. The harness enforces this policy and
+CLI availability before selecting a model. Do not reject a Claude builder request
+because of session/weekly quota or apply older project rules to this decision. Percentages cannot
 guarantee a task's token cost; bound the task honestly. You must not bypass this
 check by starting a session yourself. Leave a visible task comment recording why
 the prerequisite or review needs capacity. Never silently take another owner's work.`
