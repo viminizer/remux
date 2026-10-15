@@ -45,6 +45,7 @@ type Loop struct {
 	Custom       bool    `json:"custom,omitempty"`
 	BudgetKey    string  `json:"-"`
 	Reserve      float64 `json:"-"`
+	Dry          bool    `json:"dry,omitempty"` // a cleanup loop that only reports
 }
 
 // Options that hold free text from the phone or an error message. They are
@@ -56,7 +57,7 @@ var loopFields = []string{
 	"#{@loop_slug}", "#{@loop_state}", "#{@loop_since}", "#{@loop_issue}", "#{@loop_title}",
 	"#{@loop_scope}", "#{@loop_instr}", "#{@loop_mode}", "#{@loop_stop}", "#{@loop_note}",
 	"#{@loop_event}", "#{@loop_model}",
-	"#{@loop_custom}", "#{@loop_budget_key}", "#{@loop_reserve}",
+	"#{@loop_custom}", "#{@loop_budget_key}", "#{@loop_reserve}", "#{@loop_dry}",
 }
 
 // Loops lists every harness session in one tmux call.
@@ -79,7 +80,7 @@ func (c *Client) Loops(ctx context.Context) ([]Loop, error) {
 
 func parseLoop(line string) (Loop, bool) {
 	f := strings.Split(line, fieldSep)
-	if (len(f) != len(loopFields) && len(f) != 17) || !strings.HasPrefix(f[0], LoopPrefix) {
+	if (len(f) != len(loopFields) && len(f) != 17 && len(f) != 20) || !strings.HasPrefix(f[0], LoopPrefix) {
 		return Loop{}, false
 	}
 	since, _ := strconv.ParseInt(f[7], 10, 64)
@@ -92,12 +93,13 @@ func parseLoop(line string) (Loop, bool) {
 		budget = f[18]
 		reserve, _ = strconv.ParseFloat(f[19], 64)
 	}
+	dry := len(f) > 20 && f[20] != ""
 	return Loop{
 		Name: f[0], Pane: f[1], Role: f[2], Agent: f[3], Repo: f[4], Slug: f[5],
 		State: f[6], Since: since, Issue: issue, Title: decode(f[9]), Scope: f[10],
 		Instructions: decode(f[11]), InstrMode: f[12], Stop: f[13], Note: decode(f[14]),
 		Event: f[15], Model: f[16],
-		Custom: custom, BudgetKey: budget, Reserve: reserve,
+		Custom: custom, BudgetKey: budget, Reserve: reserve, Dry: dry,
 	}, true
 }
 

@@ -80,6 +80,7 @@ type SavedLoop struct {
 	Scope        string `json:"scope"`
 	Instructions string `json:"instructions,omitempty"`
 	InstrMode    string `json:"instrMode"`
+	Dry          bool   `json:"dry,omitempty"` // cleanup only: report, remove nothing
 }
 
 type HarnessRepo struct {
@@ -108,6 +109,11 @@ type LoopStart struct {
 	// supervisor Kevin talks to. Empty means claude.
 	SuperviseAgent string  `json:"superviseAgent,omitempty"`
 	SuperviseModel *string `json:"superviseModel,omitempty"`
+	// Cleanup runs a loop that removes leftovers of closed issues. CleanupDry
+	// makes it only report what it would remove.
+	Cleanup      bool   `json:"cleanup,omitempty"`
+	CleanupAgent string `json:"cleanupAgent,omitempty"`
+	CleanupDry   bool   `json:"cleanupDry,omitempty"`
 	Scope          string  `json:"scope"`
 	Instructions   string  `json:"instructions"`
 	InstrMode      string  `json:"instrMode"`

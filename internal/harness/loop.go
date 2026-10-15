@@ -38,6 +38,7 @@ type Loop struct {
 	Reserve                        float64
 	ReviewPolicy                   string // optional per-loop provider policy
 	Effort                         string
+	Dry                            bool // cleanup starts in a dry run
 
 	gh  GH
 	set Settings
@@ -48,6 +49,7 @@ type Loop struct {
 	lastRecovery     time.Time
 	lastIdleAudit    time.Time
 	idleAuditSummary string
+	sweepSummary     string
 	limit            time.Time // set when the last agent run ended on a usage limit
 	item             int       // issue or PR being worked; zero while triaging
 	effort           string    // review override; builds keep medium
@@ -88,6 +90,9 @@ func (l *Loop) Run(ctx context.Context) error {
 		l.opt(ctx, "@loop_reserve", strconv.FormatFloat(l.Reserve, 'f', -1, 64))
 		l.opt(ctx, assignmentOption, fmt.Sprintf("%s:%d", kind, l.Task))
 		l.effort = l.Effort
+	}
+	if l.Dry {
+		l.opt(ctx, "@loop_dry", "1")
 	}
 	l.state(ctx, "idle", "")
 
@@ -148,6 +153,8 @@ func (l *Loop) Run(ctx context.Context) error {
 			did, err = l.reviewOnce(ctx)
 		case "supervise":
 			did, err = l.superviseOnce(ctx)
+		case "cleanup":
+			did, err = l.sweepOnce(ctx)
 		default:
 			l.unblock(ctx)
 			did, err = l.buildOnce(ctx)
@@ -183,8 +190,11 @@ func (l *Loop) Run(ctx context.Context) error {
 			sleep(ctx, Idle)
 		case !did:
 			note := ""
-			if l.Role == "supervise" {
+			switch l.Role {
+			case "supervise":
 				note = l.idleAuditSummary
+			case "cleanup":
+				note = l.sweepSummary
 			}
 			l.state(ctx, "idle", note)
 			sleep(ctx, Idle)
@@ -758,6 +768,17 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 	f.Close()
 	defer os.Remove(f.Name())
 
+	// Agents used to leave hundreds of drafts and dumps in /tmp. Each run
+	// gets its own folder instead, and it goes when the run ends.
+	scratch, err := os.MkdirTemp("", "remux-scratch-*")
+	if err != nil {
+		return -1, ""
+	}
+	defer os.RemoveAll(scratch)
+	if stdin != "" {
+		stdin += "\n\nPut scratch files (drafts, JSON dumps, logs) in $REMUX_SCRATCH, not /tmp. It is deleted when this run ends; keep anything that must last where the project's docs say.\n"
+	}
+
 	args := argv(f.Name())
 	started := time.Now()
 	l.recordRun(started, "start", args, 0, 0)
@@ -776,6 +797,7 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 	}
 	cmd.WaitDelay = time.Second
 	cmd.Dir = wt
+	cmd.Env = append(os.Environ(), "REMUX_SCRATCH="+scratch)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, all bytes.Buffer
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out, &all), io.MultiWriter(os.Stderr, &all)

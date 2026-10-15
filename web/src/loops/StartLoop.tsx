@@ -40,6 +40,9 @@ export function StartLoop({
   const [reviews, setReviews] = useState(init.reviews)
   const [supervise, setSupervise] = useState(init.supervise)
   const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(init.supAgent)
+  const [cleanup, setCleanup] = useState(init.cleanup)
+  const [cleanAgent, setCleanAgent] = useState<'claude' | 'codex'>(init.cleanAgent)
+  const [cleanDry, setCleanDry] = useState(init.cleanDry)
   const [scope, setScope] = useState(init.scope)
   const [instr, setInstr] = useState(init.instr)
   const [mode, setMode] = useState<'add' | 'replace'>(init.mode)
@@ -54,6 +57,9 @@ export function StartLoop({
     setReviews(f.reviews)
     setSupervise(f.supervise)
     setSupAgent(f.supAgent)
+    setCleanup(f.cleanup)
+    setCleanAgent(f.cleanAgent)
+    setCleanDry(f.cleanDry)
     setScope(f.scope)
     setInstr(f.instr)
     setMode(f.mode)
@@ -74,7 +80,7 @@ export function StartLoop({
     ...Array<'claude'>(claude).fill('claude'),
     ...Array<'codex'>(codex).fill('codex'),
   ]
-  const ok = !!target && (agents.length > 0 || reviews > 0 || supervise) && !busy
+  const ok = !!target && (agents.length > 0 || reviews > 0 || supervise || cleanup) && !busy
   const live = runningIn(target, running).length > 0
 
   return (
@@ -162,6 +168,9 @@ export function StartLoop({
             <button className={supervise ? 'on' : ''} onClick={() => setSupervise(!supervise)}>
               Supervisor
             </button>
+            <button className={cleanup ? 'on' : ''} onClick={() => setCleanup(!cleanup)}>
+              Cleanup
+            </button>
           </div>
         </div>
 
@@ -180,6 +189,28 @@ export function StartLoop({
         )}
 
         {supervise && supAgent === 'claude' && <ModelSelect label="Supervisor model" value={supModel} onChange={setSupModel} />}
+
+        {cleanup && (
+          <div className="field">
+            <label>Cleanup agent</label>
+            <div className="seg">
+              <button className={cleanAgent === 'claude' ? 'on' : ''} onClick={() => setCleanAgent('claude')}>
+                Claude
+              </button>
+              <button className={cleanAgent === 'codex' ? 'on' : ''} onClick={() => setCleanAgent('codex')}>
+                Codex
+              </button>
+            </div>
+            <div className="seg">
+              <button className={cleanDry ? 'on' : ''} onClick={() => setCleanDry(true)}>
+                Dry run (report only)
+              </button>
+              <button className={!cleanDry ? 'on' : ''} onClick={() => setCleanDry(false)}>
+                Remove leftovers
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <label>Scope name</label>
@@ -213,7 +244,7 @@ export function StartLoop({
           disabled={!ok}
           onClick={() => {
             setBusy(true)
-            void onStart({ repo: target, agents, models: [...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'), ...Array<string>(codex).fill('')], review: reviews > 0, reviews, supervise, superviseAgent: supAgent, superviseModel: supAgent === 'claude' ? supModel : '', scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
+            void onStart({ repo: target, agents, models: [...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'), ...Array<string>(codex).fill('')], review: reviews > 0, reviews, supervise, superviseAgent: supAgent, superviseModel: supAgent === 'claude' ? supModel : '', cleanup, cleanupAgent: cleanAgent, cleanupDry: cleanDry, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
               () => setBusy(false),
             )
           }}
@@ -227,7 +258,7 @@ export function StartLoop({
 
 /** The loops a start manages in repo p, running now. The chat supervisor is not one. */
 function runningIn(p: string, running: Loop[]): Loop[] {
-  return running.filter((l) => l.repo === p && (l.role === 'build' || l.role === 'review' || l.role === 'supervise'))
+  return running.filter((l) => l.repo === p && (l.role === 'build' || l.role === 'review' || l.role === 'supervise' || l.role === 'cleanup'))
 }
 
 /**
@@ -240,6 +271,7 @@ function formFor(p: string, running: Loop[], last: LoopStart | null) {
   if (mine.length) {
     const builds = mine.filter((l) => l.role === 'build')
     const sup = mine.find((l) => l.role === 'supervise')
+    const clean = mine.find((l) => l.role === 'cleanup')
     const ref = builds[0] ?? mine[0]
     return {
       claude: builds.filter((l) => l.agent === 'claude').length,
@@ -249,6 +281,9 @@ function formFor(p: string, running: Loop[], last: LoopStart | null) {
       reviews: mine.filter((l) => l.role === 'review').length,
       supervise: !!sup,
       supAgent: (sup?.agent || 'claude') as 'claude' | 'codex',
+      cleanup: !!clean,
+      cleanAgent: (clean?.agent || 'claude') as 'claude' | 'codex',
+      cleanDry: clean ? !!clean.dry : true,
       scope: ref.scope || 'full',
       instr: ref.instructions,
       mode: (ref.instrMode || 'add') as 'add' | 'replace',
@@ -264,6 +299,10 @@ function formFor(p: string, running: Loop[], last: LoopStart | null) {
     reviews: l ? (l.reviews ?? (l.review ? 1 : 0)) : 1,
     supervise: l ? !!l.supervise : true,
     supAgent: l?.superviseAgent ?? ('claude' as const),
+    cleanup: !!l?.cleanup,
+    cleanAgent: l?.cleanupAgent ?? ('claude' as const),
+    // A first cleanup only reports, so its first sweep can be read before anything goes.
+    cleanDry: l?.cleanup ? !!l.cleanupDry : true,
     scope: l?.scope ?? 'full',
     instr: l?.instructions ?? '',
     mode: l?.instrMode ?? ('add' as const),

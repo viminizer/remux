@@ -407,6 +407,25 @@ things a crash leaves behind are cleaned up on their own: `loop-*` sessions
 tmux-resurrect brings back as empty shells are removed, and `by:<session>`
 claim labels of loops that no longer exist are taken off.
 
+**Cleanup loop.** Agents leave things on the laptop after a PR merges: folders
+of evidence, drafts in `/tmp`, dev servers, database containers. Turn on
+**Cleanup** in the start form and one more loop sweeps every 30 minutes. It
+looks in `~/.local/share/<repo>/`, `~/.<repo>-*`, `/tmp/<repo>*`, the repo's
+`.claude/worktrees/`, processes started from those folders, and containers
+named `<repo>-*`. A leftover that names a closed issue or PR (`educenter-2059-pg`,
+`observations/1968-backend`) goes, unless a loop works on that number or the
+folder changed in the last day. A leftover that names no issue is shown to the
+agent, which reads the repo's docs and answers remove or keep; it never removes
+anything itself, and its answer is remembered. Folders go to
+`~/.remux/cleanup-trash/<date>/` and are erased after 7 days; processes get
+SIGTERM and containers `docker rm -f -v`. Each sweep writes
+`~/.config/remux/cleanup-<loop>.txt` (what went, what stayed and why) and every
+removal is appended to `~/.config/remux/cleanup.log`. A new cleanup loop starts
+as a **dry run** that only writes the report; start it again with **Remove
+leftovers** once the report looks right. Agents also get their own scratch
+folder per run (`$REMUX_SCRATCH`), deleted when the run ends, so `/tmp` stops
+filling up.
+
 ## Development
 
 ```bash

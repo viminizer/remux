@@ -2,7 +2,7 @@
 export interface Loop {
   name: string
   pane: string
-  role: 'build' | 'review' | 'supervise' | 'chat' | ''
+  role: 'build' | 'review' | 'supervise' | 'cleanup' | 'chat' | ''
   agent: 'claude' | 'codex' | ''
   model?: string
   repo: string
@@ -16,6 +16,8 @@ export interface Loop {
   instrMode: 'add' | 'replace' | ''
   stop: string
   note: string
+  /** A cleanup loop that only reports what it would remove. */
+  dry?: boolean
 }
 
 export interface Preset {
@@ -34,6 +36,9 @@ export interface LoopStart {
   supervise: boolean
   superviseAgent?: 'claude' | 'codex'
   superviseModel?: string
+  cleanup?: boolean
+  cleanupAgent?: 'claude' | 'codex'
+  cleanupDry?: boolean
   scope: string
   instructions: string
   instrMode: 'add' | 'replace'
@@ -72,6 +77,7 @@ export function loopWho(l: Loop): string {
   if (l.role === 'review') return n ? `review ${n}` : 'review'
   const model = l.model ? ` · ${l.model}` : ''
   if (l.role === 'supervise') return `supervisor · ${l.agent}${model}`
+  if (l.role === 'cleanup') return `cleanup · ${l.agent}${l.dry ? ' · dry run' : ''}`
   return (n ? `${l.agent} ${n}` : l.agent) + model
 }
 

@@ -246,6 +246,13 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		}
 		plans = append(plans, withInstructions(plan{name: loopName("supervise", body.Repo), role: "supervise", agent: body.SuperviseAgent, model: model}))
 	}
+	if body.Cleanup {
+		if body.CleanupAgent != "codex" {
+			body.CleanupAgent = "claude"
+		}
+		// It gets no builder brief: its own rules are the whole job.
+		plans = append(plans, plan{name: loopName("cleanup", body.Repo), role: "cleanup", agent: body.CleanupAgent, instrFrom: "the cleanup rules"})
+	}
 	if len(plans) == 0 {
 		writeErr(w, http.StatusBadRequest, "pick at least one agent")
 		return
@@ -306,7 +313,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 				// The empty stop cancels a queued "after this issue": the
 				// loop is still wanted.
 				for opt, v := range map[string]string{"@loop_scope": body.Scope, "@loop_instr": p.instr,
-					"@loop_mode": body.InstrMode, "@loop_stop": ""} {
+					"@loop_mode": body.InstrMode, "@loop_stop": "", "@loop_dry": dryOpt(p.saved(body))} {
 					if err := s.Tmux.SetLoopOption(ctx, p.name, opt, v); err != nil {
 						writeErr(w, http.StatusInternalServerError, err.Error())
 						return
@@ -367,7 +374,14 @@ type plan struct{ name, role, agent, model, instr, instrFrom string }
 
 func (p plan) saved(body config.LoopStart) config.SavedLoop {
 	return config.SavedLoop{Name: p.name, Role: p.role, Agent: p.agent, Model: p.model, Repo: body.Repo,
-		Scope: body.Scope, Instructions: p.instr, InstrMode: body.InstrMode}
+		Scope: body.Scope, Instructions: p.instr, InstrMode: body.InstrMode, Dry: p.role == "cleanup" && body.CleanupDry}
+}
+
+func dryOpt(sl config.SavedLoop) string {
+	if sl.Dry {
+		return "1"
+	}
+	return ""
 }
 
 // startLoop starts one loop session.
@@ -375,6 +389,9 @@ func (s *Server) startLoop(ctx context.Context, exe string, sl config.SavedLoop)
 	argv := []string{exe, "loop", "--role", sl.Role, "--agent", sl.Agent, "--repo", sl.Repo,
 		"--session", sl.Name, "--scope", sl.Scope, "--instructions", sl.Instructions,
 		"--mode", sl.InstrMode, "--model", sl.Model}
+	if sl.Dry {
+		argv = append(argv, "--dry")
+	}
 	if err := s.Tmux.NewLoopSession(ctx, sl.Name, sl.Repo, argv); err != nil {
 		return err
 	}
@@ -382,7 +399,8 @@ func (s *Server) startLoop(ctx context.Context, exe string, sl config.SavedLoop)
 	// moment later already knows whose loop this is, and so the scope and
 	// the brief it was given are readable before its first run.
 	for opt, v := range map[string]string{"@loop_repo": sl.Repo, "@loop_role": sl.Role, "@loop_agent": sl.Agent,
-		"@loop_model": sl.Model, "@loop_scope": sl.Scope, "@loop_instr": sl.Instructions, "@loop_mode": sl.InstrMode} {
+		"@loop_model": sl.Model, "@loop_scope": sl.Scope, "@loop_instr": sl.Instructions, "@loop_mode": sl.InstrMode,
+		"@loop_dry": dryOpt(sl)} {
 		s.Tmux.SetLoopOption(ctx, sl.Name, opt, v)
 	}
 	return nil
@@ -434,7 +452,7 @@ func (s *Server) handleRestoreLoops(w http.ResponseWriter, r *http.Request) {
 }
 
 // loopRoles are the roles a start manages. The chat supervisor is not one.
-var loopRoles = map[string]bool{"build": true, "review": true, "supervise": true}
+var loopRoles = map[string]bool{"build": true, "review": true, "supervise": true, "cleanup": true}
 
 func (s *Server) loopByName(ctx context.Context, name string) (*tmux.Loop, error) {
 	loops, err := s.Tmux.Loops(ctx)
