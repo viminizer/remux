@@ -17,6 +17,7 @@ import (
 func cmdLoop(args []string) error {
 	fs := flag.NewFlagSet("loop", flag.ContinueOnError)
 	role := fs.String("role", "build", "build or review")
+	reviewPolicy := fs.String("review-policy", "", "balanced or fixed; empty uses project settings")
 	agent := fs.String("agent", "claude", "claude or codex")
 	model := fs.String("model", "", "Claude model: sonnet or opus; empty uses CLI settings")
 	repo := fs.String("repo", "", "the repo's main checkout")
@@ -37,13 +38,16 @@ func cmdLoop(args []string) error {
 	if *task < 0 || (*task > 0 && *role != "build" && *role != "review") || (*effort != "medium" && *effort != "high") {
 		return fmt.Errorf("custom tasks need a build/review role and medium/high effort")
 	}
+	if *reviewPolicy != "" && *reviewPolicy != "balanced" && *reviewPolicy != "fixed" {
+		return fmt.Errorf("review-policy must be balanced or fixed")
+	}
 	if !harness.ValidModel(*agent, *model) {
 		return fmt.Errorf("model must be sonnet or opus for Claude, or empty for CLI settings")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	l := &harness.Loop{Role: *role, Agent: *agent, Model: *model, Repo: *repo, Session: *session, Tmux: tmux.New(),
-		Scope: *scope, Instructions: *instr, InstrMode: *mode, Task: *task, BudgetKey: *budget, Reserve: *reserve, Effort: *effort}
+		Scope: *scope, Instructions: *instr, InstrMode: *mode, Task: *task, BudgetKey: *budget, Reserve: *reserve, Effort: *effort, ReviewPolicy: *reviewPolicy}
 	if *task > 0 {
 		defer func() {
 			// Run has returned: its agent and claim defers have finished. Only
