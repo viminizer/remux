@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formFor, runningIn, restoredDraft } from '../.test-build/loopForm.js'
+import { formFor, runningIn, scopeDraftKey, scopeSelection } from '../.test-build/loopForm.js'
 
 const ordinary = {
   repo: '/repo',
@@ -125,34 +125,6 @@ test('queued stop is reported only when present', () => {
 })
 
 
-test('reload draft survives repeated render initialization until mount consumes it', () => {
-  const key = 'remux-start-update-draft'
-  const draft = {
-    saved: Date.now(),
-    target: '/typed/project',
-    form: { ...formFor('/typed/project', [], null), scope: 'custom', instr: 'Keep this guidance' },
-  }
-  const values = new Map([[key, JSON.stringify(draft)]])
-  const previous = globalThis.sessionStorage
-  globalThis.sessionStorage = {
-    getItem: (key) => values.get(key) ?? null,
-    removeItem: (key) => values.delete(key),
-  }
-  try {
-    assert.deepEqual(restoredDraft(), draft)
-    assert.deepEqual(restoredDraft(), draft)
-    assert.ok(values.has(key), 'render must not consume the draft')
-    sessionStorage.removeItem(key)
-    assert.equal(restoredDraft(), null)
-    values.set(key, JSON.stringify({ ...draft, saved: Date.now() - 300001 }))
-    assert.equal(restoredDraft(), null, 'expired drafts are ignored')
-  } finally {
-    if (previous === undefined) delete globalThis.sessionStorage
-    else globalThis.sessionStorage = previous
-  }
-})
-
-const { scopeDraftKey, scopeSelection } = await import('../.test-build/loopForm.js')
 test('saved presets sharing a scope keep distinct guidance and project drafts', () => {
   const baseline = formFor('/repo', [], null)
   const accessibility = { name: 'Accessibility', scope: 'custom', instructions: 'Keyboard access', instrMode: 'add' }

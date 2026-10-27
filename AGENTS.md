@@ -203,6 +203,15 @@ disabled.
 
 ---
 
+## UI dropdowns — Kevin's 2026-10-27 preference
+
+Use the shared `web/src/components/Select.tsx` for dropdown controls. Do not
+introduce native `<select>` controls. Start loop, its saved-scope dialog and the
+shared ModelSelect use this component; migrate unrelated existing pages only when
+that work is explicitly in scope.
+
+---
+
 ## 4. Testing rules
 
 - **Write Go tests for logic that does not need tmux**: ID validation, `list-panes` output parsing,

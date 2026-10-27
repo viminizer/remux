@@ -1316,14 +1316,14 @@ body.offline .keypad,body.offline .composer{opacity:.4;pointer-events:none}
 .foot-bar .sheet-note{margin:0 0 8px;text-align:center}
 .foot-row{display:flex;gap:8px}
 .foot-row > *{flex:1}
-.foot-bar .go{
+.foot-bar .go,.start-dialog .go{
   width:100%;padding:14px;border:0;border-radius:12px;cursor:pointer;
   background:var(--blue);color:var(--crust);font-family:var(--ui);font-size:15px;font-weight:700;
 }
-.foot-bar .go:disabled{opacity:.45;cursor:default}
-.foot-bar .go.danger{background:var(--red)}
+.foot-bar .go:disabled,.start-dialog .go:disabled,.start-dialog .cancel:disabled{opacity:.45;cursor:default}
+.foot-bar .go.danger,.start-dialog .go.danger{background:var(--red)}
 .foot-bar .go.ghost{background:var(--s0);color:var(--text)}
-.foot-bar .cancel{
+.foot-bar .cancel,.start-dialog .cancel{
   width:100%;margin-top:6px;padding:12px;border:0;border-radius:12px;cursor:pointer;
   background:transparent;color:var(--ov1);font-family:var(--ui);font-size:14px;font-weight:600;
 }
@@ -1370,13 +1370,14 @@ a.linkbtn{display:inline-block;text-decoration:none}
 .stepper-row .n{min-width:18px;text-align:center;font-family:var(--mono)}
 
 /* Start loop: project → scope → impact, in the existing Remux palette. */
+.start-loop .muted,.start-dialog .muted{font-size:11px;line-height:1.6;color:var(--ov1)}
 .start-loop .screen-head h2{flex:1;min-width:0}
-.start-loop .start-version{font:10px var(--mono);min-height:44px;max-width:48%;overflow-wrap:anywhere}
 .start-section{margin:0 0 24px;min-width:0}
 .start-section h3{font-size:12px;display:flex;align-items:center;gap:9px;margin:0 0 12px}
 .start-section h3>span{font:10px var(--mono);color:var(--blue)}
-.start-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.start-section-head .linkbtn{min-height:44px;margin-top:-10px}
+.start-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;min-height:44px}
+.start-section-head h3{margin-bottom:0}
+.start-section-head .linkbtn{min-height:44px}
 .start-path{font:10px var(--mono);color:var(--ov1);overflow-wrap:anywhere}
 .scope-choices{border:1px solid var(--s0);border-radius:12px;padding:0;margin:0;min-width:0;overflow:hidden}
 .scope-choice{display:flex;align-items:center;gap:10px;padding:14px 12px;border-bottom:1px solid var(--s0);cursor:pointer;min-height:66px}
@@ -1393,16 +1394,34 @@ a.linkbtn{display:inline-block;text-decoration:none}
 .start-advanced{border:1px solid var(--s0);border-radius:10px;padding:12px;margin-top:12px;min-width:0}
 .start-advanced summary{cursor:pointer;color:var(--sub1);font-size:12px;min-height:28px;padding:4px 0}
 .start-advanced[open] summary{margin-bottom:12px}
+.start-advanced>.field{margin-top:14px}
+.start-advanced>.start-check{margin-top:8px}
 .start-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:12px}.start-check input{accent-color:var(--blue)}
-.start-loop .field label{display:block}.start-loop select,.start-loop input,.start-loop textarea{max-width:100%;min-width:0}
-.start-loop .start-providers button{min-height:44px;flex:1}
+.start-loop .field label{display:block}.start-loop input,.start-loop textarea{max-width:100%;min-width:0}
+.start-loop .scope-choices+.field{margin-top:16px}
+.start-loop .start-providers{margin-bottom:16px;gap:8px}
+.start-loop .start-providers button{min-height:44px;flex:1;border-radius:8px}
 .start-impact{border:1px solid var(--s0);border-radius:12px;padding:14px;overflow-wrap:anywhere;font-size:12px}
 .impact-row{display:flex;gap:9px;margin:12px 0;font-size:11px;line-height:1.6}.impact-row em{font:9px var(--mono);min-width:48px;color:var(--green);padding-top:3px;font-style:normal}.impact-row.update em{color:var(--blue)}.impact-row.stop em,.impact-row.replace em{color:var(--peach)}.impact-row.error em{color:var(--red)}.impact-row span{min-width:0}
 .start-impact>.muted{border-top:1px solid var(--s0);padding-top:12px;margin-bottom:0;font-size:11px;line-height:1.6}
 .instruction-preview{margin:12px 0;font-size:11px;overflow-wrap:anywhere}.instruction-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;font:10px/1.7 var(--mono);background:var(--mantle);padding:10px;border-radius:7px}
 .start-dialog{color:var(--text);background:var(--base);border:1px solid var(--s1);border-radius:16px;padding:20px;width:min(440px,calc(100vw - 28px));max-height:85dvh;overflow:auto;box-shadow:0 20px 80px #0009}
-.start-dialog::backdrop{background:#11111bbf}.start-dialog h2{font-size:16px;margin-top:0}.start-dialog p{font-size:12px;line-height:1.6}.start-dialog .cancel{display:block;width:100%;min-height:44px;background:transparent;color:var(--sub1);border:0;margin-top:8px}.start-dialog .go{width:100%;min-height:44px;margin-top:12px}.start-dialog .field label{display:block}.start-dialog .field input,.start-dialog .field textarea,.start-dialog .field select{width:100%}
+.start-dialog::backdrop{background:#11111bbf}.start-dialog h2{font-size:16px;margin-top:0}.start-dialog p{font-size:12px;line-height:1.6}.start-dialog .cancel{display:block;min-height:44px;margin-top:8px}.start-dialog .go{width:100%;min-height:44px;margin-top:12px}.start-dialog .field{margin-bottom:18px}.start-dialog .field label{display:block;margin-bottom:8px}.start-dialog .field input,.start-dialog .field textarea{width:100%}
 .manage-scope-row{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--s0);font-size:12px}.manage-scope-row strong{flex:1;min-width:0;overflow-wrap:anywhere}.manage-scope-row button{min-height:44px}.manage-scope-row .danger{color:var(--red)}
 .start-loop :focus-visible,.start-dialog :focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .gh-screen.start-loop .screen-body{padding:16px 14px 22px}
+
+/* Custom selects share the existing field palette, including inside scope dialogs. */
+.custom-select{min-width:0;width:100%}
+.select-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:11px 12px;background:var(--mantle);border:1px solid var(--s1);border-radius:8px;color:var(--text);font:12px var(--ui);text-align:left;cursor:pointer}
+.select-trigger>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.select-trigger>span:last-child{flex:none;color:var(--ov1)}
+.select-trigger:hover:not(:disabled),.select-trigger[aria-expanded=true]{border-color:var(--blue)}
+.select-trigger:disabled{opacity:.5;cursor:default}
+.select-menu{position:fixed;z-index:1000;inset:auto;margin:0;padding:4px;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;background:var(--mantle);color:var(--text);border:1px solid var(--s1);border-radius:10px;box-shadow:0 12px 32px #0006;font:12px/1.5 var(--ui)}
+.select-option{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:10px 8px;border-radius:6px;cursor:pointer;overflow-wrap:anywhere}
+.select-option>span:first-child{min-width:0}.select-option>span:last-child{flex:none;color:var(--blue)}
+.select-option.active{background:var(--s0)}.select-option[aria-selected=true]{color:var(--blue)}.select-option[aria-disabled=true]{opacity:.5;cursor:default}
+.select-trigger:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+@media (pointer:coarse){.select-trigger,.select-menu{font-size:16px}}

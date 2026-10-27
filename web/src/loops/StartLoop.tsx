@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { api } from '../api'
-import { pullNewBuild } from '../push'
+import { Select } from '../components/Select'
 import type { HarnessRepo, Loop, LoopProject, LoopStart, Preset } from './types'
 import { ModelSelect } from './ModelSelect'
 
 const OTHER = '__other__'
-const DRAFT_KEY = 'remux-start-update-draft'
 type Form = ReturnType<typeof formFor> & { presetName?: string }
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const builtin = ['code-quality', 'frontend', 'backend']
@@ -20,40 +19,11 @@ const descriptions = [
   ['custom', 'Custom', 'Follow your own scope and session instructions.'],
 ]
 
-export function restoredDraft(): { target: string; form: Form } | null {
-  try {
-    const text = sessionStorage.getItem(DRAFT_KEY)
-    if (!text) return null
-    const v = JSON.parse(text)
-    if (
-      Date.now() - v.saved > 300000 ||
-      typeof v.target !== 'string' ||
-      !v.form ||
-      typeof v.form.scope !== 'string' ||
-      !Array.isArray(v.form.models)
-    )
-      return null
-    const f = v.form
-    if (
-      ![f.claude, f.codex, f.reviews].every(
-        (n) => Number.isInteger(n) && n >= 0 && n <= 5,
-      ) ||
-      typeof f.instr !== 'string' ||
-      !['add', 'replace'].includes(f.mode)
-    )
-      return null
-    return v
-  } catch {
-    return null
-  }
-}
-
 export function StartLoop({
   repos: offeredRepos,
   running,
   last,
   presets,
-  serverVersion,
   onBack,
   onStart,
   onSavePresets,
@@ -62,7 +32,6 @@ export function StartLoop({
   running: Loop[]
   last: LoopStart | null
   presets: Preset[]
-  serverVersion: string | null
   onBack: () => void
   onStart: (v: LoopStart) => Promise<void>
   onSavePresets: (p: Preset[]) => Promise<void>
@@ -81,24 +50,14 @@ export function StartLoop({
       })
     return () => controller.abort()
   }, [])
-  const [initial] = useState(() => restoredDraft())
-  useEffect(() => {
-    // Initializers can run twice in StrictMode or in an abandoned render.
-    // Consume the draft only once React commits the restored form.
-    try {
-      sessionStorage.removeItem(DRAFT_KEY)
-    } catch {
-      // Storage may be blocked; restoring the form is still safe.
-    }
-  }, [])
-  const first = initial?.target ?? last?.repo ?? repos[0]?.path ?? ''
+  const first = last?.repo ?? repos[0]?.path ?? ''
   const [repo, setRepo] = useState(
     repos.some((r) => r.path === first) ? first : OTHER,
   )
   const [path, setPath] = useState(first)
   const target = repo === OTHER ? path.trim() : repo
   const [form, setForm] = useState<Form>(
-    () => initial?.form ?? formFor(first, running, last),
+    () => formFor(first, running, last),
   )
   const {
     claude,
@@ -123,10 +82,7 @@ export function StartLoop({
   const ordinary = useRef<Form | null>(null)
   const scopeDrafts = useRef(new Map<string, Form>())
   const [customEditing, setCustomEditing] = useState(
-    !!initial?.form.presetName ||
-      !builtin.includes(
-        initial?.form.scope ?? formFor(first, running, last).scope,
-      ),
+    !builtin.includes(formFor(first, running, last).scope),
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -142,8 +98,6 @@ export function StartLoop({
   const [deleting, setDeleting] = useState<Preset | null>(null)
   const [saveBusy, setSaveBusy] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [update, setUpdate] = useState(false)
-  const [updating, setUpdating] = useState(false)
   const [previousTeam, setPreviousTeam] = useState<{
     key: string
     form: Form
@@ -297,7 +251,6 @@ export function StartLoop({
       setSaveBusy(false)
     }
   }
-  const stale = serverVersion !== null && serverVersion !== __BUILD_VERSION__
   const sameSlug =
     repos.filter((r) => r.slug === repos.find((x) => x.path === target)?.slug)
       .length > 1
@@ -309,15 +262,7 @@ export function StartLoop({
           ←
         </button>
         <h2>Start loop</h2>
-        <button
-          className="linkbtn start-version"
-          disabled={busy || saveBusy || updating}
-          onClick={() => setUpdate(true)}
-          aria-label={`Version ${__BUILD_VERSION__}, ${stale ? 'update available' : serverVersion ? 'check for update' : 'server version unknown'}`}
-        >
-          {__BUILD_VERSION__}
-          {stale ? ' · update ↑' : ' ⟳'}
-        </button>
+
       </div>
       <div className="screen-body loops-body">
         <section className="start-section">
@@ -325,13 +270,13 @@ export function StartLoop({
             <span>01</span> Project
           </h3>
           <div className="field">
-            <label className="sr-only" htmlFor="start-project">
+            <label className="sr-only" id="start-project-label" htmlFor="start-project">
               Project
             </label>
-            <select
+            <Select
               id="start-project"
               value={repo}
-              onChange={(e) => selectProject(e.target.value)}
+              onChange={(value) => selectProject(value)}
               disabled={busy}
             >
               {repo !== OTHER && !repos.some((r) => r.path === repo) && (
@@ -346,7 +291,7 @@ export function StartLoop({
                 </option>
               ))}
               <option value={OTHER}>Other path…</option>
-            </select>
+            </Select>
           </div>
           {choiceError && (
             <p className="muted">
@@ -437,13 +382,13 @@ export function StartLoop({
           )}
           {customEditing && presets.length > 0 && (
             <div className="field">
-              <label htmlFor="custom-saved">Saved scope</label>
-              <select
+              <label id="custom-saved-label" htmlFor="custom-saved">Saved scope</label>
+              <Select
                 id="custom-saved"
                 value={presets.some((p) => p.name === form.presetName)
                   ? `preset:${form.presetName}` : '__new__'}
-                onChange={(e) => {
-                  const preset = presets.find((p) => `preset:${p.name}` === e.target.value)
+                onChange={(value) => {
+                  const preset = presets.find((p) => `preset:${p.name}` === value)
                   selectScope(preset?.scope ?? 'full', preset)
                 }}
               >
@@ -451,7 +396,7 @@ export function StartLoop({
                 {presets.map((p) => (
                   <option key={p.name} value={`preset:${p.name}`}>{p.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           {quality ? (
@@ -561,21 +506,21 @@ export function StartLoop({
                   {supervise && (
                     <>
                       <div className="field">
-                        <label htmlFor="supervisor-agent">
+                        <label id="supervisor-agent-label" htmlFor="supervisor-agent">
                           Supervisor provider
                         </label>
-                        <select
+                        <Select
                           id="supervisor-agent"
                           value={supAgent}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             change({
-                              supAgent: e.target.value as 'claude' | 'codex',
+                              supAgent: value as 'claude' | 'codex',
                             })
                           }
                         >
                           <option value="codex">Codex</option>
                           <option value="claude">Claude</option>
-                        </select>
+                        </Select>
                       </div>
                       {supAgent === 'claude' && (
                         <ModelSelect
@@ -597,19 +542,19 @@ export function StartLoop({
                   {cleanup && (
                     <>
                       <div className="field">
-                        <label htmlFor="cleanup-agent">Cleanup provider</label>
-                        <select
+                        <label id="cleanup-agent-label" htmlFor="cleanup-agent">Cleanup provider</label>
+                        <Select
                           id="cleanup-agent"
                           value={cleanAgent}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             change({
-                              cleanAgent: e.target.value as 'claude' | 'codex',
+                              cleanAgent: value as 'claude' | 'codex',
                             })
                           }
                         >
                           <option value="codex">Codex</option>
                           <option value="claude">Claude</option>
-                        </select>
+                        </Select>
                       </div>
                       <label className="start-check">
                         <input
@@ -643,17 +588,17 @@ export function StartLoop({
                     </p>
                   )}
                   <div className="field">
-                    <label htmlFor="instruction-mode">Project defaults</label>
-                    <select
+                    <label id="instruction-mode-label" htmlFor="instruction-mode">Project defaults</label>
+                    <Select
                       id="instruction-mode"
                       value={mode}
-                      onChange={(e) =>
-                        change({ mode: e.target.value as 'add' | 'replace' })
+                      onChange={(value) =>
+                        change({ mode: value as 'add' | 'replace' })
                       }
                     >
                       <option value="add">Add to project defaults</option>
                       <option value="replace">Replace project defaults</option>
-                    </select>
+                    </Select>
                   </div>
                   <button
                     className="linkbtn"
@@ -752,7 +697,7 @@ export function StartLoop({
       <div className="foot-bar">
         <button
           className="go"
-          disabled={!valid || !info || busy || updating}
+          disabled={!valid || !info || busy}
           onClick={async () => {
             setBusy(true)
             setError('')
@@ -829,20 +774,20 @@ export function StartLoop({
                 />
               </div>
               <div className="field">
-                <label htmlFor="preset-mode">Instruction mode</label>
-                <select
+                <label id="preset-mode-label" htmlFor="preset-mode">Instruction mode</label>
+                <Select
                   id="preset-mode"
                   value={editing.instrMode}
-                  onChange={(e) =>
+                  onChange={(value) =>
                     setEditing({
                       ...editing,
-                      instrMode: e.target.value as 'add' | 'replace',
+                      instrMode: value as 'add' | 'replace',
                     })
                   }
                 >
                   <option value="add">Add to project defaults</option>
                   <option value="replace">Replace project defaults</option>
-                </select>
+                </Select>
               </div>
               <button
                 className="go"
@@ -888,7 +833,7 @@ export function StartLoop({
                 their assignments stay in place.
               </p>
               <button
-                className="go"
+                className="go danger"
                 disabled={saveBusy}
                 onClick={() =>
                   void savePresets(
@@ -955,56 +900,7 @@ export function StartLoop({
           )}
         </Dialog>
       )}
-      {update && (
-        <Dialog
-          title={
-            stale
-              ? 'A new Remux build is ready'
-              : serverVersion
-                ? 'Check for a new build'
-                : 'Server version unknown'
-          }
-          onClose={() => !updating && setUpdate(false)}
-        >
-          <p>
-            Loaded {__BUILD_VERSION__}
-            {serverVersion
-              ? ` · server ${serverVersion}`
-              : '. The server version has not been received.'}
-          </p>
-          <p>
-            Your project, scope, team and guidance will be kept in this tab for
-            five minutes across this explicit reload.
-          </p>
-          <button
-            className="go"
-            disabled={busy || saveBusy || updating}
-            onClick={async () => {
-              if (busy || saveBusy || updating) return
-              try {
-                sessionStorage.setItem(
-                  DRAFT_KEY,
-                  JSON.stringify({ saved: Date.now(), target, form }),
-                )
-              } catch {
-                setError(
-                  'Browser storage is unavailable. Your choices cannot be preserved for reload.',
-                )
-                setUpdate(false)
-                return
-              }
-              setUpdating(true)
-              await pullNewBuild()
-            }}
-          >
-            {updating
-              ? 'Updating…'
-              : stale
-                ? 'Update and reload'
-                : 'Check and reload'}
-          </button>
-        </Dialog>
-      )}
+
     </div>
   )
 }
@@ -1027,6 +923,7 @@ function Dialog({
   children: React.ReactNode
   onClose: () => void
 }) {
+  const titleId = useId()
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const dialog = ref.current
@@ -1037,12 +934,13 @@ function Dialog({
     <dialog
       ref={ref}
       className="start-dialog"
+      aria-labelledby={titleId}
       onCancel={(e) => {
         e.preventDefault()
         onClose()
       }}
     >
-      <h2>{title}</h2>
+      <h2 id={titleId}>{title}</h2>
       {children}
       <button className="cancel" onClick={onClose}>
         Done
