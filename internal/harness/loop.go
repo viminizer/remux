@@ -73,6 +73,9 @@ var RunTimeout = 90 * time.Minute
 // end: the loop shows it as blocked and tries again, because the usual causes
 // (GitHub unreachable, gh logged out) fix themselves or get fixed at the laptop.
 func (l *Loop) Run(ctx context.Context) error {
+	if l.Scope == "code-quality" && (l.Role != "build" || l.Task != 0 || l.Agent != "codex") {
+		return fmt.Errorf("code-quality requires a dedicated Codex builder without a queue task")
+	}
 	for opt, v := range map[string]string{
 		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_model": l.Model, "@loop_repo": l.Repo,
 		"@loop_scope": l.Scope, "@loop_instr": l.Instructions, "@loop_mode": l.InstrMode,
@@ -156,8 +159,12 @@ func (l *Loop) Run(ctx context.Context) error {
 		case "cleanup":
 			did, err = l.sweepOnce(ctx)
 		default:
-			l.unblock(ctx)
-			did, err = l.buildOnce(ctx)
+			if l.scope(ctx) == "code-quality" {
+				did, err = l.qualityOnce(ctx)
+			} else {
+				l.unblock(ctx)
+				did, err = l.buildOnce(ctx)
+			}
 		}
 		if l.limited() {
 			if l.Task > 0 {
@@ -212,6 +219,9 @@ func (l *Loop) setup(ctx context.Context) error {
 	}
 	l.gh = GH{Slug: slug, Dir: l.Repo}
 	l.opt(ctx, "@loop_slug", slug)
+	if l.Role == "build" && l.Scope == "code-quality" {
+		return nil // independent audit scheduler never touches the issue queue
+	}
 	if l.Task == 0 {
 		if err := l.gh.EnsureLabels(ctx); err != nil {
 			return err
@@ -755,6 +765,12 @@ func (l *Loop) codexReview(ctx context.Context, wt, base string) (int, string) {
 // spawn runs argv(last) in wt with stdin on its input. The final message is
 // the file at last when the command wrote one (Codex), else its stdout.
 func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last string) []string) (int, string) {
+	return l.spawnFiles(ctx, wt, stdin, argv, nil)
+}
+
+// spawnFiles lets the quality coordinator inherit its repository lock. On an
+// abrupt loop-process death, the coordinator still owns the open file lock.
+func (l *Loop) spawnFiles(ctx context.Context, wt, stdin string, argv func(last string) []string, files []*os.File) (int, string) {
 	timeout := l.runTimeout
 	if timeout == 0 {
 		timeout = RunTimeout
@@ -797,6 +813,7 @@ func (l *Loop) spawn(ctx context.Context, wt, stdin string, argv func(last strin
 	}
 	cmd.WaitDelay = time.Second
 	cmd.Dir = wt
+	cmd.ExtraFiles = files
 	cmd.Env = append(os.Environ(), "REMUX_SCRATCH="+scratch)
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, all bytes.Buffer

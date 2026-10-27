@@ -1526,3 +1526,93 @@ that still-running task has completed. New supervisor spawn requests use the
 same checked budgets and one-task lifecycle. Final laptop invariant passed with
 20 non-harness panes unchanged. No additional user approval was requested for
 this routine coordination, per Kevin's standing authorization.
+
+
+## 2026-10-27 — bounded code-quality scope (isolated worktree)
+
+Added a queue-independent `code-quality` builder with per-repository process
+locking, durable category rotation and interrupted-cycle handoff/report storage
+in the Git common directory. A fresh Sol coordinator runs from a dedicated clean
+checkout refreshed to `origin/main`; source changes belong in separate fix
+worktrees. Saved workflow prose requires fresh audit/implementation/review workers,
+Codex CLI plus consistency reviews on the exact candidate, visible accepted PR
+comments, current-base checks, authorized exact-head merge and task-only cleanup.
+The scheduler does not independently verify the GitHub merge gates. Completion
+receipts only control category advancement. Phone preset application selects one
+Codex builder and no separate review/supervisor/cleanup loops; the API rejects
+mixed scope plans and protects ordinary assignments/stops.
+
+Verification uses stand-in git/tmux/bunx/codex executables for the new scheduler;
+no paid agents or live quality loops were launched. Focused cases cover lock
+contention/release, orphan coordinator lock retention after runner death,
+restart/failed-run resume, dirty coordinator preservation, replace-mode isolation,
+explicit Sol selection, durable evidence, rotation,
+incomplete receipts, stop requests, missing instructions, prompt gates and invalid
+role/queue combinations. Existing harness/API suites also passed; their detached
+test sessions run stand-in commands. `scripts/laptop-invariant.sh before` and
+`after` passed (22 outside panes unchanged; an existing service's allowed
+`@remux_task` update was reported). `npm ci --ignore-scripts` populated only this
+worktree's missing frontend dependencies; `npm run build` passed afterward. No
+service was installed/restarted, configuration activated, or branch committed.
+
+Additional checks: `go vet ./internal/harness ./internal/api`, `go build ./...`
+and `git diff --check` passed. `go test ./internal/harness -run Quality -count=1`
+passed with the orphan-lock subprocess regression case. No Codex/Claude CLI was
+used in verification; their executable names were stand-in scripts.
+
+The final repeated harness/API run, vet and Go build passed. Its invariant
+comparison failed: unrelated Keystone panes `%21` and `%280` in `saas:1` changed
+height (17→22 and 36→31); the active pane moved from `saas:1.2` to `saas:1.1`.
+The attached client was unchanged (`/dev/ttys000 saas 195x55`). Read-only inspection
+found no attach/select/resize/split command in the relevant tests; those panes
+were nvim/Claude in `/Users/mac/dev/github/systems/keystone`, outside these tests'
+owned detached loop sessions. No geometry was restored and no further tmux-write
+verification was performed. The cause is not proven; this final comparison must
+not be reported as passing. The earlier comparison passed with all 22 panes
+unchanged.
+
+The parent then ran a new focused Quality-suite/invariant window: all Quality
+checks passed in 2.6 seconds and all 22 outside panes were unchanged. The earlier
+full-window comparison remains a recorded failure with unproven cause; this new
+focused comparison does not retroactively change it.
+
+## 2026-10-27 — code-quality review regression fixes
+
+Saved-loop replacement now removes only the requested repository lane (ordinary
+or code-quality), matching live reconciliation. The crash-restore regression
+starts ordinary → quality → ordinary, checks both saved counts, then restores
+both lanes with their instructions and ordinary Claude model intact.
+
+Every coordinator invocation clears runner-ok and archives any prior receipt as
+previous-complete-*.json before launch. A zero exit records success only with a
+valid clean/merged receipt and nonempty report. Invalid/partial JSON resumes the
+same recorded cycle; interrupted evidence remains available. Stand-in retries
+cover missing/invalid receipts, blank reports, and a failed invocation that writes
+new valid evidence; none advances the category before a genuinely successful run.
+
+StartLoop reconstructs lanes separately and prefers ordinary workers when both
+exist, regardless of session order. Quality-only initialization selects its one
+Codex coordinator. Scope input and presets share the same transition: entering
+quality retains the ordinary draft; leaving restores its counts/models/roles.
+Project selection reconstructs the selected repository instead of mixing lanes.
+The update label also reflects only the selected lane. Three new pure-function
+Node tests use the existing esbuild/Node setup, without another test framework.
+
+Verification: npm test --prefix web passed (25 cases); npm run build in web
+passed; go test ./internal/harness -run Quality -count=1 passed; the complete API
+suite passed; go vet ./... and go build ./... passed; git diff --check passed.
+The full go test ./... run passed every other package, including harness and tmux,
+but used the first version of the new API assertion that incorrectly expected a
+saved Codex model instead of its intentional blank value (Sol is pinned at run
+time). Correcting that assertion passed the focused crash test and full API
+suite. The final missing-receipt regression was covered by the focused Quality
+run. No additional live verification was attempted after the invariant failure.
+
+The first before/after invariant passed with 22 outside panes unchanged. The
+later comparison failed: active saas:1.1 moved to saas:1.2; pane %21 changed width
+195→97 and new pane %429 appeared at 97x22. Read-only inspection identified %21
+as nvim and %429 as Codex in the unrelated Keystone checkout. No test invokes
+split/select/attach/resize on those panes; the cause is not independently proven.
+No geometry was restored. No paid agents, live quality loops, deployment, config
+activation, commit or push was performed. Detached test sessions used stand-ins
+and their existing deferred cleanup; no remux-test session was created.

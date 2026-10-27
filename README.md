@@ -199,6 +199,41 @@ is never handed a builder's brief. A start reads
 | `.remux/instructions/review.md` | every review loop, whatever the scope |
 | `.remux/instructions/supervise.md` | the supervise loop |
 
+The `code-quality` build scope runs an independent bounded audit cycle without
+reading or claiming the ready issue queue. Save its complete workflow in
+`.remux/instructions/code-quality-build.md` or the preset instructions; there is
+no fallback to a generic builder brief. Applying its phone preset selects one
+Codex coordinator and turns off the separate review, supervisor and cleanup
+loops. Start it yourself when ready. This scope uses a dedicated
+`loop-quality-codex-<repo>` session and preserves other loops' assignments and
+queued stop requests. Its start API rejects mixed plans; use the dedicated start
+instead of changing another loop's scope to `code-quality`.
+
+Each cycle launches a fresh Sol coordinator. The supplied workflow controls fresh
+audit, implementation, Codex CLI review and consistency-review workers, including
+any explicitly authorized merge. Categories rotate through UI screens, backend
+reads, backend writes and shared components only after completion. One repository
+lock serializes quality cycles even when several processes start them. The
+coordinator inherits that lock, so an orphaned coordinator keeps it after an
+abrupt loop-process death.
+
+Reports, per-cycle saved instructions and handoffs persist privately under
+`$(git rev-parse --path-format=absolute --git-common-dir)/remux-code-quality/`.
+The coordinator runs in a separate detached checkout there, refreshed to fetched
+`origin/main` before each run; dirty coordinator files block refresh and are
+preserved. Actual fixes use their own worktrees. A failed or limited run resumes
+the same cycle and saved brief, preserving pending fixes. The current
+`cycle-*/handoff.md`, root `ledger.md` and `last-run.md` are the recovery record.
+They survive session/task-worktree removal, but are local evidence, not a backup.
+
+The scheduler requires a successful coordinator exit, a nonempty `report.md` and
+`complete.json` with outcome `clean` or `merged` before rotating. These receipts
+schedule the next cycle; they do not authorize merges. Exact-head reviews,
+accepted PR comments, checks, merge authorization and cleanup are enforced by the
+saved workflow and coordinator instructions, rather than independently verified
+by the Go scheduler. A missing brief blocks launching, native provider budget
+gates apply before spawning, and normal stop/timeout/usage behavior remains.
+
 These are session instructions, layer 2: `harness.json`'s `instructions` are still
 the project defaults underneath, unless the start asks to replace them. Whatever the
 start submits itself stands for any role the repo keeps no file for, so a repo with

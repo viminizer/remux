@@ -194,6 +194,24 @@ func TestLoopLifecycle(t *testing.T) {
 		t.Errorf("queued stop = %q, want it cancelled", v)
 	}
 
+	// Quality is additive and cannot take over or stop ordinary workers.
+	qualityName := "loop-quality-codex-harness-api-test"
+	defer tm.KillLoop(ctx, qualityName)
+	tm.SetLoopOption(ctx, name, "@loop_stop", "after")
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"codex"}, "scope": "code-quality", "instructions": "bounded audit brief", "instrMode": "replace"}); code != http.StatusOK ||
+		!strings.Contains(string(body), qualityName) || !strings.Contains(string(body), `"stopped":[]`) {
+		t.Fatalf("quality start: %d %s", code, body)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_stop"); v != "after" {
+		t.Errorf("quality start changed ordinary stop request: %q", v)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_scope"); v == "code-quality" {
+		t.Error("quality took over ordinary worker")
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"scope": "code-quality"}); code != http.StatusBadRequest {
+		t.Error("ordinary loop switched into quality")
+	}
+
 	// Another repo with the same folder name would share these sessions.
 	twin := filepath.Join(t.TempDir(), "harness-api-test")
 	os.MkdirAll(twin, 0o755)
@@ -242,10 +260,25 @@ func TestRestoreAfterCrash(t *testing.T) {
 	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK {
 		t.Fatalf("start: %d %s", code, body)
 	}
+	quality := "loop-quality-codex-restore-api-test"
+	defer tm.KillLoop(ctx, quality)
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"codex"}, "scope": "code-quality", "instructions": "retained quality", "instrMode": "replace"}); code != http.StatusOK {
+		t.Fatalf("quality: %d %s", code, body)
+	}
+	if c, _ := config.Load(); len(c.SavedLoops) != 4 {
+		t.Fatalf("quality dropped ordinary settings: %+v", c.SavedLoops)
+	}
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "models": []string{"sonnet", "opus"}, "reviews": 1, "instructions": "retained ordinary"}); code != http.StatusOK {
+		t.Fatalf("ordinary: %d %s", code, body)
+	}
+	if c, _ := config.Load(); len(c.SavedLoops) != 4 {
+		t.Fatalf("ordinary dropped quality settings: %+v", c.SavedLoops)
+	}
 	do(t, ts, "PATCH", "/api/loops/"+build, map[string]any{"scope": "frontend"})
 	do(t, ts, "DELETE", "/api/loops/"+build2, nil)
 
 	// The crash: every session gone, one back as an empty shell.
+	tm.KillLoop(ctx, quality)
 	tm.KillLoop(ctx, build)
 	tm.KillLoop(ctx, review)
 	tm.NewLoopSession(ctx, review, repo, []string{"sh", "-c", "sleep 60"})
@@ -258,12 +291,22 @@ func TestRestoreAfterCrash(t *testing.T) {
 		json.Unmarshal(body, &got)
 		return got.Missing
 	}
-	if got := strings.Join(missing(), ","); got != build+","+review {
+	if got := strings.Join(missing(), ","); got != quality+","+build+","+review {
 		t.Fatalf("missing = %q, want both saved loops and not the stopped one", got)
 	}
 	if code, body := do(t, ts, "POST", "/api/loops/restore", nil); code != http.StatusOK ||
-		!strings.Contains(string(body), `"started":["`+build+`","`+review+`"]`) {
+		!strings.Contains(string(body), `"started":["`+quality+`","`+build+`","`+review+`"]`) {
 		t.Fatalf("restore: %d %s", code, body)
+	}
+	for session, options := range map[string]map[string]string{
+		quality: {"@loop_scope": "code-quality", "@loop_instr": "retained quality", "@loop_model": ""},
+		build:   {"@loop_instr": "retained ordinary", "@loop_model": "sonnet"},
+	} {
+		for option, want := range options {
+			if v, _ := tm.LoopOption(ctx, session, option); v != want {
+				t.Errorf("restored %s %s = %q, want %q", session, option, v, want)
+			}
+		}
 	}
 	if v, _ := tm.LoopOption(ctx, build, "@loop_scope"); v != "frontend" {
 		t.Errorf("restored scope = %q, want the edited one", v)
@@ -278,7 +321,7 @@ func TestRestoreAfterCrash(t *testing.T) {
 		t.Errorf("missing after restore = %v", got)
 	}
 	// Saved on disk, so a restarted server still knows them.
-	if c, _ := config.Load(); len(c.SavedLoops) != 2 {
+	if c, _ := config.Load(); len(c.SavedLoops) != 3 {
 		t.Errorf("saved on disk = %+v", c.SavedLoops)
 	}
 }
@@ -418,5 +461,23 @@ func TestStartLoadsEachRolesInstructionsFromTheRepo(t *testing.T) {
 	}
 	if got, _ := tm.LoopOption(ctx, builder, "@loop_instr"); got != "rewritten brief\n" {
 		t.Errorf("a running loop kept stale instructions: %q", got)
+	}
+}
+
+func TestQualityStartRejectsMixedPlansBeforeTmux(t *testing.T) {
+	for _, body := range []string{
+		`{"repo":"/repo","scope":"code-quality","agents":["claude"]}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"reviews":1}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"supervise":true}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"cleanup":true}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex","codex"]}`,
+	} {
+		s := &Server{}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/loops", strings.NewReader(body))
+		s.handleStartLoops(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", body, w.Code)
+		}
 	}
 }

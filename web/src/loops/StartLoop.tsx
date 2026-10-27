@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import type { HarnessRepo, Loop, LoopStart, Preset } from './types'
 import { ModelSelect } from './ModelSelect'
@@ -48,8 +48,8 @@ export function StartLoop({
   const [mode, setMode] = useState<'add' | 'replace'>(init.mode)
   const [busy, setBusy] = useState(false)
 
-  const fill = (p: string) => {
-    const f = formFor(p, running, last)
+  const ordinary = useRef<ReturnType<typeof formFor> | null>(null)
+  const applyForm = (f: ReturnType<typeof formFor>) => {
     setClaude(f.claude)
     setModels(f.models)
     setSupModel(f.supModel)
@@ -65,11 +65,30 @@ export function StartLoop({
     setMode(f.mode)
   }
 
+  const fill = (p: string) => {
+    ordinary.current = null
+    applyForm(formFor(p, running, last))
+  }
+  const selectScope = (next: string) => {
+    if (next === 'code-quality' && scope !== 'code-quality') {
+      ordinary.current = { claude, models, supModel, codex, reviews, supervise, supAgent, cleanup, cleanAgent, cleanDry, scope, instr, mode }
+      setClaude(0)
+      setCodex(1)
+      setReviews(0)
+      setSupervise(false)
+      setCleanup(false)
+    } else if (next !== 'code-quality' && scope === 'code-quality') {
+      applyForm(ordinary.current ?? formFor(repo === OTHER ? path.trim() : repo, running.filter((l) => l.scope !== 'code-quality'), last?.scope === 'code-quality' ? null : last))
+    }
+    setScope(next)
+  }
+
   const apply = (p: Preset) => {
-    setScope(p.scope || 'full')
+    selectScope(p.scope || 'full')
     setInstr(p.instructions)
     setMode(p.instrMode)
   }
+
   const save = () => {
     const name = scope.trim() || 'full'
     const next = [...presets.filter((p) => p.name !== name), { name, scope: name, instructions: instr, instrMode: mode }]
@@ -81,7 +100,7 @@ export function StartLoop({
     ...Array<'codex'>(codex).fill('codex'),
   ]
   const ok = !!target && (agents.length > 0 || reviews > 0 || supervise || cleanup) && !busy
-  const live = runningIn(target, running).length > 0
+  const live = runningIn(target, running, scope === 'code-quality').length > 0
 
   return (
     <div className="screen on gh-screen">
@@ -93,6 +112,7 @@ export function StartLoop({
       </div>
 
       <div className="screen-body loops-body">
+        {scope === 'code-quality' && <p className="muted">One Codex coordinator runs serial audits and owns both review phases. Existing loops keep their assignments. Reports and unfinished work survive restarts.</p>}
         {presets.length > 0 && (
           <div className="sec">
             <h3>Presets</h3>
@@ -214,7 +234,7 @@ export function StartLoop({
 
         <div className="field">
           <label>Scope name</label>
-          <input value={scope} onChange={(e) => setScope(e.target.value)} spellCheck={false} autoCapitalize="off" />
+          <input value={scope} onChange={(e) => selectScope(e.target.value)} spellCheck={false} autoCapitalize="off" />
         </div>
         <div className="field">
           <label>Session instructions</label>
@@ -257,8 +277,8 @@ export function StartLoop({
 }
 
 /** The loops a start manages in repo p, running now. The chat supervisor is not one. */
-function runningIn(p: string, running: Loop[]): Loop[] {
-  return running.filter((l) => l.repo === p && (l.role === 'build' || l.role === 'review' || l.role === 'supervise' || l.role === 'cleanup'))
+export function runningIn(p: string, running: Loop[], quality: boolean): Loop[] {
+  return running.filter((l) => l.repo === p && (l.scope === 'code-quality') === quality && (l.role === 'build' || l.role === 'review' || l.role === 'supervise' || l.role === 'cleanup'))
 }
 
 /**
@@ -266,8 +286,9 @@ function runningIn(p: string, running: Loop[]): Loop[] {
  * that is really running. With nothing running, the last start, if it was in
  * this repo.
  */
-function formFor(p: string, running: Loop[], last: LoopStart | null) {
-  const mine = runningIn(p, running)
+export function formFor(p: string, running: Loop[], last: LoopStart | null) {
+  const ordinary = runningIn(p, running, false)
+  const mine = ordinary.length ? ordinary : runningIn(p, running, true)
   if (mine.length) {
     const builds = mine.filter((l) => l.role === 'build')
     const sup = mine.find((l) => l.role === 'supervise')
