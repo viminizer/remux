@@ -35,12 +35,14 @@ export function LoopsRoutes({
   data,
   refresh,
   onClose,
+  serverVersion,
 }: {
   route: Route
   go: (r: Route) => void
   data: LoopsPayload | null
   refresh: () => Promise<void>
   onClose: () => void
+  serverVersion: string | null
 }) {
   const [inbox, setInbox] = useState<HarnessItem[] | null>(null)
   const [errors, setErrors] = useState<string[]>([])
@@ -98,8 +100,10 @@ export function LoopsRoutes({
   }
 
   if (route.name === 'loopStart') {
+    if (!data) return <div className="screen on gh-screen"><div className="screen-head"><button className="iconbtn" onClick={onClose} aria-label="Back">←</button><h2>Start loop</h2></div><p className="loading">Loading projects and loops…</p></div>
     return (
       <StartLoop
+        serverVersion={serverVersion}
         repos={data?.repos ?? []}
         running={data?.loops ?? []}
         last={data?.last ?? null}
@@ -112,7 +116,7 @@ export function LoopsRoutes({
             await refresh()
             go({ name: 'loops', tab: 'loops' })
           } catch (e) {
-            say(e)
+            throw e
           }
         }}
         onSavePresets={async (p) => {
@@ -120,7 +124,7 @@ export function LoopsRoutes({
             await api.savePresets(p)
             await refresh()
           } catch (e) {
-            say(e)
+            throw e
           }
         }}
       />

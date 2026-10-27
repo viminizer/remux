@@ -1,21 +1,59 @@
-import { useRef, useState } from 'react'
-
-import type { HarnessRepo, Loop, LoopStart, Preset } from './types'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '../api'
+import { pullNewBuild } from '../push'
+import type { HarnessRepo, Loop, LoopProject, LoopStart, Preset } from './types'
 import { ModelSelect } from './ModelSelect'
 
 const OTHER = '__other__'
+const DRAFT_KEY = 'remux-start-update-draft'
+type Form = ReturnType<typeof formFor>
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const builtin = ['code-quality', 'frontend', 'backend']
+const descriptions = [
+  [
+    'code-quality',
+    'Code quality',
+    'Audit, fix and review the codebase, one task at a time.',
+  ],
+  ['frontend', 'Frontend', 'Build and improve the interface and user flows.'],
+  ['backend', 'Backend', 'Work on APIs, services and data behavior.'],
+  ['custom', 'Custom', 'Follow your own scope and session instructions.'],
+]
 
-/**
- * The loops one repo should have. Start makes the repo match: missing loops
- * start, extra ones stop, running ones take the new scope and instructions.
- * The form shows the loops running in the repo, or the last start when none
- * are, and a saved preset fills the instructions in one tap.
- */
+export function restoredDraft(): { target: string; form: Form } | null {
+  try {
+    const text = sessionStorage.getItem(DRAFT_KEY)
+    if (!text) return null
+    const v = JSON.parse(text)
+    if (
+      Date.now() - v.saved > 300000 ||
+      typeof v.target !== 'string' ||
+      !v.form ||
+      typeof v.form.scope !== 'string' ||
+      !Array.isArray(v.form.models)
+    )
+      return null
+    const f = v.form
+    if (
+      ![f.claude, f.codex, f.reviews].every(
+        (n) => Number.isInteger(n) && n >= 0 && n <= 5,
+      ) ||
+      typeof f.instr !== 'string' ||
+      !['add', 'replace'].includes(f.mode)
+    )
+      return null
+    return v
+  } catch {
+    return null
+  }
+}
+
 export function StartLoop({
-  repos,
+  repos: offeredRepos,
   running,
   last,
   presets,
+  serverVersion,
   onBack,
   onStart,
   onSavePresets,
@@ -24,261 +62,1112 @@ export function StartLoop({
   running: Loop[]
   last: LoopStart | null
   presets: Preset[]
+  serverVersion: string | null
   onBack: () => void
   onStart: (v: LoopStart) => Promise<void>
   onSavePresets: (p: Preset[]) => Promise<void>
 }) {
-  const known = (p: string) => repos.some((r) => r.path === p)
-  const first = last?.repo ?? repos[0]?.path ?? ''
-  const [repo, setRepo] = useState(first && known(first) ? first : first ? OTHER : '')
-  const [path, setPath] = useState(first && !known(first) ? first : '')
-  const init = formFor(first, running, last)
-  const [claude, setClaude] = useState(init.claude)
-  const [models, setModels] = useState(init.models)
-  const [supModel, setSupModel] = useState(init.supModel)
-  const [codex, setCodex] = useState(init.codex)
-  const [reviews, setReviews] = useState(init.reviews)
-  const [supervise, setSupervise] = useState(init.supervise)
-  const [supAgent, setSupAgent] = useState<'claude' | 'codex'>(init.supAgent)
-  const [cleanup, setCleanup] = useState(init.cleanup)
-  const [cleanAgent, setCleanAgent] = useState<'claude' | 'codex'>(init.cleanAgent)
-  const [cleanDry, setCleanDry] = useState(init.cleanDry)
-  const [scope, setScope] = useState(init.scope)
-  const [instr, setInstr] = useState(init.instr)
-  const [mode, setMode] = useState<'add' | 'replace'>(init.mode)
-  const [busy, setBusy] = useState(false)
-
-  const ordinary = useRef<ReturnType<typeof formFor> | null>(null)
-  const applyForm = (f: ReturnType<typeof formFor>) => {
-    setClaude(f.claude)
-    setModels(f.models)
-    setSupModel(f.supModel)
-    setCodex(f.codex)
-    setReviews(f.reviews)
-    setSupervise(f.supervise)
-    setSupAgent(f.supAgent)
-    setCleanup(f.cleanup)
-    setCleanAgent(f.cleanAgent)
-    setCleanDry(f.cleanDry)
-    setScope(f.scope)
-    setInstr(f.instr)
-    setMode(f.mode)
-  }
-
-  const fill = (p: string) => {
-    ordinary.current = null
-    applyForm(formFor(p, running, last))
-  }
-  const selectScope = (next: string) => {
-    if (next === 'code-quality' && scope !== 'code-quality') {
-      ordinary.current = { claude, models, supModel, codex, reviews, supervise, supAgent, cleanup, cleanAgent, cleanDry, scope, instr, mode }
-      setClaude(0)
-      setCodex(1)
-      setReviews(0)
-      setSupervise(false)
-      setCleanup(false)
-    } else if (next !== 'code-quality' && scope === 'code-quality') {
-      applyForm(ordinary.current ?? formFor(repo === OTHER ? path.trim() : repo, running.filter((l) => l.scope !== 'code-quality'), last?.scope === 'code-quality' ? null : last))
+  const [repos, setRepos] = useState(offeredRepos)
+  const [choiceError, setChoiceError] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    api
+      .loopProjects(controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setRepos(value)
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setChoiceError(message(e))
+      })
+    return () => controller.abort()
+  }, [])
+  const [initial] = useState(() => restoredDraft())
+  useEffect(() => {
+    // Initializers can run twice in StrictMode or in an abandoned render.
+    // Consume the draft only once React commits the restored form.
+    try {
+      sessionStorage.removeItem(DRAFT_KEY)
+    } catch {
+      // Storage may be blocked; restoring the form is still safe.
     }
-    setScope(next)
-  }
-
-  const apply = (p: Preset) => {
-    selectScope(p.scope || 'full')
-    setInstr(p.instructions)
-    setMode(p.instrMode)
-  }
-
-  const save = () => {
-    const name = scope.trim() || 'full'
-    const next = [...presets.filter((p) => p.name !== name), { name, scope: name, instructions: instr, instrMode: mode }]
-    void onSavePresets(next)
-  }
+  }, [])
+  const first = initial?.target ?? last?.repo ?? repos[0]?.path ?? ''
+  const [repo, setRepo] = useState(
+    repos.some((r) => r.path === first) ? first : OTHER,
+  )
+  const [path, setPath] = useState(first)
   const target = repo === OTHER ? path.trim() : repo
-  const agents = [
-    ...Array<'claude'>(claude).fill('claude'),
-    ...Array<'codex'>(codex).fill('codex'),
-  ]
-  const ok = !!target && (agents.length > 0 || reviews > 0 || supervise || cleanup) && !busy
-  const live = runningIn(target, running, scope === 'code-quality').length > 0
+  const [form, setForm] = useState<Form>(
+    () => initial?.form ?? formFor(first, running, last),
+  )
+  const {
+    claude,
+    codex,
+    models,
+    reviews,
+    supervise,
+    supAgent,
+    supModel,
+    cleanup,
+    cleanAgent,
+    cleanDry,
+    scope,
+    instr,
+    mode,
+  } = form
+  const change = (v: Partial<Form>) => {
+    setForm((f) => ({ ...f, ...v }))
+    setError('')
+  }
+  const drafts = useRef(new Map<string, Form>())
+  const ordinary = useRef<Form | null>(null)
+  const scopeDrafts = useRef(new Map<string, Form>())
+  const [customEditing, setCustomEditing] = useState(
+    !builtin.includes(
+      initial?.form.scope ?? formFor(first, running, last).scope,
+    ),
+  )
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [metadata, setMetadata] = useState<{
+    key: string
+    value: LoopProject
+  } | null>(null)
+  const [metaError, setMetaError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [manage, setManage] = useState(false)
+  const [editing, setEditing] = useState<Preset | null>(null)
+  const [originalName, setOriginalName] = useState('')
+  const [deleting, setDeleting] = useState<Preset | null>(null)
+  const [saveBusy, setSaveBusy] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [update, setUpdate] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [previousTeam, setPreviousTeam] = useState<{
+    key: string
+    form: Form
+  } | null>(null)
+  const metaKey = `${target}\n${scope || 'full'}`
+  const info = metadata?.key === metaKey ? metadata.value : null
+  const quality = scope === 'code-quality'
+  useEffect(() => {
+    const controller = new AbortController()
+    setMetaError('')
+    if (!target) return () => controller.abort()
+    const timer = setTimeout(
+      () => {
+        api
+          .loopProject(
+            target,
+            /^[a-z0-9][a-z0-9-]{0,19}$/.test(scope) ? scope : 'full',
+            controller.signal,
+          )
+          .then((value) => {
+            if (controller.signal.aborted) return
+            setMetadata({ key: metaKey, value })
+            if (scope === 'code-quality' && !value.quality)
+              setForm((f) => ({ ...(ordinary.current ?? f), scope: '' }))
+          })
+          .catch((e) => {
+            if (!controller.signal.aborted) setMetaError(message(e))
+          })
+      },
+      repo === OTHER ? 350 : 0,
+    )
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [target, scope, metaKey, retry, repo])
+
+  const selectProject = (next: string) => {
+    drafts.current.set(target, form)
+    setRepo(next)
+    ordinary.current = null
+    const nextTarget = next === OTHER ? path.trim() : next
+    const nextForm =
+      drafts.current.get(nextTarget) ?? formFor(nextTarget, running, last)
+    const prior =
+      drafts.current.has(nextTarget) ||
+      runningIn(nextTarget, running, false).length > 0 ||
+      runningIn(nextTarget, running, true).length > 0 ||
+      last?.repo === nextTarget
+    const keepQuality = quality && !prior
+    setForm(keepQuality ? { ...nextForm, scope: 'code-quality' } : nextForm)
+    setCustomEditing(!keepQuality && !builtin.includes(nextForm.scope))
+    setError('')
+  }
+  const selectScope = (next: string, preset?: Preset) => {
+    scopeDrafts.current.set(`${target}\n${scope}`, form)
+    setCustomEditing(!builtin.includes(next))
+    let nextForm = form
+    if (next === 'code-quality' && !quality) {
+      ordinary.current = form
+      nextForm = {
+        ...form,
+        claude: 0,
+        codex: 1,
+        reviews: 0,
+        supervise: false,
+        cleanup: false,
+      }
+    }
+    if (next !== 'code-quality' && quality)
+      nextForm =
+        ordinary.current ??
+        formFor(
+          target,
+          running.filter((l) => l.scope !== 'code-quality'),
+          last?.scope === 'code-quality' ? null : last,
+        )
+    const savedDraft = scopeDrafts.current.get(`${target}\n${next}`)
+    const saved = preset ?? presets.find((p) => p.scope === next)
+    change({
+      ...(savedDraft ?? nextForm),
+      scope: next,
+      ...(!savedDraft && saved
+        ? { instr: saved.instructions, mode: saved.instrMode }
+        : {}),
+    })
+  }
+  const provider = (agent: 'codex' | 'claude') => {
+    setPreviousTeam({ key: `${target}\n${scope}`, form })
+    change({
+      claude: agent === 'claude' ? 1 : 0,
+      codex: agent === 'codex' ? 1 : 0,
+    })
+  }
+  const effectiveTarget = info?.repo ?? target
+  const live = runningIn(effectiveTarget, running, quality)
+  const request: LoopStart = {
+    repo: effectiveTarget,
+    agents: quality
+      ? ['codex']
+      : [
+          ...Array<'claude'>(claude).fill('claude'),
+          ...Array<'codex'>(codex).fill('codex'),
+        ],
+    models: quality
+      ? ['']
+      : [
+          ...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'),
+          ...Array<string>(codex).fill(''),
+        ],
+    review: !quality && reviews > 0,
+    reviews: quality ? 0 : reviews,
+    supervise: !quality && supervise,
+    superviseAgent: supAgent,
+    superviseModel: supAgent === 'claude' ? supModel : '',
+    cleanup: !quality && cleanup,
+    cleanupAgent: cleanAgent,
+    cleanupDry: cleanDry,
+    scope,
+    instructions: instr,
+    instrMode: mode,
+  }
+  const activeRoles: ('build' | 'review' | 'supervise')[] = quality
+    ? ['build']
+    : [
+        ...(claude + codex > 0 ? (['build'] as const) : []),
+        ...(reviews ? (['review'] as const) : []),
+        ...(supervise ? (['supervise'] as const) : []),
+      ]
+  const impact = previewImpact(request, running)
+  const valid =
+    !!target &&
+    /^[a-z0-9][a-z0-9-]{0,19}$/.test(scope) &&
+    (quality
+      ? !!info?.quality
+      : request.agents.length + reviews + Number(supervise) + Number(cleanup) >
+        0)
+  const editPreset = (p: Preset, original = p.name) => {
+    setOriginalName(original)
+    setEditing({ ...p })
+    setSaveError('')
+  }
+  const savePresets = async (next: Preset[], done: () => void) => {
+    setSaveBusy(true)
+    setSaveError('')
+    try {
+      await onSavePresets(next)
+      done()
+    } catch (e) {
+      setSaveError(message(e))
+    } finally {
+      setSaveBusy(false)
+    }
+  }
+  const stale = serverVersion !== null && serverVersion !== __BUILD_VERSION__
+  const sameSlug =
+    repos.filter((r) => r.slug === repos.find((x) => x.path === target)?.slug)
+      .length > 1
 
   return (
-    <div className="screen on gh-screen">
+    <div className="screen on gh-screen start-loop">
       <div className="screen-head">
         <button className="iconbtn" onClick={onBack} aria-label="Back">
           ←
         </button>
         <h2>Start loop</h2>
-      </div>
-
-      <div className="screen-body loops-body">
-        {scope === 'code-quality' && <p className="muted">One Codex coordinator runs serial audits and owns both review phases. Existing loops keep their assignments. Reports and unfinished work survive restarts.</p>}
-        {presets.length > 0 && (
-          <div className="sec">
-            <h3>Presets</h3>
-            <div className="chipset">
-              {presets.map((p) => (
-                <span key={p.name} className="chip">
-                  <button className="chip-pick" onClick={() => apply(p)}>
-                    {p.name}
-                  </button>
-                  <button
-                    className="chip-x"
-                    aria-label={`Delete ${p.name}`}
-                    onClick={() => void onSavePresets(presets.filter((x) => x.name !== p.name))}
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="field">
-          <label>Project</label>
-          <select
-            value={repo}
-            onChange={(e) => {
-              setRepo(e.target.value)
-              if (e.target.value !== OTHER) fill(e.target.value)
-            }}
-          >
-            {repos.map((r) => (
-              <option key={r.path} value={r.path}>
-                {r.slug}
-              </option>
-            ))}
-            <option value={OTHER}>Other path…</option>
-          </select>
-        </div>
-        {repo === OTHER && (
-          <div className="field">
-            <label>Repo path on the Mac</label>
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="~/Desktop/github/remux"
-              spellCheck={false}
-              autoCapitalize="off"
-            />
-          </div>
-        )}
-
-        <div className="field">
-          <label>Build loops</label>
-          <Stepper name="Claude" value={claude} onChange={setClaude} />
-          <Stepper name="Codex" value={codex} onChange={setCodex} />
-        </div>
-
-        {Array.from({ length: claude }, (_, i) => (
-          <ModelSelect key={i} label={`Claude ${i + 1} model`} value={models[i] ?? 'opus'} onChange={(v) => {
-            setModels((old) => Array.from({ length: claude }, (_, j) => j === i ? v : old[j] ?? 'opus'))
-          }} />
-        ))}
-
-        <div className="field">
-          <label>Review loops</label>
-          <Stepper name="Review (Codex)" value={reviews} onChange={setReviews} />
-        </div>
-
-        <div className="field">
-          <label>Also run</label>
-          <div className="seg toggles">
-            <button className={supervise ? 'on' : ''} onClick={() => setSupervise(!supervise)}>
-              Supervisor
-            </button>
-            <button className={cleanup ? 'on' : ''} onClick={() => setCleanup(!cleanup)}>
-              Cleanup
-            </button>
-          </div>
-        </div>
-
-        {supervise && (
-          <div className="field">
-            <label>Supervisor agent</label>
-            <div className="seg">
-              <button className={supAgent === 'claude' ? 'on' : ''} onClick={() => setSupAgent('claude')}>
-                Claude
-              </button>
-              <button className={supAgent === 'codex' ? 'on' : ''} onClick={() => setSupAgent('codex')}>
-                Codex
-              </button>
-            </div>
-          </div>
-        )}
-
-        {supervise && supAgent === 'claude' && <ModelSelect label="Supervisor model" value={supModel} onChange={setSupModel} />}
-
-        {cleanup && (
-          <div className="field">
-            <label>Cleanup agent</label>
-            <div className="seg">
-              <button className={cleanAgent === 'claude' ? 'on' : ''} onClick={() => setCleanAgent('claude')}>
-                Claude
-              </button>
-              <button className={cleanAgent === 'codex' ? 'on' : ''} onClick={() => setCleanAgent('codex')}>
-                Codex
-              </button>
-            </div>
-            <div className="seg">
-              <button className={cleanDry ? 'on' : ''} onClick={() => setCleanDry(true)}>
-                Dry run (report only)
-              </button>
-              <button className={!cleanDry ? 'on' : ''} onClick={() => setCleanDry(false)}>
-                Remove leftovers
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="field">
-          <label>Scope name</label>
-          <input value={scope} onChange={(e) => selectScope(e.target.value)} spellCheck={false} autoCapitalize="off" />
-        </div>
-        <div className="field">
-          <label>Session instructions</label>
-          <textarea
-            value={instr}
-            onChange={(e) => setInstr(e.target.value)}
-            rows={3}
-            placeholder="Only do the backend parts of the issues."
-          />
-        </div>
-        <div className="seg">
-          <button className={mode === 'add' ? 'on' : ''} onClick={() => setMode('add')}>
-            Add to project defaults
-          </button>
-          <button className={mode === 'replace' ? 'on' : ''} onClick={() => setMode('replace')}>
-            Replace them
-          </button>
-        </div>
-        <button className="linkbtn" onClick={save} disabled={!instr.trim()}>
-          Save as preset “{scope.trim() || 'full'}”
+        <button
+          className="linkbtn start-version"
+          disabled={busy || saveBusy || updating}
+          onClick={() => setUpdate(true)}
+          aria-label={`Version ${__BUILD_VERSION__}, ${stale ? 'update available' : serverVersion ? 'check for update' : 'server version unknown'}`}
+        >
+          {__BUILD_VERSION__}
+          {stale ? ' · update ↑' : ' ⟳'}
         </button>
       </div>
+      <div className="screen-body loops-body">
+        <section className="start-section">
+          <h3>
+            <span>01</span> Project
+          </h3>
+          <div className="field">
+            <label className="sr-only" htmlFor="start-project">
+              Project
+            </label>
+            <select
+              id="start-project"
+              value={repo}
+              onChange={(e) => selectProject(e.target.value)}
+              disabled={busy}
+            >
+              {repo !== OTHER && !repos.some((r) => r.path === repo) && (
+                <option value={repo}>Unavailable project · {repo}</option>
+              )}
+              {repos.map((r) => (
+                <option key={r.path} value={r.path}>
+                  {r.slug}
+                  {repos.filter((x) => x.slug === r.slug).length > 1
+                    ? ` · ${r.path}`
+                    : ''}
+                </option>
+              ))}
+              <option value={OTHER}>Other path…</option>
+            </select>
+          </div>
+          {choiceError && (
+            <p className="muted">
+              Project choices could not be verified; showing known paths.{' '}
+              {choiceError}
+            </p>
+          )}
+          {repo === OTHER && (
+            <div className="field">
+              <label htmlFor="start-path">Repo path on the Mac</label>
+              <input
+                id="start-path"
+                value={path}
+                onChange={(e) => {
+                  drafts.current.set(target, form)
+                  setPath(e.target.value)
+                }}
+                spellCheck={false}
+                autoCapitalize="off"
+                placeholder="/Users/you/projects/remux"
+                disabled={busy}
+              />
+            </div>
+          )}
+          {sameSlug && <p className="start-path">{target}</p>}
+        </section>
+        <section className="start-section">
+          <div className="start-section-head">
+            <h3>
+              <span>02</span> Scope
+            </h3>
+            <button
+              className="linkbtn"
+              onClick={() => {
+                setManage(true)
+                setSaveError('')
+              }}
+            >
+              Manage scopes
+            </button>
+          </div>
+          <fieldset className="scope-choices" disabled={busy}>
+            <legend className="sr-only">Scope</legend>
+            {descriptions.map(([id, name, description]) => (
+              <label className="scope-choice" key={id}>
+                <input
+                  type="radio"
+                  name="start-scope"
+                  value={id}
+                  checked={
+                    id === 'custom'
+                      ? !!scope && !builtin.includes(scope)
+                      : scope === id
+                  }
+                  disabled={id === 'code-quality' && !info?.quality}
+                  onChange={() => selectScope(id === 'custom' ? 'full' : id)}
+                />
+                <span>
+                  <strong>{name}</strong>
+                  <small>
+                    {description}
+                    {id === 'code-quality' && !info?.quality
+                      ? metaError
+                        ? ' Availability unknown.'
+                        : info
+                          ? ' No workflow configured.'
+                          : ' Checking workflow…'
+                      : ''}
+                  </small>
+                </span>
+                {id === 'code-quality' && (
+                  <span className="scope-tag">FIXED TEAM</span>
+                )}
+              </label>
+            ))}
+          </fieldset>
 
+          {metaError && (
+            <p className="loaderr" role="alert">
+              Could not read project workflow: {metaError}{' '}
+              <button
+                className="linkbtn"
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry
+              </button>
+            </p>
+          )}
+          {quality ? (
+            <div className="quality-team">
+              <strong>1 Sol coordinator · serial audits</strong>
+              <p>Audit → Fix → Review gate 1 → Review gate 2</p>
+              <small>
+                Fresh internal workers and two reviews. No extra Remux reviewer
+                loops.
+              </small>
+            </div>
+          ) : (
+            (scope || customEditing) && (
+              <>
+                <p className="muted">Agent for this work</p>
+                <div className="seg start-providers">
+                  <button
+                    aria-pressed={codex === 1 && claude === 0}
+                    className={codex === 1 && claude === 0 ? 'on' : ''}
+                    onClick={() => provider('codex')}
+                  >
+                    Codex
+                  </button>
+                  <button
+                    aria-pressed={claude === 1 && codex === 0}
+                    className={claude === 1 && codex === 0 ? 'on' : ''}
+                    onClick={() => provider('claude')}
+                  >
+                    Claude · {models[0] || 'CLI default'}
+                  </button>
+                </div>
+                {previousTeam?.key === `${target}\n${scope}` && (
+                  <button
+                    className="linkbtn"
+                    onClick={() => {
+                      const previous = previousTeam.form
+                      setPreviousTeam({ key: `${target}\n${scope}`, form })
+                      change({
+                        claude: previous.claude,
+                        codex: previous.codex,
+                        models: previous.models,
+                      })
+                    }}
+                  >
+                    Restore previous builder team
+                  </button>
+                )}
+                {customEditing &&
+                  presets.some((p) => !builtin.includes(p.scope)) && (
+                    <div className="field">
+                      <label htmlFor="custom-saved">Custom scope</label>
+                      <select
+                        id="custom-saved"
+                        value={
+                          presets.some(
+                            (p) =>
+                              !builtin.includes(p.scope) && p.scope === scope,
+                          )
+                            ? scope
+                            : '__new__'
+                        }
+                        onChange={(e) =>
+                          selectScope(
+                            e.target.value === '__new__'
+                              ? 'full'
+                              : e.target.value,
+                          )
+                        }
+                      >
+                        <option value="__new__">Your own scope…</option>
+                        {presets
+                          .filter((p) => !builtin.includes(p.scope))
+                          .map((p) => (
+                            <option key={p.name} value={p.scope}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                {customEditing && (
+                  <div className="field">
+                    <label htmlFor="custom-scope">Scope name</label>
+                    <input
+                      id="custom-scope"
+                      value={scope}
+                      onChange={(e) => change({ scope: e.target.value })}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      aria-describedby="scope-help"
+                    />
+                    <small id="scope-help">
+                      1–20 lowercase letters, digits or dashes; start with a
+                      letter or digit.
+                    </small>
+                  </div>
+                )}
+                <details className="start-advanced">
+                  <summary>Advanced · team & instructions</summary>
+                  <p className="muted">
+                    Target team for ordinary loops in this project.
+                  </p>
+                  <Stepper
+                    name="Claude"
+                    value={claude}
+                    onChange={(claude) => change({ claude })}
+                  />
+                  <Stepper
+                    name="Codex"
+                    value={codex}
+                    onChange={(codex) => change({ codex })}
+                  />
+                  {Array.from({ length: claude }, (_, i) => (
+                    <ModelSelect
+                      key={i}
+                      label={`Claude ${i + 1} model`}
+                      value={models[i] ?? 'opus'}
+                      onChange={(v) =>
+                        change({
+                          models: Array.from({ length: claude }, (_, j) =>
+                            j === i ? v : (models[j] ?? 'opus'),
+                          ),
+                        })
+                      }
+                    />
+                  ))}
+                  <Stepper
+                    name="Review (Codex)"
+                    value={reviews}
+                    onChange={(reviews) => change({ reviews })}
+                  />
+                  <label className="start-check">
+                    <input
+                      type="checkbox"
+                      checked={supervise}
+                      onChange={(e) => change({ supervise: e.target.checked })}
+                    />
+                    Supervisor
+                  </label>
+                  {supervise && (
+                    <>
+                      <div className="field">
+                        <label htmlFor="supervisor-agent">
+                          Supervisor provider
+                        </label>
+                        <select
+                          id="supervisor-agent"
+                          value={supAgent}
+                          onChange={(e) =>
+                            change({
+                              supAgent: e.target.value as 'claude' | 'codex',
+                            })
+                          }
+                        >
+                          <option value="codex">Codex</option>
+                          <option value="claude">Claude</option>
+                        </select>
+                      </div>
+                      {supAgent === 'claude' && (
+                        <ModelSelect
+                          label="Supervisor model"
+                          value={supModel}
+                          onChange={(supModel) => change({ supModel })}
+                        />
+                      )}
+                    </>
+                  )}
+                  <label className="start-check">
+                    <input
+                      type="checkbox"
+                      checked={cleanup}
+                      onChange={(e) => change({ cleanup: e.target.checked })}
+                    />
+                    Cleanup
+                  </label>
+                  {cleanup && (
+                    <>
+                      <div className="field">
+                        <label htmlFor="cleanup-agent">Cleanup provider</label>
+                        <select
+                          id="cleanup-agent"
+                          value={cleanAgent}
+                          onChange={(e) =>
+                            change({
+                              cleanAgent: e.target.value as 'claude' | 'codex',
+                            })
+                          }
+                        >
+                          <option value="codex">Codex</option>
+                          <option value="claude">Claude</option>
+                        </select>
+                      </div>
+                      <label className="start-check">
+                        <input
+                          type="checkbox"
+                          checked={cleanDry}
+                          onChange={(e) =>
+                            change({ cleanDry: e.target.checked })
+                          }
+                        />
+                        Dry run · report only
+                      </label>
+                    </>
+                  )}
+                  {info && !activeRoles.every((role) => !!info.roles[role]) ? (
+                    <div className="field">
+                      <label htmlFor="session-instructions">
+                        Session instructions for roles without a project file
+                      </label>
+                      <textarea
+                        id="session-instructions"
+                        value={instr}
+                        onChange={(e) => change({ instr: e.target.value })}
+                        rows={4}
+                      />
+                    </div>
+                  ) : (
+                    <p className="muted">
+                      {info
+                        ? 'Project role files supply the session instructions. Your draft text is preserved.'
+                        : 'Read project instructions before editing guidance.'}
+                    </p>
+                  )}
+                  <div className="field">
+                    <label htmlFor="instruction-mode">Project defaults</label>
+                    <select
+                      id="instruction-mode"
+                      value={mode}
+                      onChange={(e) =>
+                        change({ mode: e.target.value as 'add' | 'replace' })
+                      }
+                    >
+                      <option value="add">Add to project defaults</option>
+                      <option value="replace">Replace project defaults</option>
+                    </select>
+                  </div>
+                  <button
+                    className="linkbtn"
+                    onClick={() => {
+                      setManage(true)
+                      editPreset(
+                        {
+                          name: scope,
+                          scope,
+                          instructions: instr,
+                          instrMode: mode,
+                        },
+                        '',
+                      )
+                    }}
+                  >
+                    Save as a scope…
+                  </button>
+                </details>
+              </>
+            )
+          )}
+        </section>
+        <section className="start-section">
+          <h3>
+            <span>03</span> Summary
+          </h3>
+          <div className="start-impact" aria-live="polite">
+            <strong>
+              {scope
+                ? `${repos.find((r) => r.path === target)?.slug ?? target} · ${quality ? 'Code quality' : scope}`
+                : 'Choose a scope'}
+            </strong>
+            {scope && !info && (
+              <p className="muted" role="status">
+                {metaError
+                  ? 'Impact preview unavailable until project files can be read.'
+                  : 'Reading project workflow before previewing changes…'}
+              </p>
+            )}
+            {scope &&
+              info &&
+              impact.map((row, i) => (
+                <div className={`impact-row ${row.kind}`} key={i}>
+                  <em>{row.kind.toUpperCase()}</em>
+                  <span>{row.text}</span>
+                </div>
+              ))}
+            <p className="muted">
+              Starts are immediate. Retained loops use new settings from the
+              next task. Lowered counts stop working loops after their task and
+              idle loops now. Other projects are untouched.
+            </p>
+          </div>
+          <details className="start-advanced">
+            <summary>Effective instructions</summary>
+            {!info ? (
+              <p className="muted">
+                {metaError
+                  ? 'Project instructions unavailable. Retry the lookup before starting.'
+                  : 'Reading selected project…'}
+              </p>
+            ) : (
+              <>
+                <p className="muted">
+                  {mode === 'add'
+                    ? 'Project defaults are included before session guidance.'
+                    : 'Project defaults are replaced. Core agent rules still apply.'}
+                </p>
+                {mode === 'add' && (
+                  <Instruction text={info.defaults} label="Project defaults" />
+                )}
+                {activeRoles.map((role) => (
+                  <Instruction
+                    key={role}
+                    label={`${role} · ${info.roles[role]?.source ?? 'the form'}`}
+                    text={info.roles[role]?.text ?? instr}
+                  />
+                ))}
+                {cleanup && !quality && (
+                  <p className="muted">
+                    Cleanup uses its own built-in cleanup rules, not form
+                    guidance.
+                  </p>
+                )}
+              </>
+            )}
+          </details>
+        </section>
+        {error && (
+          <p className="loaderr" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
       <div className="foot-bar">
         <button
           className="go"
-          disabled={!ok}
-          onClick={() => {
+          disabled={!valid || !info || busy || updating}
+          onClick={async () => {
             setBusy(true)
-            void onStart({ repo: target, agents, models: [...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'), ...Array<string>(codex).fill('')], review: reviews > 0, reviews, supervise, superviseAgent: supAgent, superviseModel: supAgent === 'claude' ? supModel : '', cleanup, cleanupAgent: cleanAgent, cleanupDry: cleanDry, scope: scope.trim() || 'full', instructions: instr, instrMode: mode }).finally(
-              () => setBusy(false),
-            )
+            setError('')
+            try {
+              await onStart(request)
+            } catch (e) {
+              setError(message(e))
+            } finally {
+              setBusy(false)
+            }
           }}
         >
-          {busy ? 'Starting…' : live ? 'Update loops' : 'Start'}
+          {busy
+            ? 'Applying…'
+            : !scope
+              ? 'Choose a scope'
+              : live.length
+                ? 'Apply loop changes'
+                : quality
+                  ? 'Start code quality'
+                  : `Start ${scope === 'full' ? 'custom' : scope}`}
         </button>
       </div>
+      {manage && (
+        <Dialog
+          title={
+            editing
+              ? 'Edit saved scope'
+              : deleting
+                ? `Delete “${deleting.name}”?`
+                : 'Manage scopes'
+          }
+          onClose={() => {
+            if (!saveBusy) {
+              setManage(false)
+              setEditing(null)
+              setDeleting(null)
+            }
+          }}
+        >
+          {editing ? (
+            <>
+              <div className="field">
+                <label htmlFor="preset-name">Saved name</label>
+                <input
+                  id="preset-name"
+                  value={editing.name}
+                  onChange={(e) =>
+                    setEditing({ ...editing, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="preset-scope">Scope</label>
+                <input
+                  id="preset-scope"
+                  value={editing.scope}
+                  onChange={(e) =>
+                    setEditing({ ...editing, scope: e.target.value })
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="preset-instructions">
+                  Session instructions
+                </label>
+                <textarea
+                  id="preset-instructions"
+                  rows={5}
+                  value={editing.instructions}
+                  onChange={(e) =>
+                    setEditing({ ...editing, instructions: e.target.value })
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="preset-mode">Instruction mode</label>
+                <select
+                  id="preset-mode"
+                  value={editing.instrMode}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      instrMode: e.target.value as 'add' | 'replace',
+                    })
+                  }
+                >
+                  <option value="add">Add to project defaults</option>
+                  <option value="replace">Replace project defaults</option>
+                </select>
+              </div>
+              <button
+                className="go"
+                disabled={
+                  saveBusy ||
+                  !editing.name.trim() ||
+                  !/^[a-z0-9][a-z0-9-]{0,19}$/.test(editing.scope)
+                }
+                onClick={() => {
+                  if (
+                    presets.some(
+                      (p) =>
+                        p.name === editing.name.trim() &&
+                        p.name !== originalName,
+                    )
+                  ) {
+                    setSaveError('A saved scope already uses this name.')
+                    return
+                  }
+                  void savePresets(
+                    [
+                      ...presets.filter((p) => p.name !== originalName),
+                      { ...editing, name: editing.name.trim() },
+                    ],
+                    () => setEditing(null),
+                  )
+                }}
+              >
+                {saveBusy ? 'Saving…' : 'Save scope'}
+              </button>
+              <button
+                className="cancel"
+                disabled={saveBusy}
+                onClick={() => setEditing(null)}
+              >
+                Cancel edit
+              </button>
+            </>
+          ) : deleting ? (
+            <>
+              <p>
+                Remove the saved scope “{deleting.name}”? Running loops and
+                their assignments stay in place.
+              </p>
+              <button
+                className="go"
+                disabled={saveBusy}
+                onClick={() =>
+                  void savePresets(
+                    presets.filter((p) => p.name !== deleting.name),
+                    () => setDeleting(null),
+                  )
+                }
+              >
+                {saveBusy ? 'Deleting…' : `Delete ${deleting.name}`}
+              </button>
+              <button
+                className="cancel"
+                disabled={saveBusy}
+                onClick={() => setDeleting(null)}
+              >
+                Keep scope
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="muted">
+                Saved guidance. Editing or deleting never changes a running
+                loop. Built-in scopes remain available.
+              </p>
+              {presets.map((p) => (
+                <div className="manage-scope-row" key={p.name}>
+                  <strong>{p.name}</strong>
+                  <button className="linkbtn" onClick={() => editPreset(p)}>
+                    Edit
+                  </button>
+                  <button
+                    className="linkbtn danger"
+                    onClick={() => {
+                      setDeleting(p)
+                      setSaveError('')
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+              <button
+                className="linkbtn"
+                onClick={() =>
+                  editPreset(
+                    {
+                      name: '',
+                      scope: 'custom',
+                      instructions: '',
+                      instrMode: 'add',
+                    },
+                    '',
+                  )
+                }
+              >
+                New saved scope
+              </button>
+            </>
+          )}
+          {saveError && (
+            <p className="loaderr" role="alert">
+              {saveError}
+            </p>
+          )}
+        </Dialog>
+      )}
+      {update && (
+        <Dialog
+          title={
+            stale
+              ? 'A new Remux build is ready'
+              : serverVersion
+                ? 'Check for a new build'
+                : 'Server version unknown'
+          }
+          onClose={() => !updating && setUpdate(false)}
+        >
+          <p>
+            Loaded {__BUILD_VERSION__}
+            {serverVersion
+              ? ` · server ${serverVersion}`
+              : '. The server version has not been received.'}
+          </p>
+          <p>
+            Your project, scope, team and guidance will be kept in this tab for
+            five minutes across this explicit reload.
+          </p>
+          <button
+            className="go"
+            disabled={busy || saveBusy || updating}
+            onClick={async () => {
+              if (busy || saveBusy || updating) return
+              try {
+                sessionStorage.setItem(
+                  DRAFT_KEY,
+                  JSON.stringify({ saved: Date.now(), target, form }),
+                )
+              } catch {
+                setError(
+                  'Browser storage is unavailable. Your choices cannot be preserved for reload.',
+                )
+                setUpdate(false)
+                return
+              }
+              setUpdating(true)
+              await pullNewBuild()
+            }}
+          >
+            {updating
+              ? 'Updating…'
+              : stale
+                ? 'Update and reload'
+                : 'Check and reload'}
+          </button>
+        </Dialog>
+      )}
     </div>
   )
 }
 
+function Instruction({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="instruction-preview">
+      <strong>{label}</strong>
+      <pre>{text || 'No additional instructions.'}</pre>
+    </div>
+  )
+}
+
+function Dialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string
+  children: React.ReactNode
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const dialog = ref.current
+    dialog?.showModal()
+    return () => dialog?.close()
+  }, [])
+  return (
+    <dialog
+      ref={ref}
+      className="start-dialog"
+      onCancel={(e) => {
+        e.preventDefault()
+        onClose()
+      }}
+    >
+      <h2>{title}</h2>
+      {children}
+      <button className="cancel" onClick={onClose}>
+        Done
+      </button>
+    </dialog>
+  )
+}
+
+/** Match server reconciliation by deterministic session name and separate lanes. */
+export function previewImpact(
+  v: LoopStart,
+  running: Loop[],
+): { kind: string; text: string }[] {
+  const quality = v.scope === 'code-quality'
+  const project =
+    v.repo
+      .split('/')
+      .filter(Boolean)
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-|-$/g, '') ?? ''
+  const names: { name: string; agent: string }[] = []
+  const counts: Record<string, number> = {}
+  v.agents.forEach((agent) => {
+    counts[agent] = (counts[agent] ?? 0) + 1
+    names.push({
+      name: `loop-${quality ? 'quality-codex' : agent + (counts[agent] > 1 ? counts[agent] : '')}-${project}`,
+      agent,
+    })
+  })
+  for (let i = 1; i <= (v.reviews ?? (v.review ? 1 : 0)); i++)
+    names.push({
+      name: `loop-review${i > 1 ? i : ''}-${project}`,
+      agent: 'codex',
+    })
+  if (v.supervise)
+    names.push({
+      name: `loop-supervise-${project}`,
+      agent: v.superviseAgent ?? 'claude',
+    })
+  if (v.cleanup)
+    names.push({
+      name: `loop-cleanup-${project}`,
+      agent: v.cleanupAgent ?? 'claude',
+    })
+  const mine = runningIn(v.repo, running, quality)
+  const rows: { kind: string; text: string }[] = []
+  for (const plan of names) {
+    const collision = running.find(
+      (l) => l.name === plan.name && l.repo !== v.repo,
+    )
+    if (collision) {
+      rows.push({
+        kind: 'error',
+        text: `${plan.name} belongs to ${collision.repo}; the server will reject this change.`,
+      })
+      continue
+    }
+    const found = mine.find((l) => l.name === plan.name)
+    rows.push({
+      kind: !found
+        ? 'start'
+        : found.agent && found.agent !== plan.agent
+          ? 'replace'
+          : 'update',
+      text: !found
+        ? plan.name
+        : found.agent && found.agent !== plan.agent
+          ? `${plan.name}: provider replacement (requires idle loop).`
+          : `${plan.name}: scope, guidance and selected settings.${found.stop ? ' Queued stop cleared.' : ''}`,
+    })
+  }
+  if (!quality)
+    mine
+      .filter((l) => !names.some((n) => n.name === l.name))
+      .forEach((l) =>
+        rows.push({
+          kind: 'stop',
+          text: `${l.name} · ${l.state === 'working' || l.state === 'triaging' ? 'after current task' : 'now'}`,
+        }),
+      )
+  const kept = running.filter(
+    (l) =>
+      l.repo === v.repo &&
+      !names.some((n) => n.name === l.name) &&
+      (quality || !mine.includes(l)),
+  )
+  rows.push({
+    kind: 'keep',
+    text: kept.length
+      ? `${kept.length} other loop${kept.length === 1 ? '' : 's'} in this project keep their assignments and settings.`
+      : `${quality ? 'Ordinary' : 'Code-quality'} lane is left alone.`,
+  })
+  return rows
+}
 /** The loops a start manages in repo p, running now. The chat supervisor is not one. */
-export function runningIn(p: string, running: Loop[], quality: boolean): Loop[] {
-  return running.filter((l) => l.repo === p && (l.scope === 'code-quality') === quality && (l.role === 'build' || l.role === 'review' || l.role === 'supervise' || l.role === 'cleanup'))
+export function runningIn(
+  p: string,
+  running: Loop[],
+  quality: boolean,
+): Loop[] {
+  return running.filter(
+    (l) =>
+      l.repo === p &&
+      (l.scope === 'code-quality') === quality &&
+      (l.role === 'build' ||
+        l.role === 'review' ||
+        l.role === 'supervise' ||
+        l.role === 'cleanup'),
+  )
 }
 
 /**
@@ -296,7 +1185,12 @@ export function formFor(p: string, running: Loop[], last: LoopStart | null) {
     const ref = builds[0] ?? mine[0]
     return {
       claude: builds.filter((l) => l.agent === 'claude').length,
-      models: builds.filter((l) => l.agent === 'claude').sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((l) => l.model ?? ''),
+      models: builds
+        .filter((l) => l.agent === 'claude')
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true }),
+        )
+        .map((l) => l.model ?? ''),
       supModel: sup?.model ?? '',
       codex: builds.filter((l) => l.agent === 'codex').length,
       reviews: mine.filter((l) => l.role === 'review').length,
@@ -313,12 +1207,16 @@ export function formFor(p: string, running: Loop[], last: LoopStart | null) {
   const l = last?.repo === p ? last : null
   const many = (a: string) => l?.agents.filter((x) => x === a).length ?? 0
   return {
-    claude: l ? many('claude') : 1,
-    models: l ? l.agents.flatMap((a, i) => a === 'claude' ? [l.models?.[i] ?? ''] : []) : ['opus'],
-    supModel: l ? l.superviseModel ?? '' : 'opus',
-    codex: l ? many('codex') : 0,
-    reviews: l ? (l.reviews ?? (l.review ? 1 : 0)) : 1,
-    supervise: l ? !!l.supervise : true,
+    claude: l ? many('claude') : 0,
+    models: l
+      ? l.agents.flatMap((a, i) =>
+          a === 'claude' ? [l.models?.[i] ?? ''] : [],
+        )
+      : ['opus'],
+    supModel: l ? (l.superviseModel ?? '') : 'opus',
+    codex: l ? many('codex') : 1,
+    reviews: l ? (l.reviews ?? (l.review ? 1 : 0)) : 0,
+    supervise: l ? !!l.supervise : false,
     supAgent: l?.superviseAgent ?? ('claude' as const),
     cleanup: !!l?.cleanup,
     cleanAgent: l?.cleanupAgent ?? ('claude' as const),
@@ -331,15 +1229,31 @@ export function formFor(p: string, running: Loop[], last: LoopStart | null) {
 }
 
 /** How many build loops of one agent: 0 to 5, each its own session. */
-function Stepper({ name, value, onChange }: { name: string; value: number; onChange: (n: number) => void }) {
+function Stepper({
+  name,
+  value,
+  onChange,
+}: {
+  name: string
+  value: number
+  onChange: (n: number) => void
+}) {
   return (
     <div className="stepper-row">
       <span className="grow">{name}</span>
-      <button disabled={value <= 0} onClick={() => onChange(value - 1)} aria-label={`Fewer ${name} loops`}>
+      <button
+        disabled={value <= 0}
+        onClick={() => onChange(value - 1)}
+        aria-label={`Fewer ${name} loops`}
+      >
         −
       </button>
       <span className="n">{value}</span>
-      <button disabled={value >= 5} onClick={() => onChange(value + 1)} aria-label={`More ${name} loops`}>
+      <button
+        disabled={value >= 5}
+        onClick={() => onChange(value + 1)}
+        aria-label={`More ${name} loops`}
+      >
         +
       </button>
     </div>

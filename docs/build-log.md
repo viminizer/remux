@@ -1616,3 +1616,81 @@ split/select/attach/resize on those panes; the cause is not independently proven
 No geometry was restored. No paid agents, live quality loops, deployment, config
 activation, commit or push was performed. Detached test sessions used stand-ins
 and their existing deferred cleanup; no remux-test session was created.
+
+## Start loop v2 implementation (2026-10-27)
+
+Implemented in isolated `feat/start-loop-ui`, based on origin/main 66449b4. The
+approved `docs/mockups/start-loop-v2.html` remains a visual reference; React uses
+normal application state and components, not the prototype's simulated JS.
+
+The flow is Project → Scope → Summary → Start. Built-in scope rows resolve saved
+guidance; other saved scopes live under Custom and Manage scopes. Management edits
+the existing Preset fields, confirms named deletion and retains failed edits.
+Code quality is one fixed Sol coordinator, enabled by the selected project's real
+scope-role file. Its two internal reviews are not extra Remux loop counts. Ordinary
+teams retain mixed providers/models, with advanced options collapsed and reversible
+simple provider changes. Scope/project drafts stay local until Apply. No stop-all
+controls were added because the current API rejects empty target teams.
+
+Project polling remains filesystem-free. Text-only worktree suffix normalization
+preserves independent clone paths. A separate form-open choices request filters
+only missing historical paths without changing config; permission errors retain
+choices. Selected-project metadata resolves exact role files, generic role fallback,
+project defaults and canonical paths (including home expansion). Both explicit file
+lookups have a three-second response deadline and share at most two outstanding
+readers. A kernel-stalled macOS read cannot be forcibly cancelled by Go and can
+occupy its slot until the OS releases it; further requests fail promptly. The UI
+aborts stale requests, distinguishes failures from absent workflow, and never lets
+late metadata replace the current project's draft. No workflow text is re-inlined
+by this preview into tmux; the committed quality pointer remains the source.
+
+The summary follows deterministic backend session names and separate lane rules,
+including immediate idle/blocked stops and after-task working/triaging stops,
+clone-name collisions, retained-loop updates and preserved assignments. Active
+provider replacement is now rejected before reconciliation writes. Negative review
+counts are rejected as well. Failed start/save requests propagate to the form.
+The small header update affordance reuses the existing build version/health
+comparison and pullNewBuild; only explicit reload stores the current form in tab
+session storage with a five-minute expiry. Restoration is read-only during
+render, so React StrictMode can initialize twice without losing the draft; a
+mount effect consumes it after commit. Pending mutations disable both the
+header reload affordance and its dialog action; applying changes is disabled
+while a reload is in progress. No automatic reload or new updater was added.
+
+Verification performed:
+
+- `npm ci --prefix web` installed the pinned worktree dependencies. npm reported
+  two existing high-severity dependency advisories; manifests/lockfile were not
+  changed in this task.
+- `npm test --prefix web`: 33 Node tests passed, including repeated reload-draft
+  initialization, consumption and expiry, plus reconstruction of mixed
+  lanes, lowered counts, exact stop timing, historical quality preservation,
+  queued-stop wording, clone collisions and provider replacement previews.
+- `npm run build --prefix web`: TypeScript and production Vite build passed.
+- `go test ./...`: all packages passed, using existing scratch sessions/stand-ins,
+  never a real Codex/Claude task. The full run preceded the final on-demand choices
+  filtering addition; the final metadata/choices changes were covered separately
+  by `go test ./internal/api -run 'Test(ProjectPath|LoopProject)' -count=1`.
+- `go vet ./...`, `go build ./...` and `git diff --check`: passed.
+- Parent's read-only 390px browser pass observed the project/scope/summary flow
+  without horizontal overflow. It caught and prompted fixes for body padding,
+  duplicate scope buttons, missing historical paths and unavailable quality
+  selection. Parent's final browser verification observed explicit Check and
+  reload preserving the selected Remux project, frontend scope and typed
+  instructions, with sessionStorage consumed after mount. The 390px and 1440px
+  views had no horizontal overflow. Using the parent's read-only preview,
+  failed Start retained the draft and displayed its error; failed Manage scopes
+  Save retained the edited name and modal with the 503 error. No live writes
+  were involved in those error-path checks.
+
+Workspace invariant: `./scripts/laptop-invariant.sh before` recorded 23 panes
+outside remux-test. The comparison after the full suite FAILED: active
+`saas:1.3 → saas:1.1`; `%21 107x12 → 107x27`, `%280 195x41 → 195x26`,
+`%429 87x12 → 87x27`. Kevin is actively using Keystone. No command in this work
+attaches, selects or resizes panes, and the exact cause of concurrent geometry
+changes is not independently proven. No geometry was restored. The parent was
+informed immediately. No more tmux verification ran after that comparison.
+No live loop/preset/service edits, commit, push, release/tag or deployment were
+performed by this implementation worker. Parent owns release v0.4.2 and final
+review/publication. Temporary `.start-preview/` belongs to the parent and is not
+part of this change.

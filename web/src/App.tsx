@@ -803,6 +803,7 @@ export default function App() {
           />
         ) : loopsOpen ? (
           <LoopsRoutes
+            serverVersion={health?.version ?? null}
             route={route}
             go={go}
             data={loops}

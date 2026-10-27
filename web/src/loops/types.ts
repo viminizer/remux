@@ -105,3 +105,10 @@ export function project(l: { repo: string; slug?: string }): string {
 export function itemURL(slug: string, n: number, kind: 'issue' | 'pr' = 'issue'): string {
   return `https://github.com/${slug}/${kind === 'pr' ? 'pull' : 'issues'}/${n}`
 }
+
+export interface LoopProject {
+  repo: string
+  quality: boolean
+  defaults: string
+  roles: Partial<Record<'build' | 'review' | 'supervise', { text: string; source: string }>>
+}
