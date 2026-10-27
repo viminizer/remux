@@ -241,12 +241,44 @@ no `.remux/instructions/` behaves exactly as before. The start's reply names the
 each loop was given, under `instructions`, so nobody has to trust that the right brief
 loaded. Editing a file and starting again reloads it.
 
-Start loops from the phone: **drawer → Loops → Start loop**. The Start screen takes
-a count for each agent, up to 5: two Claude loops are `loop-claude-<repo>` and
-`loop-claude2-<repo>`. The counts are the whole set for that repo: the screen
-shows what runs there now, and Start (Update loops, once some run) starts the
-missing loops, stops the extra ones after their current issue, and gives running
-ones the new scope and instructions. Each loop claims an issue with its own `by:<session>`
+Start loops from the phone: **drawer → Loops → Start loop**. Choose a project,
+then Code quality, Frontend, Backend or Custom, and review the impact before
+starting. Known worktree suffixes collapse into their main project; independent
+clones remain separate and show paths when their names collide. Missing historical
+paths are omitted by a bounded lookup when the form opens, without deleting config.
+Background loop polling never probes project files.
+
+Code quality appears enabled only when the selected project has a nonempty
+`.remux/instructions/code-quality-build.md`. It runs one fixed Sol coordinator,
+with fresh internal workers and two review gates, and preserves ordinary loops.
+Frontend, Backend and Custom offer a simple Codex/Claude choice. Advanced controls
+hold counts, Claude models, reviewer/supervisor/cleanup settings and guidance.
+Existing mixed teams are reconstructed without resetting their models. Manage
+scopes edits the existing saved name/scope/instructions/mode records; named deletion
+removes only the saved record, never a running loop. Custom’s saved-scope selector
+uses each saved name, including guidance for built-in scopes; presets sharing a
+scope retain separate drafts per project. Pane subdirectories collapse into an
+observed or configured root of the same repository; separate clones remain choices.
+
+The summary shows starts, updates, stops and preserved lanes using the actual
+session naming rules. Advanced counts are the whole ordinary team for the project,
+up to five of each provider and five reviewers: two Claude loops are
+`loop-claude-<repo>` and `loop-claude2-<repo>`. Applying changes starts missing loops,
+updates retained loops for their next task and stops removed loops (working or
+triaging loops after their task; idle/blocked loops now). Changing a provider on an
+active supervisor or cleanup loop is refused until it is idle. Ordinary changes
+preserve code quality, and other projects remain untouched.
+
+Effective instructions show selected role files, form fallback, and project defaults
+according to add/replace mode. Folder/network failures remain distinct from an
+unconfigured workflow. File lookups are on demand, cancelled on project changes,
+and bounded to three seconds and two outstanding readers. A kernel-stalled file
+read may occupy a reader until macOS releases it; requests fail promptly when
+slots are exhausted. No full workflow is injected into tmux by this preview.
+The header compares the loaded UI version with the server and offers the existing
+explicit update/reload flow. Current form choices survive that reload in tab session
+storage for at most five minutes and are removed when restored. It never reloads
+automatically while editing. Each loop claims an issue with its own `by:<session>`
 label first, so two loops waking together never work the same one. Each loop is a
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
 `ready` issue per run (blockers first) in its own worktree under

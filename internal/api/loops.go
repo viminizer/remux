@@ -35,6 +35,8 @@ var loopExe = os.Executable
 
 func (s *Server) loopRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/loops", s.handleLoops)
+	mux.HandleFunc("GET /api/loops/project", s.handleLoopProject)
+	mux.HandleFunc("GET /api/loops/projects", s.handleLoopProjects)
 	mux.HandleFunc("POST /api/loops", s.handleStartLoops)
 	mux.HandleFunc("PATCH /api/loops/{name}", s.handleEditLoop)
 	mux.HandleFunc("DELETE /api/loops/{name}", s.handleStopLoop)
@@ -115,33 +117,60 @@ func (s *Server) repoChoices() []config.HarnessRepo {
 	s.mu.Unlock()
 
 	seen := map[string]bool{}
+	normalized := out[:0]
 	for _, h := range out {
-		seen[h.Slug] = true
+		h.Path = projectPath(h.Path)
+		if !seen[h.Path] {
+			normalized = append(normalized, h)
+			seen[h.Path] = true
+		}
 	}
+	out = normalized
 	tree := s.Workspace(context.Background(), s.Cfg.TreePoll())
 	if tree == nil {
 		return out
 	}
 	var more []config.HarnessRepo
 	for slug, panes := range byRepo {
-		if seen[slug] {
-			continue
-		}
-		best := ""
 		for _, id := range panes {
 			if p := tree.Pane(id); p != nil {
-				dir, _, _ := strings.Cut(p.Path, "/.claude/worktrees/")
-				if best == "" || len(dir) < len(best) {
-					best = dir
+				dir := projectPath(p.Path)
+				if dir != "" && !seen[dir] {
+					more = append(more, config.HarnessRepo{Path: dir, Slug: slug})
+					seen[dir] = true
 				}
 			}
 		}
-		if best != "" {
-			more = append(more, config.HarnessRepo{Path: best, Slug: slug})
+	}
+	sort.Slice(more, func(i, j int) bool {
+		if more[i].Slug == more[j].Slug {
+			return more[i].Path < more[j].Path
+		}
+		return more[i].Slug < more[j].Slug
+	})
+	return append(out, paneProjectRoots(out, more)...)
+}
+
+// Collapse pane subdirectories only within the same repository slug. Known
+// configured roots participate without probing disk or merging separate clones.
+func paneProjectRoots(known, candidates []config.HarnessRepo) []config.HarnessRepo {
+	var roots []config.HarnessRepo
+	for _, candidate := range candidates {
+		nested := false
+		for _, group := range [][]config.HarnessRepo{known, candidates} {
+			for _, root := range group {
+				if root.Slug == candidate.Slug && root.Path != candidate.Path &&
+					strings.HasPrefix(candidate.Path, strings.TrimRight(root.Path, "/")+"/") {
+					nested = true
+					break
+				}
+			}
+		}
+		if !nested {
+			roots = append(roots, candidate)
 		}
 	}
-	sort.Slice(more, func(i, j int) bool { return more[i].Slug < more[j].Slug })
-	return append(out, more...)
+	return roots
 }
 
 // ── start, edit, stop ─────────────────────────────────────────────────────
@@ -227,7 +256,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	if body.Review && body.Reviews == 0 {
 		body.Reviews = 1
 	}
-	if body.Reviews > maxPerAgent {
+	if body.Reviews < 0 || body.Reviews > maxPerAgent {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("at most %d review loops per repo", maxPerAgent))
 		return
 	}
@@ -301,6 +330,10 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		// same share them.
 		if l, ok := byName[p.name]; ok && l.Repo != "" && l.Repo != body.Repo {
 			writeErr(w, http.StatusConflict, fmt.Sprintf("%s already runs for %s, a repo with the same folder name. Stop those loops first.", p.name, l.Repo))
+			return
+		}
+		if l, ok := byName[p.name]; ok && l.Agent != "" && l.Agent != p.agent && l.State != "idle" && l.State != "" {
+			writeErr(w, http.StatusConflict, "wait until "+p.name+" is idle before changing its provider")
 			return
 		}
 		want[p.name] = true

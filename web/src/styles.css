@@ -1368,3 +1368,41 @@ a.linkbtn{display:inline-block;text-decoration:none}
 }
 .stepper-row button:disabled{opacity:.35;cursor:default}
 .stepper-row .n{min-width:18px;text-align:center;font-family:var(--mono)}
+
+/* Start loop: project → scope → impact, in the existing Remux palette. */
+.start-loop .screen-head h2{flex:1;min-width:0}
+.start-loop .start-version{font:10px var(--mono);min-height:44px;max-width:48%;overflow-wrap:anywhere}
+.start-section{margin:0 0 24px;min-width:0}
+.start-section h3{font-size:12px;display:flex;align-items:center;gap:9px;margin:0 0 12px}
+.start-section h3>span{font:10px var(--mono);color:var(--blue)}
+.start-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.start-section-head .linkbtn{min-height:44px;margin-top:-10px}
+.start-path{font:10px var(--mono);color:var(--ov1);overflow-wrap:anywhere}
+.scope-choices{border:1px solid var(--s0);border-radius:12px;padding:0;margin:0;min-width:0;overflow:hidden}
+.scope-choice{display:flex;align-items:center;gap:10px;padding:14px 12px;border-bottom:1px solid var(--s0);cursor:pointer;min-height:66px}
+.scope-choice:last-child{border-bottom:0}
+.scope-choice:has(input:checked){background:color-mix(in srgb,var(--blue) 6%,transparent)}
+.scope-choice input{accent-color:var(--blue);width:16px;height:16px;flex:0 0 16px}
+.scope-choice>span:not(.scope-tag){flex:1;min-width:0}
+.scope-choice strong{display:block;font-size:12px;font-weight:600}
+.scope-choice small{display:block;color:var(--ov1);font-size:11px;line-height:1.5;margin-top:3px}
+.scope-choice:has(input:disabled){opacity:.65;cursor:default}
+.scope-tag{font:8px var(--mono);color:var(--mauve);flex:0 0 auto}
+.quality-team{margin-top:12px;padding:14px;border:1px solid color-mix(in srgb,var(--mauve) 35%,transparent);border-radius:10px;background:color-mix(in srgb,var(--mauve) 5%,transparent)}
+.quality-team strong{font-size:12px}.quality-team p{font:10px var(--mono);line-height:1.7}.quality-team small{color:var(--ov1);font-size:11px}
+.start-advanced{border:1px solid var(--s0);border-radius:10px;padding:12px;margin-top:12px;min-width:0}
+.start-advanced summary{cursor:pointer;color:var(--sub1);font-size:12px;min-height:28px;padding:4px 0}
+.start-advanced[open] summary{margin-bottom:12px}
+.start-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:12px}.start-check input{accent-color:var(--blue)}
+.start-loop .field label{display:block}.start-loop select,.start-loop input,.start-loop textarea{max-width:100%;min-width:0}
+.start-loop .start-providers button{min-height:44px;flex:1}
+.start-impact{border:1px solid var(--s0);border-radius:12px;padding:14px;overflow-wrap:anywhere;font-size:12px}
+.impact-row{display:flex;gap:9px;margin:12px 0;font-size:11px;line-height:1.6}.impact-row em{font:9px var(--mono);min-width:48px;color:var(--green);padding-top:3px;font-style:normal}.impact-row.update em{color:var(--blue)}.impact-row.stop em,.impact-row.replace em{color:var(--peach)}.impact-row.error em{color:var(--red)}.impact-row span{min-width:0}
+.start-impact>.muted{border-top:1px solid var(--s0);padding-top:12px;margin-bottom:0;font-size:11px;line-height:1.6}
+.instruction-preview{margin:12px 0;font-size:11px;overflow-wrap:anywhere}.instruction-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;font:10px/1.7 var(--mono);background:var(--mantle);padding:10px;border-radius:7px}
+.start-dialog{color:var(--text);background:var(--base);border:1px solid var(--s1);border-radius:16px;padding:20px;width:min(440px,calc(100vw - 28px));max-height:85dvh;overflow:auto;box-shadow:0 20px 80px #0009}
+.start-dialog::backdrop{background:#11111bbf}.start-dialog h2{font-size:16px;margin-top:0}.start-dialog p{font-size:12px;line-height:1.6}.start-dialog .cancel{display:block;width:100%;min-height:44px;background:transparent;color:var(--sub1);border:0;margin-top:8px}.start-dialog .go{width:100%;min-height:44px;margin-top:12px}.start-dialog .field label{display:block}.start-dialog .field input,.start-dialog .field textarea,.start-dialog .field select{width:100%}
+.manage-scope-row{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--s0);font-size:12px}.manage-scope-row strong{flex:1;min-width:0;overflow-wrap:anywhere}.manage-scope-row button{min-height:44px}.manage-scope-row .danger{color:var(--red)}
+.start-loop :focus-visible,.start-dialog :focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.gh-screen.start-loop .screen-body{padding:16px 14px 22px}

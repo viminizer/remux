@@ -6,7 +6,7 @@ import type {
   PickerRepo,
   PR,
 } from './github/types'
-import type { HarnessItem, LoopStart, LoopsPayload, Preset } from './loops/types'
+import type { HarnessItem, LoopStart, LoopsPayload, Preset, LoopProject, HarnessRepo } from './loops/types'
 
 /**
  * There is no server URL to configure and no token to send.
@@ -193,6 +193,11 @@ export const api = {
   // ── agent loops ─────────────────────────────────────────────────────
 
   loops: () => call<LoopsPayload>('/api/loops'),
+
+  loopProjects: (signal: AbortSignal) => call<HarnessRepo[]>('/api/loops/projects', { signal }),
+
+  loopProject: (repo: string, scope: string, signal: AbortSignal) =>
+    call<LoopProject>(`/api/loops/project?repo=${encodeURIComponent(repo)}&scope=${encodeURIComponent(scope)}`, { signal }),
 
   startLoops: (v: LoopStart) =>
     call<{ started: string[]; stopped: string[]; updated: string[] }>('/api/loops', {
