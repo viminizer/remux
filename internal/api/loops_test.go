@@ -194,6 +194,24 @@ func TestLoopLifecycle(t *testing.T) {
 		t.Errorf("queued stop = %q, want it cancelled", v)
 	}
 
+	// Quality is additive and cannot take over or stop ordinary workers.
+	qualityName := "loop-quality-codex-harness-api-test"
+	defer tm.KillLoop(ctx, qualityName)
+	tm.SetLoopOption(ctx, name, "@loop_stop", "after")
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"codex"}, "scope": "code-quality", "instructions": "bounded audit brief", "instrMode": "replace"}); code != http.StatusOK ||
+		!strings.Contains(string(body), qualityName) || !strings.Contains(string(body), `"stopped":[]`) {
+		t.Fatalf("quality start: %d %s", code, body)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_stop"); v != "after" {
+		t.Errorf("quality start changed ordinary stop request: %q", v)
+	}
+	if v, _ := tm.LoopOption(ctx, name, "@loop_scope"); v == "code-quality" {
+		t.Error("quality took over ordinary worker")
+	}
+	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"scope": "code-quality"}); code != http.StatusBadRequest {
+		t.Error("ordinary loop switched into quality")
+	}
+
 	// Another repo with the same folder name would share these sessions.
 	twin := filepath.Join(t.TempDir(), "harness-api-test")
 	os.MkdirAll(twin, 0o755)
@@ -418,5 +436,23 @@ func TestStartLoadsEachRolesInstructionsFromTheRepo(t *testing.T) {
 	}
 	if got, _ := tm.LoopOption(ctx, builder, "@loop_instr"); got != "rewritten brief\n" {
 		t.Errorf("a running loop kept stale instructions: %q", got)
+	}
+}
+
+func TestQualityStartRejectsMixedPlansBeforeTmux(t *testing.T) {
+	for _, body := range []string{
+		`{"repo":"/repo","scope":"code-quality","agents":["claude"]}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"reviews":1}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"supervise":true}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"cleanup":true}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["codex","codex"]}`,
+	} {
+		s := &Server{}
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/loops", strings.NewReader(body))
+		s.handleStartLoops(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", body, w.Code)
+		}
 	}
 }

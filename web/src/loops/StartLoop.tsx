@@ -69,6 +69,13 @@ export function StartLoop({
     setScope(p.scope || 'full')
     setInstr(p.instructions)
     setMode(p.instrMode)
+    if (p.scope === 'code-quality') {
+      setClaude(0)
+      setCodex(1)
+      setReviews(0)
+      setSupervise(false)
+      setCleanup(false)
+    }
   }
   const save = () => {
     const name = scope.trim() || 'full'
@@ -93,6 +100,7 @@ export function StartLoop({
       </div>
 
       <div className="screen-body loops-body">
+        {scope === 'code-quality' && <p className="muted">One Codex coordinator runs serial audits and owns both review phases. Existing loops keep their assignments. Reports and unfinished work survive restarts.</p>}
         {presets.length > 0 && (
           <div className="sec">
             <h3>Presets</h3>

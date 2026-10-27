@@ -1526,3 +1526,52 @@ that still-running task has completed. New supervisor spawn requests use the
 same checked budgets and one-task lifecycle. Final laptop invariant passed with
 20 non-harness panes unchanged. No additional user approval was requested for
 this routine coordination, per Kevin's standing authorization.
+
+
+## 2026-10-27 — bounded code-quality scope (isolated worktree)
+
+Added a queue-independent `code-quality` builder with per-repository process
+locking, durable category rotation and interrupted-cycle handoff/report storage
+in the Git common directory. A fresh Sol coordinator runs from a dedicated clean
+checkout refreshed to `origin/main`; source changes belong in separate fix
+worktrees. Saved workflow prose requires fresh audit/implementation/review workers,
+Codex CLI plus consistency reviews on the exact candidate, visible accepted PR
+comments, current-base checks, authorized exact-head merge and task-only cleanup.
+The scheduler does not independently verify the GitHub merge gates. Completion
+receipts only control category advancement. Phone preset application selects one
+Codex builder and no separate review/supervisor/cleanup loops; the API rejects
+mixed scope plans and protects ordinary assignments/stops.
+
+Verification uses stand-in git/tmux/bunx/codex executables for the new scheduler;
+no paid agents or live quality loops were launched. Focused cases cover lock
+contention/release, orphan coordinator lock retention after runner death,
+restart/failed-run resume, dirty coordinator preservation, replace-mode isolation,
+explicit Sol selection, durable evidence, rotation,
+incomplete receipts, stop requests, missing instructions, prompt gates and invalid
+role/queue combinations. Existing harness/API suites also passed; their detached
+test sessions run stand-in commands. `scripts/laptop-invariant.sh before` and
+`after` passed (22 outside panes unchanged; an existing service's allowed
+`@remux_task` update was reported). `npm ci --ignore-scripts` populated only this
+worktree's missing frontend dependencies; `npm run build` passed afterward. No
+service was installed/restarted, configuration activated, or branch committed.
+
+Additional checks: `go vet ./internal/harness ./internal/api`, `go build ./...`
+and `git diff --check` passed. `go test ./internal/harness -run Quality -count=1`
+passed with the orphan-lock subprocess regression case. No Codex/Claude CLI was
+used in verification; their executable names were stand-in scripts.
+
+The final repeated harness/API run, vet and Go build passed. Its invariant
+comparison failed: unrelated Keystone panes `%21` and `%280` in `saas:1` changed
+height (17→22 and 36→31); the active pane moved from `saas:1.2` to `saas:1.1`.
+The attached client was unchanged (`/dev/ttys000 saas 195x55`). Read-only inspection
+found no attach/select/resize/split command in the relevant tests; those panes
+were nvim/Claude in `/Users/mac/dev/github/systems/keystone`, outside these tests'
+owned detached loop sessions. No geometry was restored and no further tmux-write
+verification was performed. The cause is not proven; this final comparison must
+not be reported as passing. The earlier comparison passed with all 22 panes
+unchanged.
+
+The parent then ran a new focused Quality-suite/invariant window: all Quality
+checks passed in 2.6 seconds and all 22 outside panes were unchanged. The earlier
+full-window comparison remains a recorded failure with unproven cause; this new
+focused comparison does not retroactively change it.

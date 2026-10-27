@@ -171,6 +171,10 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "scope is lowercase letters, digits and dashes")
 		return
 	}
+	if body.Scope == "code-quality" && (len(body.Agents) != 1 || body.Agents[0] != "codex" || body.Review || body.Reviews != 0 || body.Supervise || body.Cleanup) {
+		writeErr(w, http.StatusBadRequest, "code-quality requires one Codex builder and no review, supervisor or cleanup loops")
+		return
+	}
 	if body.InstrMode != "replace" {
 		body.InstrMode = "add"
 	}
@@ -185,6 +189,9 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	// brief. The submitted text stands for any role the repo has no file for.
 	withInstructions := func(p plan) plan {
 		p.instr, p.instrFrom = harness.Instructions(body.Repo, body.Scope, p.role)
+		if body.Scope == "code-quality" && p.instrFrom != harness.InstructionFile("code-quality", "build") {
+			p.instr, p.instrFrom = "", ""
+		}
 		if p.instr == "" {
 			p.instr, p.instrFrom = body.Instructions, "the form"
 		}
@@ -277,7 +284,15 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		byName[l.Name] = l
 	}
 	want := map[string]bool{}
-	for _, p := range plans {
+	for i := range plans {
+		p := &plans[i]
+		if body.Scope == "code-quality" {
+			p.name = loopName("quality-codex", body.Repo)
+		}
+		if body.Scope == "code-quality" && strings.TrimSpace(p.instr) == "" {
+			writeErr(w, http.StatusBadRequest, "code-quality requires its saved scope instructions")
+			return
+		}
 		if !tmux.ValidLoopName(p.name) {
 			writeErr(w, http.StatusBadRequest, fmt.Sprintf("cannot name a session for %q", body.Repo))
 			return
@@ -293,7 +308,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 
 	var started, updated, stopped []string
 	for _, l := range existing {
-		if l.Repo != body.Repo || want[l.Name] || !loopRoles[l.Role] {
+		if body.Scope == "code-quality" || l.Scope == "code-quality" || l.Repo != body.Repo || want[l.Name] || !loopRoles[l.Role] {
 			continue
 		}
 		when, err := s.stopLoop(ctx, l, true)
@@ -321,7 +336,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 				}
 				// Older clients omit model selection: preserve an existing
 				// choice rather than silently resetting it.
-					if p.role == "build" && body.Models != nil || p.role == "supervise" && body.SuperviseModel != nil {
+				if p.role == "build" && body.Models != nil || p.role == "supervise" && body.SuperviseModel != nil {
 					if err := s.Tmux.SetLoopOption(ctx, p.name, "@loop_model", p.model); err != nil {
 						writeErr(w, http.StatusInternalServerError, err.Error())
 						return
@@ -497,6 +512,10 @@ func (s *Server) handleEditLoop(w http.ResponseWriter, r *http.Request) {
 	if body.Scope != nil {
 		if !scopeRe.MatchString(*body.Scope) {
 			writeErr(w, http.StatusBadRequest, "scope is lowercase letters, digits and dashes")
+			return
+		}
+		if (*body.Scope == "code-quality" || l.Scope == "code-quality") && *body.Scope != l.Scope {
+			writeErr(w, http.StatusBadRequest, "start a dedicated code-quality loop instead of changing an existing loop scope")
 			return
 		}
 		set["@loop_scope"] = *body.Scope
