@@ -361,7 +361,9 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		started = append(started, p.name)
 	}
 	s.saveLoops(func(saved []config.SavedLoop) []config.SavedLoop {
-		saved = slices.DeleteFunc(saved, func(sl config.SavedLoop) bool { return sl.Repo == body.Repo })
+		saved = slices.DeleteFunc(saved, func(sl config.SavedLoop) bool {
+			return sl.Repo == body.Repo && (sl.Scope == "code-quality") == (body.Scope == "code-quality")
+		})
 		for _, p := range plans {
 			saved = append(saved, p.saved(body))
 		}

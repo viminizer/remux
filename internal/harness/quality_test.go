@@ -124,8 +124,12 @@ printf '%s\n' "$*" >> "$QUALITY_TEST_ROOT/argv"
 cycle="$QUALITY_TEST_ROOT/common/remux-code-quality/cycle-000001"
 echo pending-fix > "$cycle/handoff.md"
 if test ! -f "$QUALITY_TEST_ROOT/resume"; then exit 1; fi
+if test -f "$QUALITY_TEST_ROOT/missing"; then exit 0; fi
+if test -f "$QUALITY_TEST_ROOT/invalid"; then echo '{"outcome":' > "$cycle/complete.json"; exit 0; fi
+if test -f "$QUALITY_TEST_ROOT/empty-report"; then echo '{"outcome":"clean"}' > "$cycle/complete.json"; echo ' ' > "$cycle/report.md"; exit 0; fi
 echo 'clean audited flow' > "$cycle/report.md"
 echo '{"outcome":"clean"}' > "$cycle/complete.json"
+if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 `,
 	}
 	for name, body := range scripts {
@@ -148,6 +152,24 @@ echo '{"outcome":"clean"}' > "$cycle/complete.json"
 		t.Fatal("lost handoff")
 	}
 	os.WriteFile(filepath.Join(root, "resume"), nil, 0600)
+	// A stale success marker must never combine with a failed retry's receipt.
+	os.WriteFile(filepath.Join(cycle, "runner-ok"), nil, 0600)
+	for _, failure := range []string{"missing", "invalid", "empty-report", "fail-valid"} {
+		os.WriteFile(filepath.Join(root, failure), nil, 0600)
+		if did, err := l.qualityOnce(context.Background()); !did || err == nil {
+			t.Fatalf("%s accepted: %v %v", failure, did, err)
+		}
+		if n, same, err := qualityCycle(dir); err != nil || n != 0 || same != cycle {
+			t.Fatalf("restart abandoned category after %s: %d %s %v", failure, n, same, err)
+		}
+		if _, err := os.Stat(filepath.Join(cycle, "runner-ok")); !os.IsNotExist(err) {
+			t.Fatalf("%s left success marker", failure)
+		}
+		os.Remove(filepath.Join(root, failure))
+	}
+	if archived, _ := filepath.Glob(filepath.Join(cycle, "previous-complete-*.json")); len(archived) < 2 {
+		t.Fatal("interrupted receipts lost")
+	}
 	did, err = l.qualityOnce(context.Background())
 	if !did || err != nil {
 		t.Fatal("resume failed", did, err)
@@ -175,7 +197,7 @@ echo '{"outcome":"clean"}' > "$cycle/complete.json"
 	if b, _ := os.ReadFile(filepath.Join(root, "argv")); !strings.Contains(string(b), "--model gpt-6.1-sol") {
 		t.Fatal("coordinator model not pinned")
 	}
-	if b, _ := os.ReadFile(filepath.Join(root, "runs")); string(b) != "run\nrun\n" {
+	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 6 {
 		t.Fatalf("unexpected launches %q", b)
 	}
 }

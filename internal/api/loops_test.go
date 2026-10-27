@@ -260,10 +260,25 @@ func TestRestoreAfterCrash(t *testing.T) {
 	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "reviews": 1}); code != http.StatusOK {
 		t.Fatalf("start: %d %s", code, body)
 	}
+	quality := "loop-quality-codex-restore-api-test"
+	defer tm.KillLoop(ctx, quality)
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"codex"}, "scope": "code-quality", "instructions": "retained quality", "instrMode": "replace"}); code != http.StatusOK {
+		t.Fatalf("quality: %d %s", code, body)
+	}
+	if c, _ := config.Load(); len(c.SavedLoops) != 4 {
+		t.Fatalf("quality dropped ordinary settings: %+v", c.SavedLoops)
+	}
+	if code, body := do(t, ts, "POST", "/api/loops", map[string]any{"repo": repo, "agents": []string{"claude", "claude"}, "models": []string{"sonnet", "opus"}, "reviews": 1, "instructions": "retained ordinary"}); code != http.StatusOK {
+		t.Fatalf("ordinary: %d %s", code, body)
+	}
+	if c, _ := config.Load(); len(c.SavedLoops) != 4 {
+		t.Fatalf("ordinary dropped quality settings: %+v", c.SavedLoops)
+	}
 	do(t, ts, "PATCH", "/api/loops/"+build, map[string]any{"scope": "frontend"})
 	do(t, ts, "DELETE", "/api/loops/"+build2, nil)
 
 	// The crash: every session gone, one back as an empty shell.
+	tm.KillLoop(ctx, quality)
 	tm.KillLoop(ctx, build)
 	tm.KillLoop(ctx, review)
 	tm.NewLoopSession(ctx, review, repo, []string{"sh", "-c", "sleep 60"})
@@ -276,12 +291,22 @@ func TestRestoreAfterCrash(t *testing.T) {
 		json.Unmarshal(body, &got)
 		return got.Missing
 	}
-	if got := strings.Join(missing(), ","); got != build+","+review {
+	if got := strings.Join(missing(), ","); got != quality+","+build+","+review {
 		t.Fatalf("missing = %q, want both saved loops and not the stopped one", got)
 	}
 	if code, body := do(t, ts, "POST", "/api/loops/restore", nil); code != http.StatusOK ||
-		!strings.Contains(string(body), `"started":["`+build+`","`+review+`"]`) {
+		!strings.Contains(string(body), `"started":["`+quality+`","`+build+`","`+review+`"]`) {
 		t.Fatalf("restore: %d %s", code, body)
+	}
+	for session, options := range map[string]map[string]string{
+		quality: {"@loop_scope": "code-quality", "@loop_instr": "retained quality", "@loop_model": ""},
+		build:   {"@loop_instr": "retained ordinary", "@loop_model": "sonnet"},
+	} {
+		for option, want := range options {
+			if v, _ := tm.LoopOption(ctx, session, option); v != want {
+				t.Errorf("restored %s %s = %q, want %q", session, option, v, want)
+			}
+		}
 	}
 	if v, _ := tm.LoopOption(ctx, build, "@loop_scope"); v != "frontend" {
 		t.Errorf("restored scope = %q, want the edited one", v)
@@ -296,7 +321,7 @@ func TestRestoreAfterCrash(t *testing.T) {
 		t.Errorf("missing after restore = %v", got)
 	}
 	// Saved on disk, so a restarted server still knows them.
-	if c, _ := config.Load(); len(c.SavedLoops) != 2 {
+	if c, _ := config.Load(); len(c.SavedLoops) != 3 {
 		t.Errorf("saved on disk = %+v", c.SavedLoops)
 	}
 }

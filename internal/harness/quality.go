@@ -62,14 +62,8 @@ func qualityCycle(dir string) (int, string, error) {
 		if err != nil {
 			return 0, "", err
 		}
-		var receipt struct {
-			Outcome string `json:"outcome"`
-		}
-		if json.Unmarshal(b, &receipt) != nil || (receipt.Outcome != "clean" && receipt.Outcome != "merged") {
-			return n, cycle, nil // fresh coordinator repairs incomplete evidence, never advances
-		}
-		if report, err := os.ReadFile(filepath.Join(cycle, "report.md")); err != nil || len(strings.TrimSpace(string(report))) == 0 {
-			return n, cycle, nil // receipt alone cannot advance a cycle
+		if !qualityEvidenceValid(cycle, b) {
+			return n, cycle, nil // interrupted evidence resumes the recorded cycle
 		}
 		if _, err := os.Stat(filepath.Join(cycle, "runner-ok")); os.IsNotExist(err) {
 			return n, cycle, nil // interrupted runner must resume even if it wrote a receipt
@@ -77,6 +71,38 @@ func qualityCycle(dir string) (int, string, error) {
 			return 0, "", err
 		}
 	}
+}
+
+func qualityEvidenceValid(cycle string, b []byte) bool {
+	var receipt struct {
+		Outcome string `json:"outcome"`
+	}
+	if json.Unmarshal(b, &receipt) != nil || (receipt.Outcome != "clean" && receipt.Outcome != "merged") {
+		return false
+	}
+	report, err := os.ReadFile(filepath.Join(cycle, "report.md"))
+	return err == nil && strings.TrimSpace(string(report)) != ""
+}
+
+// Each invocation needs its own successful exit and receipt. Retain interrupted
+// receipts, including partial JSON, for the next coordinator to inspect.
+func prepareQualityRun(cycle string) error {
+	if err := os.Remove(filepath.Join(cycle, "runner-ok")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(cycle, "complete.json")); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	archive, err := os.CreateTemp(cycle, "previous-complete-*.json")
+	if err != nil {
+		return err
+	}
+	if err := archive.Close(); err != nil {
+		return err
+	}
+	return os.Rename(filepath.Join(cycle, "complete.json"), archive.Name())
 }
 
 func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
@@ -165,7 +191,7 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 		return false, ctx.Err()
 	}
 	// Remove an interrupted runner's receipt; this invocation must write its own.
-	if err := os.Remove(filepath.Join(cycle, "complete.json")); err != nil && !os.IsNotExist(err) {
+	if err := prepareQualityRun(cycle); err != nil {
 		return false, err
 	}
 	l.Model = "gpt-6.1-sol"
@@ -178,7 +204,7 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	if code != 0 || l.limited() {
 		return true, fmt.Errorf("quality coordinator interrupted; resume %s", cycle)
 	}
-	if _, err := os.Stat(filepath.Join(cycle, "complete.json")); err != nil {
+	if receipt, err := os.ReadFile(filepath.Join(cycle, "complete.json")); err != nil || !qualityEvidenceValid(cycle, receipt) {
 		return true, fmt.Errorf("quality cycle unfinished; resume handoff at %s", cycle)
 	}
 	if err := os.WriteFile(filepath.Join(cycle, "runner-ok"), nil, 0o600); err != nil {
