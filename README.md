@@ -255,7 +255,10 @@ Frontend, Backend and Custom offer a simple Codex/Claude choice. Advanced contro
 hold counts, Claude models, reviewer/supervisor/cleanup settings and guidance.
 Existing mixed teams are reconstructed without resetting their models. Manage
 scopes edits the existing saved name/scope/instructions/mode records; named deletion
-removes only the saved record, never a running loop.
+removes only the saved record, never a running loop. Custom’s saved-scope selector
+uses each saved name, including guidance for built-in scopes; presets sharing a
+scope retain separate drafts per project. Pane subdirectories collapse into an
+observed or configured root of the same repository; separate clones remain choices.
 
 The summary shows starts, updates, stops and preserved lanes using the actual
 session naming rules. Advanced counts are the whole ordinary team for the project,

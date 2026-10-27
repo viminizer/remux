@@ -148,7 +148,29 @@ func (s *Server) repoChoices() []config.HarnessRepo {
 		}
 		return more[i].Slug < more[j].Slug
 	})
-	return append(out, more...)
+	return append(out, paneProjectRoots(out, more)...)
+}
+
+// Collapse pane subdirectories only within the same repository slug. Known
+// configured roots participate without probing disk or merging separate clones.
+func paneProjectRoots(known, candidates []config.HarnessRepo) []config.HarnessRepo {
+	var roots []config.HarnessRepo
+	for _, candidate := range candidates {
+		nested := false
+		for _, group := range [][]config.HarnessRepo{known, candidates} {
+			for _, root := range group {
+				if root.Slug == candidate.Slug && root.Path != candidate.Path &&
+					strings.HasPrefix(candidate.Path, strings.TrimRight(root.Path, "/")+"/") {
+					nested = true
+					break
+				}
+			}
+		}
+		if !nested {
+			roots = append(roots, candidate)
+		}
+	}
+	return roots
 }
 
 // ── start, edit, stop ─────────────────────────────────────────────────────

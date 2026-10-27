@@ -151,3 +151,39 @@ test('reload draft survives repeated render initialization until mount consumes 
     else globalThis.sessionStorage = previous
   }
 })
+
+const { scopeDraftKey, scopeSelection } = await import('../.test-build/loopForm.js')
+test('saved presets sharing a scope keep distinct guidance and project drafts', () => {
+  const baseline = formFor('/repo', [], null)
+  const accessibility = { name: 'Accessibility', scope: 'custom', instructions: 'Keyboard access', instrMode: 'add' }
+  const performance = { name: 'Performance', scope: 'custom', instructions: 'Fast rendering', instrMode: 'replace' }
+  const drafts = new Map()
+  const first = scopeSelection('/repo', 'custom', baseline, drafts, accessibility)
+  assert.equal(first.instr, 'Keyboard access')
+  drafts.set(scopeDraftKey('/repo', first.scope, first.presetName), { ...first, instr: 'Edited access', scope: 'access' })
+  const second = scopeSelection('/repo', 'custom', first, drafts, performance)
+  assert.equal(second.instr, 'Fast rendering')
+  assert.equal(second.mode, 'replace')
+  const restored = scopeSelection('/repo', 'custom', second, drafts, accessibility)
+  assert.equal(restored.instr, 'Edited access')
+  assert.equal(restored.scope, 'access')
+  assert.equal(scopeSelection('/other', 'custom', baseline, drafts, accessibility).instr, 'Keyboard access')
+})
+test('named built-in guidance remains distinct from direct built-in drafts', () => {
+  const baseline = formFor('/repo', [], null)
+  const drafts = new Map()
+  for (const scope of ['frontend', 'backend', 'code-quality']) {
+    const a = { name: `First ${scope}`, scope, instructions: 'first', instrMode: 'add' }
+    const b = { ...a, name: `Second ${scope}`, instructions: 'second' }
+    const direct = { ...baseline, scope, instr: 'direct edit' }
+    drafts.set(scopeDraftKey('/repo', scope), direct)
+    const selected = scopeSelection('/repo', scope, direct, drafts, a)
+    assert.equal(selected.instr, 'first')
+    drafts.set(scopeDraftKey('/repo', scope, a.name), { ...selected, instr: 'named edit' })
+    assert.equal(scopeSelection('/repo', scope, selected, drafts, b).instr, 'second')
+    assert.equal(scopeSelection('/repo', scope, selected, drafts, a).instr, 'named edit')
+    const restored = scopeSelection('/repo', scope, selected, drafts, undefined, a)
+    assert.equal(restored.instr, 'direct edit')
+    assert.equal(restored.presetName, undefined)
+  }
+})

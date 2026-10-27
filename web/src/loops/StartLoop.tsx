@@ -6,7 +6,7 @@ import { ModelSelect } from './ModelSelect'
 
 const OTHER = '__other__'
 const DRAFT_KEY = 'remux-start-update-draft'
-type Form = ReturnType<typeof formFor>
+type Form = ReturnType<typeof formFor> & { presetName?: string }
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const builtin = ['code-quality', 'frontend', 'backend']
 const descriptions = [
@@ -123,9 +123,10 @@ export function StartLoop({
   const ordinary = useRef<Form | null>(null)
   const scopeDrafts = useRef(new Map<string, Form>())
   const [customEditing, setCustomEditing] = useState(
-    !builtin.includes(
-      initial?.form.scope ?? formFor(first, running, last).scope,
-    ),
+    !!initial?.form.presetName ||
+      !builtin.includes(
+        initial?.form.scope ?? formFor(first, running, last).scope,
+      ),
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -185,7 +186,7 @@ export function StartLoop({
     setRepo(next)
     ordinary.current = null
     const nextTarget = next === OTHER ? path.trim() : next
-    const nextForm =
+    const nextForm: Form =
       drafts.current.get(nextTarget) ?? formFor(nextTarget, running, last)
     const prior =
       drafts.current.has(nextTarget) ||
@@ -194,12 +195,14 @@ export function StartLoop({
       last?.repo === nextTarget
     const keepQuality = quality && !prior
     setForm(keepQuality ? { ...nextForm, scope: 'code-quality' } : nextForm)
-    setCustomEditing(!keepQuality && !builtin.includes(nextForm.scope))
+    setCustomEditing(
+      !keepQuality && (!!nextForm.presetName || !builtin.includes(nextForm.scope)),
+    )
     setError('')
   }
   const selectScope = (next: string, preset?: Preset) => {
-    scopeDrafts.current.set(`${target}\n${scope}`, form)
-    setCustomEditing(!builtin.includes(next))
+    scopeDrafts.current.set(scopeDraftKey(target, form.scope, form.presetName), form)
+    setCustomEditing(!!preset || !builtin.includes(next))
     let nextForm = form
     if (next === 'code-quality' && !quality) {
       ordinary.current = form
@@ -220,18 +223,15 @@ export function StartLoop({
           running.filter((l) => l.scope !== 'code-quality'),
           last?.scope === 'code-quality' ? null : last,
         )
-    const savedDraft = scopeDrafts.current.get(`${target}\n${next}`)
-    const saved = preset ?? presets.find((p) => p.scope === next)
-    change({
-      ...(savedDraft ?? nextForm),
-      scope: next,
-      ...(!savedDraft && saved
-        ? { instr: saved.instructions, mode: saved.instrMode }
-        : {}),
-    })
+    change(
+      scopeSelection(
+        target, next, nextForm, scopeDrafts.current, preset,
+        presets.find((p) => p.scope === next),
+      ),
+    )
   }
   const provider = (agent: 'codex' | 'claude') => {
-    setPreviousTeam({ key: `${target}\n${scope}`, form })
+    setPreviousTeam({ key: scopeDraftKey(target, scope, form.presetName), form })
     change({
       claude: agent === 'claude' ? 1 : 0,
       codex: agent === 'codex' ? 1 : 0,
@@ -398,8 +398,8 @@ export function StartLoop({
                   value={id}
                   checked={
                     id === 'custom'
-                      ? !!scope && !builtin.includes(scope)
-                      : scope === id
+                      ? customEditing
+                      : !customEditing && scope === id
                   }
                   disabled={id === 'code-quality' && !info?.quality}
                   onChange={() => selectScope(id === 'custom' ? 'full' : id)}
@@ -435,6 +435,25 @@ export function StartLoop({
               </button>
             </p>
           )}
+          {customEditing && presets.length > 0 && (
+            <div className="field">
+              <label htmlFor="custom-saved">Saved scope</label>
+              <select
+                id="custom-saved"
+                value={presets.some((p) => p.name === form.presetName)
+                  ? `preset:${form.presetName}` : '__new__'}
+                onChange={(e) => {
+                  const preset = presets.find((p) => `preset:${p.name}` === e.target.value)
+                  selectScope(preset?.scope ?? 'full', preset)
+                }}
+              >
+                <option value="__new__">Your own scope…</option>
+                {presets.map((p) => (
+                  <option key={p.name} value={`preset:${p.name}`}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {quality ? (
             <div className="quality-team">
               <strong>1 Sol coordinator · serial audits</strong>
@@ -464,12 +483,12 @@ export function StartLoop({
                     Claude · {models[0] || 'CLI default'}
                   </button>
                 </div>
-                {previousTeam?.key === `${target}\n${scope}` && (
+                {previousTeam?.key === scopeDraftKey(target, scope, form.presetName) && (
                   <button
                     className="linkbtn"
                     onClick={() => {
                       const previous = previousTeam.form
-                      setPreviousTeam({ key: `${target}\n${scope}`, form })
+                      setPreviousTeam({ key: scopeDraftKey(target, scope, form.presetName), form })
                       change({
                         claude: previous.claude,
                         codex: previous.codex,
@@ -480,39 +499,6 @@ export function StartLoop({
                     Restore previous builder team
                   </button>
                 )}
-                {customEditing &&
-                  presets.some((p) => !builtin.includes(p.scope)) && (
-                    <div className="field">
-                      <label htmlFor="custom-saved">Custom scope</label>
-                      <select
-                        id="custom-saved"
-                        value={
-                          presets.some(
-                            (p) =>
-                              !builtin.includes(p.scope) && p.scope === scope,
-                          )
-                            ? scope
-                            : '__new__'
-                        }
-                        onChange={(e) =>
-                          selectScope(
-                            e.target.value === '__new__'
-                              ? 'full'
-                              : e.target.value,
-                          )
-                        }
-                      >
-                        <option value="__new__">Your own scope…</option>
-                        {presets
-                          .filter((p) => !builtin.includes(p.scope))
-                          .map((p) => (
-                            <option key={p.name} value={p.scope}>
-                              {p.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  )}
                 {customEditing && (
                   <div className="field">
                     <label htmlFor="custom-scope">Scope name</label>
@@ -1258,4 +1244,31 @@ function Stepper({
       </button>
     </div>
   )
+}
+
+/** Names identify saved guidance; scope alone identifies direct scope choices. */
+export function scopeDraftKey(target: string, scope: string, presetName?: string) {
+  return JSON.stringify([
+    target,
+    presetName === undefined ? 'scope' : 'preset',
+    presetName ?? scope,
+  ])
+}
+
+export function scopeSelection(
+  target: string,
+  scope: string,
+  fallback: Form,
+  drafts: Map<string, Form>,
+  preset?: Preset,
+  defaultPreset?: Preset,
+): Form {
+  const draft = drafts.get(scopeDraftKey(target, scope, preset?.name))
+  const saved = preset ?? defaultPreset
+  return {
+    ...(draft ?? fallback),
+    scope: draft?.scope ?? scope,
+    presetName: preset?.name,
+    ...(!draft && saved ? { instr: saved.instructions, mode: saved.instrMode } : {}),
+  }
 }

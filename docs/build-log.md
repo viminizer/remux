@@ -1694,3 +1694,34 @@ No live loop/preset/service edits, commit, push, release/tag or deployment were
 performed by this implementation worker. Parent owns release v0.4.2 and final
 review/publication. Temporary `.start-preview/` belongs to the parent and is not
 part of this change.
+
+
+### Start-loop independent review follow-up (2026-10-27)
+
+Fixed two confirmed P2 findings from review of `0392365`:
+
+- Saved guidance selection now identifies presets by unique saved name, rather
+  than shared scope. Accessibility and Performance can both use `custom` and
+  retain their own instructions/mode and edited drafts. The Custom dropdown also
+  includes named presets using built-in scopes, without adding duplicate chips.
+  Direct built-in choices retain their existing default selection behavior.
+  Project drafts and explicit reload drafts retain the selected name; scope and
+  previous-team draft identities distinguish named presets from direct choices.
+- Project discovery collapses nested pane working directories under observed or
+  configured roots of the same GitHub slug. Separate clone roots, path-prefix
+  siblings and different slugs remain distinct. This remains filesystem-free
+  during background polling.
+
+Verification: `npm test --prefix web` passed all 35 tests, including distinct
+same-scope named guidance, edited drafts, project separation and direct built-in
+selection. `npm run build --prefix web` passed TypeScript and production Vite.
+`go test ./internal/api -run 'Test(PaneProjectRoots|ProjectPath|LoopProject)' -count=1`,
+`go vet ./...`, `go build ./...` and `git diff --check` passed. API coverage includes
+nested pane paths, configured roots, clone preservation and path boundaries.
+No tmux commands, live writes, commits, pushes or preview helpers were used.
+
+Parent's isolated browser fixture also verified Accessibility (`custom`/add)
+and Performance (`custom`/replace) select distinct instructions. A named Frontend
+variation (`frontend`/replace) remained reachable under Custom with the correct
+mode, and its edited draft survived switching to Performance and back. The
+parent used a temporary stand-in blocking starts, with no live backend writes.

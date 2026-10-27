@@ -138,3 +138,26 @@ func TestLoopProjectChoicesOmitOnlyMissingPaths(t *testing.T) {
 		t.Fatal("choice validation must not delete config history")
 	}
 }
+
+func TestPaneProjectRootsCollapseSubdirectoriesPreserveClones(t *testing.T) {
+	known := []config.HarnessRepo{{Path: "/known/repo", Slug: "org/repo"}}
+	candidates := []config.HarnessRepo{
+		{Path: "/one/repo/web", Slug: "org/repo"},
+		{Path: "/two/repo/web", Slug: "org/repo"},
+		{Path: "/one/repo", Slug: "org/repo"},
+		{Path: "/one/repository", Slug: "org/repo"},
+		{Path: "/known/repo/backend", Slug: "org/repo"},
+		{Path: "/one/repo/nested", Slug: "org/other"},
+		{Path: "/two/repo", Slug: "org/repo"},
+	}
+	got := paneProjectRoots(known, candidates)
+	want := []string{"/one/repo", "/one/repository", "/one/repo/nested", "/two/repo"}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v; want %v", got, want)
+	}
+	for i, path := range want {
+		if got[i].Path != path {
+			t.Errorf("got %s want %s", got[i].Path, path)
+		}
+	}
+}
