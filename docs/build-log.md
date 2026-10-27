@@ -1725,3 +1725,55 @@ and Performance (`custom`/replace) select distinct instructions. A named Fronten
 variation (`frontend`/replace) remained reachable under Custom with the correct
 mode, and its edited draft survived switching to Performance and back. The
 parent used a temporary stand-in blocking starts, with no live backend writes.
+
+### Start loop dropdown and spacing polish — 2026-10-27
+
+Removed the Start loop version button and update dialog, its session-storage reload
+restoration, and the now-unused server-version props from App through LoopsRoutes.
+Settings retains its existing updater. Removed the obsolete reload-draft regression
+case; ordinary per-project and per-scope drafts remain in memory.
+
+Added one dependency-free custom Select shared by Start loop and ModelSelect,
+including saved-scope editing in the modal dialog. Controls have explicit labels,
+selected-value indicators, arrow/Home/End navigation, typeahead, Enter/Space
+selection, Escape/Tab dismissal and outside-click dismissal. Menus use the browser
+popover top layer where available, with fixed positioning as fallback, viewport
+bounds, upward placement near the bottom, and scrolling for long lists. External
+scroll/viewport changes dismiss the menu rather than leave it detached.
+
+Kept the existing Remux palette. Removed the negative Manage scopes margin and
+separated the heading action from the scope border; added space around custom
+scope/provider controls and advanced/dialog fields. Shared model labels now sit
+above their controls instead of nesting the control inside the label.
+
+Checks actually run in the isolated worktree:
+- `npm ci --prefix web` completed; npm reported two existing high-severity audit
+  advisories. No dependency versions were changed.
+- `npm test --prefix web`: all 34 retained Node tests passed. The first run exposed
+  an accidentally removed adjacent scope-helper import while deleting the obsolete
+  reload test; restoring that import resolved the two failures.
+- `npm run build --prefix web`: TypeScript and production Vite build passed.
+- `git diff --check`: passed.
+
+Parent browser checks against a read-only preview observed the project menu,
+12px separation below Manage scopes, keyboard ArrowDown/Enter project selection,
+Home/ArrowDown/Enter supervisor-model selection, viewport-bounded modal dropdowns,
+and Escape dismissing the dropdown while retaining the modal. The pass found
+oversized helper copy and an unthemed dialog primary action; these were corrected
+with scoped helper text and reuse of existing primary/cancel/disabled/danger
+button styles. Final screenshots at 320px, 390px and 1440px show the full page,
+summary, advanced controls and dialogs with no horizontal overflow or browser
+errors. A temporary browser fetch fixture supplied 26 project choices: the custom
+menu stayed 280px high, scrolled to its final item with End, and wrapped long clone
+paths inside its width. Failed scope saves retained the draft and selected mode.
+Screenshots are saved locally under
+`/Users/mac/.agent/diagrams/remux-start-loop-polish/` (not published to GitHub).
+No live loop or scope mutations were submitted; the preview rejected writes.
+
+The parent preview used only GET/HEAD API calls and read-only tmux observation,
+with no namer/watchers. Its broader invariant comparison FAILED after concurrent
+Keystone geometry changes: active saas:1.3→saas:1.1; pane %21 147x12→147x37,
+%280 195x41→195x16 and %429 47x12→47x37. Read-only inspection identified these
+as nvim, Claude and Codex panes in Keystone. No attach/select/resize or other pane
+writes were executed here, and the exact cause is not independently proven. No
+geometry was restored. The temporary preview helper was stopped and removed.

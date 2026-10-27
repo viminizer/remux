@@ -275,10 +275,11 @@ unconfigured workflow. File lookups are on demand, cancelled on project changes,
 and bounded to three seconds and two outstanding readers. A kernel-stalled file
 read may occupy a reader until macOS releases it; requests fail promptly when
 slots are exhausted. No full workflow is injected into tmux by this preview.
-The header compares the loaded UI version with the server and offers the existing
-explicit update/reload flow. Current form choices survive that reload in tab session
-storage for at most five minutes and are removed when restored. It never reloads
-automatically while editing. Each loop claims an issue with its own `by:<session>`
+Start loop uses custom keyboard-accessible dropdowns for project, saved guidance,
+providers and instruction modes, including the scope dialog and shared model
+picker. Menus scroll within the viewport and appear above dialogs. Build updates
+remain in Settings; Start loop has no version or reload control.
+Each loop claims an issue with its own `by:<session>`
 label first, so two loops waking together never work the same one. Each loop is a
 detached `loop-*` tmux session running `remux loop`. A build loop takes one
 `ready` issue per run (blockers first) in its own worktree under
