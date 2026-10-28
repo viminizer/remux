@@ -1870,3 +1870,30 @@ values while preserving the intended `notifyWaiting=false` change. Both request
 bodies were captured and asserted. This confirms Retry does not replay unrelated
 stale flags. The granted permission hint uses plain scope language, without a
 claim that permission alone proves delivery. Fixture and browser were stopped.
+
+Ignored-check retry follow-up: Add and Remove now retain the intended check name
+and compute their list change from the latest settings on every save attempt.
+A delayed bootstrap list arriving after a failed write therefore remains intact
+apart from the requested Add or Remove. Add deduplicates and Remove matches names
+without case sensitivity, consistent with the server's normalized set. Direct
+switch changes still retain their captured target value on Retry; successful Add
+alone clears the matching draft. The App write guard and backend are unchanged.
+
+Follow-up worker verification: `npm test --prefix web` passed all 34 existing
+tests; `npm run build --prefix web` passed TypeScript and Vite; `git diff --check`
+passed. No new harness or dependencies were added; the existing pure-module tests
+do not exercise Settings rendering, and the parent will verify both delayed-list
+Add and Remove races in its browser fixture. This worker used no tmux commands,
+live writes, preview-fixture edits, commits or pushes.
+
+Parent browser verification of the list follow-up passed both delayed-bootstrap
+races with captured requests. Add first failed with `[Vercel,new]`, then after
+bootstrap Retry sent `[required-check,new]`; Remove first failed with `[Vercel]`,
+then after bootstrap Retry sent `[required-check]`. Both retries retained refreshed
+`notifyDone/namePanes=true` values. Add cleared only the submitted draft. The
+fixture returns 404 for unsupported routes, matching absence rather than sending
+invalid successful GitHub snapshots. No real settings or tmux were involved.
+
+Settings switch wrappers are now associated labels, extending the clickable area
+to 44px while retaining the existing pill appearance. A browser check confirmed
+label/control association and that clicking the outer label toggles the switch.

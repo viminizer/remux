@@ -545,6 +545,8 @@ and limit scrollback to 100–2000 lines.
 
 Retry preserves the intended field change and uses the latest settings for the
 remaining Mac preferences, including settings loaded after the failed attempt.
+Ignored-check retries reapply the original Add or Remove to the latest list,
+preserving other refreshed entries and matching names without case sensitivity.
 The device notification status reports browser permission only; allowed permission
 does not confirm push registration or delivery.
 

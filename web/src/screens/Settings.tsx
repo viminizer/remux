@@ -46,6 +46,8 @@ export function SettingsScreen({
   // can refresh the other settings before Retry. Use the current payload builder.
   const latestPatch = useRef(patch)
   latestPatch.current = patch
+  const latestSettings = useRef(settings)
+  latestSettings.current = settings
   const [draft, setDraft] = useState('')
   const [check, setCheck] = useState<'idle' | 'checking' | 'failed' | 'done'>(
     'idle',
@@ -55,14 +57,16 @@ export function SettingsScreen({
   const stale = served !== null && served !== __BUILD_VERSION__
   async function saveMac(
     group: string,
-    value: Partial<Settings>,
+    value: Partial<Settings> | ((current: Settings) => Partial<Settings>),
     done?: () => void,
   ) {
     if (saving.current) return
     saving.current = true
     setSave({ group, pending: true, failed: false })
     try {
-      await latestPatch.current(value)
+      await latestPatch.current(
+        typeof value === 'function' ? value(latestSettings.current) : value,
+      )
       done?.()
       setSave({ group, pending: false, failed: false })
     } catch {
@@ -133,7 +137,7 @@ export function SettingsScreen({
     mac = false,
     group = 'notifications',
   ) => (
-    <span className="settings-switch-target">
+    <label className="settings-switch-target">
       <button
         className={`sw-toggle ${settings[key] ? 'on' : ''}`}
         role="switch"
@@ -146,7 +150,7 @@ export function SettingsScreen({
             : void patch({ [key]: !settings[key] })
         }
       />
-    </span>
+    </label>
   )
   const stepper = (
     key: 'fontSize' | 'lines',
@@ -190,7 +194,13 @@ export function SettingsScreen({
       return
     void saveMac(
       'notifications',
-      { ignoreChecks: [...settings.ignoreChecks, value] },
+      (current) => ({
+        ignoreChecks: current.ignoreChecks.some(
+          (n) => n.toLowerCase() === value.toLowerCase(),
+        )
+          ? current.ignoreChecks
+          : [...current.ignoreChecks, value],
+      }),
       () => setDraft((current) => (current.trim() === value ? '' : current)),
     )
   }
@@ -361,11 +371,11 @@ export function SettingsScreen({
                           aria-label={`Stop ignoring ${n}`}
                           disabled={!!save?.pending}
                           onClick={() =>
-                            void saveMac('notifications', {
-                              ignoreChecks: settings.ignoreChecks.filter(
-                                (x) => x !== n,
+                            void saveMac('notifications', (current) => ({
+                              ignoreChecks: current.ignoreChecks.filter(
+                                (x) => x.toLowerCase() !== n.toLowerCase(),
                               ),
-                            })
+                            }))
                           }
                         >
                           ×
