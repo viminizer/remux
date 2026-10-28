@@ -543,6 +543,11 @@ the previous value and retain an ignored-check draft; Mac writes are blocked whi
 another is pending. Reading controls preview the chosen terminal font (10–20px)
 and limit scrollback to 100–2000 lines.
 
+Retry preserves the intended field change and uses the latest settings for the
+remaining Mac preferences, including settings loaded after the failed attempt.
+The device notification status reports browser permission only; allowed permission
+does not confirm push registration or delivery.
+
 The version shown is the interface loaded on this device. Checking for an update
 refreshes the Mac’s health/version without reloading. When the served version
 differs, **Reload to update** explicitly loads that interface; it does not install

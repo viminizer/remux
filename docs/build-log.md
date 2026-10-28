@@ -1846,3 +1846,27 @@ matching draft. No live settings, subscriptions or loops were changed. The previ
 helper was stopped/removed. `laptop-invariant.sh after` PASSED: all 23 laptop panes
 unchanged during the entire preview phase. Screenshots are local under
 `/Users/mac/.agent/diagrams/remux-settings-implementation/`.
+
+Settings review fix: a failed save previously retained the original patch callback,
+which built a full Mac settings payload from an old snapshot. If delayed bootstrap
+settings arrived before Retry, retrying one field could overwrite unrelated refreshed
+preferences. Settings now reads the latest patch callback through a ref while keeping
+the captured intended field change, draft completion callback and pending guards.
+The granted-permission label now says “Permission allowed on this device” and explains
+that permission alone does not confirm push registration or delivery. Existing missing
+registration retry remains a limitation; this change adds no subscription behavior.
+
+Fix-worker checks: `npm test --prefix web` passed all 34 existing frontend tests;
+`npm run build --prefix web` passed TypeScript and Vite; `git diff --check` passed.
+No focused automated regression was added because the existing tests cover pure
+modules and there is no React/browser test harness; delayed-bootstrap browser
+verification remains with the parent reviewer. No tmux commands, live setting writes,
+Go changes, preview-helper changes, commits or pushes were performed by this worker.
+
+Parent reproduced the review race in a separate standalone HTTP fixture (no tmux
+or real settings): initial local `notifyDone/namePanes=false`; delayed bootstrap
+GET refreshed both to true; the first PUT failed; Retry then sent the latest true
+values while preserving the intended `notifyWaiting=false` change. Both request
+bodies were captured and asserted. This confirms Retry does not replay unrelated
+stale flags. The granted permission hint uses plain scope language, without a
+claim that permission alone proves delivery. Fixture and browser were stopped.

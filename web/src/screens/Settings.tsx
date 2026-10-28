@@ -42,6 +42,10 @@ export function SettingsScreen({
   const { n: naming } = useNaming(0)
   const [save, setSave] = useState<SaveState | null>(null)
   const saving = useRef(false)
+  // A failed save retains its intended change, but a later bootstrap response
+  // can refresh the other settings before Retry. Use the current payload builder.
+  const latestPatch = useRef(patch)
+  latestPatch.current = patch
   const [draft, setDraft] = useState('')
   const [check, setCheck] = useState<'idle' | 'checking' | 'failed' | 'done'>(
     'idle',
@@ -58,7 +62,7 @@ export function SettingsScreen({
     saving.current = true
     setSave({ group, pending: true, failed: false })
     try {
-      await patch(value)
+      await latestPatch.current(value)
       done?.()
       setSave({ group, pending: false, failed: false })
     } catch {
@@ -204,8 +208,8 @@ export function SettingsScreen({
         : 'Device preferences still work. Check your Mac and Tailscale connection.'
   const permission = {
     granted: [
-      '✓ Enabled on this device',
-      'Choose which events Remux sends below.',
+      '✓ Permission allowed on this device',
+      'Your browser allows notifications. Event preferences are saved on your Mac.',
     ],
     default: [
       'Enable notifications on this device',
