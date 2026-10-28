@@ -109,7 +109,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 	body.IgnoreChecks = normalizeChecks(body.IgnoreChecks)
 
+	// Serialize persistence and application: a failed save must leave the
+	// watcher and naming pass on the previous configuration.
 	s.mu.Lock()
+	if _, err := config.Update(func(c *config.Config) {
+		c.NotifyWaiting = body.NotifyWaiting
+		c.NotifyDone = body.NotifyDone
+		c.NotifyCI = body.NotifyCI
+		c.IgnoreChecks = body.IgnoreChecks
+		c.NamePanes = body.NamePanes
+	}); err != nil {
+		s.mu.Unlock()
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.Cfg.NotifyWaiting = body.NotifyWaiting
 	s.Cfg.NotifyDone = body.NotifyDone
 	s.Cfg.NotifyCI = body.NotifyCI
@@ -118,16 +131,6 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	body.Repos = s.Cfg.Repos
 	s.mu.Unlock()
 
-	if _, err := config.Update(func(c *config.Config) {
-		c.NotifyWaiting = body.NotifyWaiting
-		c.NotifyDone = body.NotifyDone
-		c.NotifyCI = body.NotifyCI
-		c.IgnoreChecks = body.IgnoreChecks
-		c.NamePanes = body.NamePanes
-	}); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	// The ignore list changes what the poller calls red, so the next snapshot
 	// has to be recomputed rather than waiting out the interval.
 	if s.GH != nil {

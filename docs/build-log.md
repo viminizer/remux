@@ -1777,3 +1777,72 @@ Keystone geometry changes: active saas:1.3→saas:1.1; pane %21 147x12→147x37,
 as nvim, Claude and Codex panes in Keystone. No attach/select/resize or other pane
 writes were executed here, and the exact cause is not independently proven. No
 geometry was restored. The temporary preview helper was stopped and removed.
+
+
+## 2026-10-29 — approved Settings v2 implementation
+
+Ported `docs/mockups/settings-v2.html` into the existing React Settings screen:
+compact connection/details including denied access, grouped Reading, Notifications,
+Input & keypad, Agent naming and App & updates, one column on phones and two on
+wide screens. Reused the existing palette, cards, switches and route editors; no
+new dependencies or native dropdowns. Device versus Mac scope is explicit.
+
+Font controls preview the terminal sample and enforce 10–20px; scrollback enforces
+100–2000 lines. Permission messaging covers granted/default/denied/unsupported;
+Mac event choices remain editable independently of browser permission. Ignored
+checks are collapsed, preserve failed-add drafts, and offer retry. Pending Mac
+writes disable other Mac controls and the App write guard prevents overlapping
+full-payload requests. Values apply locally only after server success. Backend
+settings now persist before updating runtime values under the server mutex, so a
+failed disk write also leaves watcher/namer behavior unchanged.
+
+Update checks only refresh health. The shown version is the loaded bundle; a
+separate explicit reload uses the existing service-worker update path when the
+Mac serves a different version. No installer/server upgrade is implied. Mockup
+preview state controls are absent from production.
+
+Observed checks in the isolated implementation worktree:
+- `npm ci --prefix web` completed (existing audit report: two high vulnerabilities;
+  dependency versions were not changed).
+- `npm test --prefix web`: all 34 existing pure frontend tests passed.
+- `npm run build --prefix web`: TypeScript and Vite production build passed.
+- `go test ./internal/api -run '^TestSettings' -count=1`: passed, including a new
+  persistence-failure regression using a temporary HOME and no tmux commands.
+- `go vet ./...` and `go build ./...`: passed.
+- No tmux commands, paid model calls, live setting changes or service reloads were
+  run by the implementation worker. Browser verification/review/release is handled
+  separately; this entry does not claim that those steps are complete.
+
+Settings follow-up: the parent’s read-only browser pass observed a successful
+Check followed by a window offline event: the heading correctly changed to
+“Your Mac is offline” while the inline message still claimed “Remux is reachable.”
+The inline success now says “Remux was reachable at the last check.” This records
+the historical health request without contradicting the current connection;
+check failures, update state and loaded-bundle version handling are unchanged.
+The Send with Enter hint now says “When off, use the send key to submit.” Source
+inspection of `web/src/pane/Composer.tsx` confirmed Enter does not stage text when
+that preference is off; it follows the textarea’s normal newline behavior.
+
+Follow-up checks actually run: `npm test --prefix web` passed all 34 tests;
+`npm run build --prefix web` passed TypeScript and Vite; `git diff --check` passed.
+The follow-up worker used no tmux commands, live writes or preview-helper changes.
+
+Parent verification before review: real Chromium screenshots at 320px, 390px and
+1440px match the approved single/two-column layout, including the bottom update
+card and intermediate notification/input/naming sections. No horizontal overflow
+or browser errors. Removed a duplicate divider before ignored checks. Verified
+font-size 10/20px and scrollback 100/2000 limits and the live terminal sample;
+keypad/naming links reach their existing routes. Connection-check failure is
+shown inline; a synthetic different server version offers explicit reload and
+retains the separately displayed loaded bundle version. The historical-success
+copy remains accurate after an offline transition. Device controls remain usable
+while offline.
+
+A parent-only local preview intercepted settings GET/PUT in memory: default PUT
+failed with 503, then successful retry was enabled for verification. Pending saves
+disabled all Mac switches; failures retained the previous naming value and ignored
+check draft, and successful retries applied the intended value and cleared the
+matching draft. No live settings, subscriptions or loops were changed. The preview
+helper was stopped/removed. `laptop-invariant.sh after` PASSED: all 23 laptop panes
+unchanged during the entire preview phase. Screenshots are local under
+`/Users/mac/.agent/diagrams/remux-settings-implementation/`.

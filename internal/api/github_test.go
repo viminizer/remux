@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -343,5 +345,47 @@ func TestInboxUpdatedTakesTheFirstMatch(t *testing.T) {
 	// a zero timestamp would let every future update through.
 	if got := inboxUpdated(in, "viminizer/remux", 99); got.IsZero() {
 		t.Error("an unknown row got the zero time")
+	}
+}
+
+// Persistence failure must not change the runtime values consumed by watchers.
+func TestSettingsPersistenceFailureKeepsRuntime(t *testing.T) {
+	ts, _ := githubServer(t)
+	code, before := do(t, ts, "GET", "/api/settings", nil)
+	if code != http.StatusOK {
+		t.Fatalf("get: %d %s", code, before)
+	}
+	var want notifySettings
+	if err := json.Unmarshal(before, &want); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// A directory where the JSON file belongs forces Load/Update to fail on all platforms.
+	if err := os.Mkdir(filepath.Join(dir, "config.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	code, body := do(t, ts, "PUT", "/api/settings", notifySettings{
+		NotifyWaiting: !want.NotifyWaiting, NotifyDone: !want.NotifyDone,
+		NotifyCI: !want.NotifyCI, NamePanes: !want.NamePanes, IgnoreChecks: []string{"new check"},
+	})
+	if code != http.StatusInternalServerError {
+		t.Fatalf("put: %d %s", code, body)
+	}
+	code, after := do(t, ts, "GET", "/api/settings", nil)
+	if code != http.StatusOK {
+		t.Fatalf("get: %d %s", code, after)
+	}
+	var got notifySettings
+	if err := json.Unmarshal(after, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("failed persistence changed runtime: got %+v, want %+v", got, want)
 	}
 }

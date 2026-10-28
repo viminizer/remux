@@ -517,29 +517,37 @@ export default function App() {
   }, [conn, panes, settings.starred, patch])
 
   // Notification toggles must reach the server or they do nothing.
-  const patchNotify = (p: Partial<typeof settings>) => {
-    patch(p)
-    if (
-      'notifyWaiting' in p ||
-      'notifyDone' in p ||
-      'notifyCi' in p ||
-      'ignoreChecks' in p ||
-      'namePanes' in p
-    ) {
+  const settingsWrite = useRef(false)
+  const patchNotify = async (p: Partial<typeof settings>): Promise<void> => {
+    const mac = ['notifyWaiting', 'notifyDone', 'notifyCi', 'ignoreChecks', 'namePanes'].some(
+      (key) => key in p,
+    )
+    if (!mac) {
+      patch(p)
+      return
+    }
+    if (settingsWrite.current) throw new Error('Another Mac setting is saving. Please retry.')
+    settingsWrite.current = true
+    try {
       const next = { ...settings, ...p }
-      guard('save settings', async () => {
-        await api.saveSettings({
-          notifyWaiting: next.notifyWaiting,
-          notifyDone: next.notifyDone,
-          notifyCi: next.notifyCi,
-          ignoreChecks: next.ignoreChecks,
-          namePanes: next.namePanes,
-        })
-        // The ignore list changes what counts as red, and the server kicks the
-        // poller on save. Pick the new snapshot up rather than waiting for the
-        // next badge tick to notice.
-        if ('ignoreChecks' in p) void ghLoad()
+      const saved = await api.saveSettings({
+        notifyWaiting: next.notifyWaiting,
+        notifyDone: next.notifyDone,
+        notifyCi: next.notifyCi,
+        ignoreChecks: next.ignoreChecks,
+        namePanes: next.namePanes,
       })
+      patch({
+        ...p,
+        notifyWaiting: saved.notifyWaiting,
+        notifyDone: saved.notifyDone,
+        notifyCi: saved.notifyCi,
+        ignoreChecks: saved.ignoreChecks ?? [],
+        namePanes: saved.namePanes,
+      })
+      if ('ignoreChecks' in p) void ghLoad()
+    } finally {
+      settingsWrite.current = false
     }
   }
 
@@ -644,8 +652,9 @@ export default function App() {
       setHealth(h)
       setLastReached(Date.now())
       toast(`reachable · ${Math.round(performance.now() - t0)} ms`)
-    } catch {
+    } catch (error) {
       toast('could not reach your Mac')
+      throw error
     }
   }
 
@@ -859,7 +868,7 @@ export default function App() {
                 onToggle={() => setStaleWhy((v) => !v)}
                 onRetry={() => {
                   sock.current?.resume()
-                  checkNow()
+                  void checkNow().catch(() => {})
                 }}
               />
             )}
