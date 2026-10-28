@@ -1,29 +1,17 @@
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { Health, Conn, Naming } from '../types'
 import type { Settings } from '../store'
 import { ago } from '../store'
 import { namingState, useNaming } from './Naming'
 
-/**
- * scripts/build.sh strips the leading v from the git tag so the string stays
- * valid semver - it is what the update check compares and what keys the
- * service worker's cache. This puts it back for reading, and only for reading.
- * A repo with no tags reports "dev", which gets no v.
- */
 const tag = (s: string) => (/^\d/.test(s) ? 'v' + s : s)
-
-const CONN_DOT: Record<Conn, string> = {
-  connecting: 'shell',
-  live: 'idle',
-  offline: 'stale',
-  denied: 'waiting',
+type SaveState = {
+  group: string
+  pending: boolean
+  failed: boolean
+  retry?: () => void
 }
 
-/**
- * There is no connection screen in remux, so connection lives here as a
- * status card. tsnet removed everything a connection screen would have
- * configured: no server URL, no token, no pairing.
- */
 export function SettingsScreen({
   health,
   conn,
@@ -42,383 +30,507 @@ export function SettingsScreen({
   conn: Conn
   lastReached: number | null
   settings: Settings
-  patch: (p: Partial<Settings>) => void
+  patch: (p: Partial<Settings>) => Promise<void>
   notifState: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
   onBack: () => void
   onKeyPad: () => void
   onNaming: () => void
-  onCheck: () => void
-  onUpdate: () => void
+  onCheck: () => Promise<void>
+  onUpdate: () => Promise<void>
 }) {
-  // Once, not polled - see the row that uses it.
   const { n: naming } = useNaming(0)
-
-  // The server's version is the one being served; __BUILD_VERSION__ is the one
-  // running. They differ exactly when a new build has been deployed and this
-  // tab is still on the old bundle.
-  //
-  // Unknown is not the same as up to date: with no health response there is
-  // nothing to compare, so the button stays available rather than claiming a
-  // state it cannot see.
-  const running = __BUILD_VERSION__
+  const [save, setSave] = useState<SaveState | null>(null)
+  const saving = useRef(false)
+  // A failed save retains its intended change, but a later bootstrap response
+  // can refresh the other settings before Retry. Use the current payload builder.
+  const latestPatch = useRef(patch)
+  latestPatch.current = patch
+  const latestSettings = useRef(settings)
+  latestSettings.current = settings
+  const [draft, setDraft] = useState('')
+  const [check, setCheck] = useState<'idle' | 'checking' | 'failed' | 'done'>(
+    'idle',
+  )
+  const [reloading, setReloading] = useState(false)
   const served = health?.version ?? null
-  const stale = served !== null && served !== running
+  const stale = served !== null && served !== __BUILD_VERSION__
+  async function saveMac(
+    group: string,
+    value: Partial<Settings> | ((current: Settings) => Partial<Settings>),
+    done?: () => void,
+  ) {
+    if (saving.current) return
+    saving.current = true
+    setSave({ group, pending: true, failed: false })
+    try {
+      await latestPatch.current(
+        typeof value === 'function' ? value(latestSettings.current) : value,
+      )
+      done?.()
+      setSave({ group, pending: false, failed: false })
+    } catch {
+      setSave({
+        group,
+        pending: false,
+        failed: true,
+        retry: () => void saveMac(group, value, done),
+      })
+    } finally {
+      saving.current = false
+    }
+  }
+  async function checkNow() {
+    setCheck('checking')
+    try {
+      await onCheck()
+      setCheck('done')
+    } catch {
+      setCheck('failed')
+    }
+  }
+  const status = (group: string) =>
+    save?.group === group && (
+      <p
+        className={`settings-save ${save.failed ? 'failed' : ''}`}
+        role="status"
+      >
+        {save.pending
+          ? 'Saving to your Mac…'
+          : save.failed
+            ? 'Couldn’t save. Previous setting kept.'
+            : 'Saved to your Mac'}
+        {save.failed && (
+          <button className="linkbtn" onClick={save.retry}>
+            Retry
+          </button>
+        )}
+      </p>
+    )
+  const section = (
+    title: string,
+    mac: boolean,
+    children: ReactNode,
+    group?: string,
+  ) => (
+    <section>
+      <div className="settings-heading">
+        <h3>{title}</h3>
+        <span>{mac ? 'REMUX ON YOUR MAC' : 'THIS DEVICE'}</span>
+      </div>
+      <div className="card">{children}</div>
+      {group && status(group)}
+    </section>
+  )
+  const row = (title: string, hint: string, control: ReactNode) => (
+    <div className="crow">
+      <div className="lbl">
+        {title}
+        <small>{hint}</small>
+      </div>
+      {control}
+    </div>
+  )
+  const toggle = (
+    label: string,
+    key: keyof Settings,
+    mac = false,
+    group = 'notifications',
+  ) => (
+    <label className="settings-switch-target">
+      <button
+        className={`sw-toggle ${settings[key] ? 'on' : ''}`}
+        role="switch"
+        aria-label={label}
+        aria-checked={!!settings[key]}
+        disabled={mac && !!save?.pending}
+        onClick={() =>
+          mac
+            ? void saveMac(group, { [key]: !settings[key] })
+            : void patch({ [key]: !settings[key] })
+        }
+      />
+    </label>
+  )
+  const stepper = (
+    key: 'fontSize' | 'lines',
+    min: number,
+    max: number,
+    step: number,
+    less: string,
+    more: string,
+  ) => (
+    <span className="stepper settings-stepper">
+      <button
+        aria-label={less}
+        disabled={settings[key] <= min}
+        onClick={() =>
+          void patch({ [key]: Math.max(min, settings[key] - step) })
+        }
+      >
+        −
+      </button>
+      <output aria-live="polite">
+        {settings[key]}
+        {key === 'fontSize' ? 'px' : ''}
+      </output>
+      <button
+        aria-label={more}
+        disabled={settings[key] >= max}
+        onClick={() =>
+          void patch({ [key]: Math.min(max, settings[key] + step) })
+        }
+      >
+        +
+      </button>
+    </span>
+  )
+  function addCheck() {
+    const value = draft.trim()
+    if (
+      !value ||
+      settings.ignoreChecks.some((n) => n.toLowerCase() === value.toLowerCase())
+    )
+      return
+    void saveMac(
+      'notifications',
+      (current) => ({
+        ignoreChecks: current.ignoreChecks.some(
+          (n) => n.toLowerCase() === value.toLowerCase(),
+        )
+          ? current.ignoreChecks
+          : [...current.ignoreChecks, value],
+      }),
+      () => setDraft((current) => (current.trim() === value ? '' : current)),
+    )
+  }
+  const connectionTitle = {
+    live: 'Connected to your Mac',
+    offline: 'Your Mac is offline',
+    denied: 'Access denied',
+    connecting: 'Connecting to your Mac…',
+  }[conn]
+  const connectionHint =
+    conn === 'denied'
+      ? 'This account is not allowed to access Remux on this Mac.'
+      : conn === 'live'
+        ? `Remux is reachable · last reached ${lastReached ? ago(lastReached) : 'just now'}`
+        : 'Device preferences still work. Check your Mac and Tailscale connection.'
+  const permission = {
+    granted: [
+      '✓ Permission allowed on this device',
+      'Your browser allows notifications. Event preferences are saved on your Mac.',
+    ],
+    default: [
+      'Enable notifications on this device',
+      'Event preferences are saved on your Mac.',
+    ],
+    denied: [
+      'Blocked in browser settings',
+      'Allow notifications for this site in your browser settings. Your event preferences are preserved.',
+    ],
+    unsupported: [
+      'Notifications aren’t available here',
+      'Use a supported browser; on iPhone, add Remux to your Home Screen.',
+    ],
+  }[notifState]
   return (
-    <div className="screen on">
+    <div className="screen on settings-screen">
       <div className="screen-head">
-        <button className="iconbtn" onClick={onBack}>
+        <button className="iconbtn" aria-label="Back" onClick={onBack}>
           ←
         </button>
         <h2>Settings</h2>
       </div>
-
       <div className="screen-body">
-        <div className="sec">
-          <h3>Connection</h3>
-          <div className="card">
-            <div className="crow">
-              <span className={`dot ${CONN_DOT[conn]}`} />
+        <div className="settings-content">
+          <div className="settings-connection card">
+            <div className="settings-connection-top">
+              <span
+                className={`dot ${conn === 'live' ? 'idle' : conn === 'denied' ? 'waiting' : 'stale'}`}
+              />
               <div className="lbl">
-                {conn === 'live' ? 'Connected' : conn === 'offline' ? 'Offline' : 'Connecting'}
-                <small>{location.host}</small>
+                <strong>{connectionTitle}</strong>
+                <p className="settings-hint">{connectionHint}</p>
               </div>
-              <button className="linkbtn" onClick={onCheck}>
-                Check
-              </button>
-            </div>
-            <div className="crow">
-              <div className="lbl">Signed in as</div>
-              <div className="val">{health?.login || '—'}</div>
-            </div>
-            <div className="crow">
-              <div className="lbl">Mac</div>
-              <div className="val">{health?.hostname || '—'}</div>
-            </div>
-            <div className="crow">
-              <div className="lbl">tmux</div>
-              <div className="val">{health ? `${health.tmux} · ${health.panes} panes` : '—'}</div>
-            </div>
-            <div className="crow">
-              <div className="lbl">Last reached</div>
-              <div
-                className="val"
-                style={{ color: conn === 'live' ? 'var(--green)' : 'var(--peach)' }}
+              <button
+                className="settings-button"
+                disabled={check === 'checking'}
+                onClick={() => void checkNow()}
               >
-                {lastReached ? ago(lastReached) : 'never'}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="sec">
-          <h3>Notifications</h3>
-          <div className="card">
-            {notifState === 'unsupported' && (
-              <div className="crow">
-                <div className="lbl">
-                  Not available
-                  <small>needs the home-screen install over https</small>
-                </div>
-              </div>
-            )}
-            {notifState === 'denied' && (
-              <div className="crow">
-                <div className="lbl">
-                  Blocked in browser settings
-                  <small>allow notifications for this site to re-enable</small>
-                </div>
-              </div>
-            )}
-            {notifState === 'default' && (
-              <div className="crow">
-                <div className="lbl">
-                  Not enabled yet
-                  <small>one tap, asked once</small>
-                </div>
-                <button className="linkbtn" onClick={onEnableNotifications}>
-                  Enable
-                </button>
-              </div>
-            )}
-            <div className="crow">
-              <div className="lbl">
-                An agent needs an answer
-                <small>waiting state</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.notifyWaiting ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.notifyWaiting}
-                aria-label="An agent needs an answer"
-                onClick={() => patch({ notifyWaiting: !settings.notifyWaiting })}
-              />
-            </div>
-            <div className="crow">
-              <div className="lbl">
-                A task finished
-                <small>busy → idle</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.notifyDone ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.notifyDone}
-                aria-label="A task finished"
-                onClick={() => patch({ notifyDone: !settings.notifyDone })}
-              />
-            </div>
-            <div className="crow">
-              <div className="lbl">
-                GitHub needs you
-                <small>your PR turns red, or a review is asked of you</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.notifyCi ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.notifyCi}
-                aria-label="GitHub needs you"
-                onClick={() => patch({ notifyCi: !settings.notifyCi })}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="sec">
-          <h3>GitHub</h3>
-          <IgnoreChecks
-            names={settings.ignoreChecks}
-            onChange={(names) => patch({ ignoreChecks: names })}
-          />
-        </div>
-
-        <div className="sec">
-          <h3>Panes</h3>
-          <div className="card">
-            <div className="crow">
-              <div className="lbl">
-                Name each agent pane
-                <small>a cheap model reads the screen and writes what it is doing</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.namePanes ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.namePanes}
-                aria-label="Name each agent pane"
-                onClick={() => patch({ namePanes: !settings.namePanes })}
-              />
-            </div>
-            {/* A link, not the thing itself. The run list grows with every
-                call and the sections around it do not, so in here it pushed
-                Display and About off the screen inside a day. The summary is
-                fetched once rather than polled: it is here to say whether
-                tapping through is worth it, and a line that says "Watching"
-                does not need to tick. */}
-            <button className="crow rowlink" onClick={onNaming}>
-              <div className="lbl">
-                What it has been doing
-                <small>{namingSummary(naming)}</small>
-              </div>
-              <span className="val">›</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="sec">
-          <h3>Display</h3>
-          <div className="card">
-            <div className="crow">
-              <div className="lbl">
-                Wrap lines
-                <small>off = exact tmux screen</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.wrap ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.wrap}
-                aria-label="Wrap lines"
-                onClick={() => patch({ wrap: !settings.wrap })}
-              />
-            </div>
-            <div className="crow">
-              <div className="lbl">Font size</div>
-              <div className="val">{settings.fontSize}px</div>
-              <span className="stepper">
-                <button
-                  aria-label="Smaller"
-                  onClick={() => patch({ fontSize: Math.max(10, settings.fontSize - 1) })}
-                >
-                  −
-                </button>
-                <button
-                  aria-label="Larger"
-                  onClick={() => patch({ fontSize: Math.min(20, settings.fontSize + 1) })}
-                >
-                  +
-                </button>
-              </span>
-            </div>
-            <div className="crow">
-              <div className="lbl">
-                Submit with Enter
-                <small>off = stage the text, send with the ⏎ key</small>
-              </div>
-              <button
-                className={`sw-toggle ${settings.submitOnEnter ? 'on' : ''}`}
-                role="switch"
-                aria-checked={settings.submitOnEnter}
-                aria-label="Submit with Enter"
-                onClick={() => patch({ submitOnEnter: !settings.submitOnEnter })}
-              />
-            </div>
-            <div className="crow">
-              <div className="lbl">
-                Scrollback
-                <small>lines captured per pane</small>
-              </div>
-              <div className="val">{settings.lines}</div>
-              <span className="stepper">
-                <button
-                  aria-label="Fewer lines"
-                  onClick={() => patch({ lines: Math.max(100, settings.lines - 100) })}
-                >
-                  −
-                </button>
-                <button
-                  aria-label="More lines"
-                  onClick={() => patch({ lines: Math.min(2000, settings.lines + 100) })}
-                >
-                  +
-                </button>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* A link, not a section. The chip editor grows with every chip added
-            and the sections around it do not, so in here it was the thing that
-            pushed Connection, Notifications and Display off the screen. */}
-        <div className="sec">
-          <h3>Key pad</h3>
-          <div className="card">
-            <button className="crow rowlink" onClick={onKeyPad}>
-              <div className="lbl">
-                Chips
-                <small>
-                  {settings.chips.length} custom
-                  {settings.hiddenKeys.length > 0 &&
-                    `, ${settings.hiddenKeys.length} built-in off`}
-                </small>
-              </div>
-              <span className="val">›</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="sec">
-          <h3>About</h3>
-          <div className="card">
-            <div className="crow">
-              <div className="lbl">Remux</div>
-              <div className="val">{served ? tag(served) : '—'}</div>
-            </div>
-            <div className="crow">
-              <div className="lbl">
-                Update
-                {stale && served && <small>{tag(served)} is ready</small>}
-              </div>
-              <button className="linkbtn" onClick={onUpdate}>
-                {stale ? 'Update now' : 'Check for update'}
+                {check === 'checking' ? 'Checking…' : 'Check'}
               </button>
             </div>
+            {check === 'failed' && (
+              <p className="settings-save failed" role="status">
+                Couldn’t reach your Mac. Try again.
+              </p>
+            )}
+            {check === 'done' && (
+              <p className="settings-save" role="status">
+                Remux was reachable at the last check.
+              </p>
+            )}
+            <details>
+              <summary>Connection details</summary>
+              <dl>
+                <dt>Address</dt>
+                <dd>{location.host}</dd>
+                <dt>Signed in as</dt>
+                <dd>{health?.login || '—'}</dd>
+                <dt>Mac</dt>
+                <dd>{health?.hostname || '—'}</dd>
+                <dt>tmux</dt>
+                <dd>
+                  {health ? `${health.tmux} · ${health.panes} panes` : '—'}
+                </dd>
+                <dt>Last reached</dt>
+                <dd>{lastReached ? ago(lastReached) : 'Never'}</dd>
+              </dl>
+            </details>
           </div>
+          <div className="settings-grid">
+            {section(
+              'Reading',
+              false,
+              <>
+                {row(
+                  'Font size',
+                  'Applied to terminal output',
+                  stepper('fontSize', 10, 20, 1, 'Smaller font', 'Larger font'),
+                )}
+                <div
+                  className="settings-sample"
+                  style={{ fontSize: settings.fontSize }}
+                >
+                  <span>›</span> Review the latest changes
+                  <br />
+                  <em>Ready for your next instruction.</em>
+                </div>
+                {row(
+                  'Wrap long lines',
+                  'Fit terminal text to your screen',
+                  toggle('Wrap long lines', 'wrap'),
+                )}
+                {row(
+                  'Scrollback',
+                  'Lines loaded from each pane',
+                  stepper('lines', 100, 2000, 100, 'Fewer lines', 'More lines'),
+                )}
+              </>,
+            )}
+            {section(
+              'Notifications',
+              true,
+              <>
+                <div
+                  className={`settings-permission ${notifState === 'granted' ? 'ready' : ''}`}
+                >
+                  <div className="lbl">
+                    {permission[0]}
+                    <p className="settings-hint">{permission[1]}</p>
+                  </div>
+                  {notifState === 'default' && (
+                    <button
+                      className="settings-button"
+                      onClick={onEnableNotifications}
+                    >
+                      Enable
+                    </button>
+                  )}
+                </div>
+                {row(
+                  'An agent needs an answer',
+                  'When an agent is waiting for your input',
+                  toggle('An agent needs an answer', 'notifyWaiting', true),
+                )}
+                {row(
+                  'A task finishes',
+                  'When a busy agent becomes idle',
+                  toggle('A task finishes', 'notifyDone', true),
+                )}
+                {row(
+                  'GitHub needs your attention',
+                  'A PR check fails or someone requests your review',
+                  toggle('GitHub needs your attention', 'notifyCi', true),
+                )}
+                <details className="settings-ignored">
+                  <summary>
+                    Ignored GitHub checks · {settings.ignoreChecks.length}
+                  </summary>
+                  <p className="settings-hint">
+                    These checks don’t mark a PR as blocked in Remux. They still
+                    appear on the PR.
+                  </p>
+                  <div className="chipset">
+                    {settings.ignoreChecks.map((n) => (
+                      <span className="chip" key={n}>
+                        {n}
+                        <button
+                          className="chip-x"
+                          aria-label={`Stop ignoring ${n}`}
+                          disabled={!!save?.pending}
+                          onClick={() =>
+                            void saveMac('notifications', (current) => ({
+                              ignoreChecks: current.ignoreChecks.filter(
+                                (x) => x.toLowerCase() !== n.toLowerCase(),
+                              ),
+                            }))
+                          }
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {!settings.ignoreChecks.length && (
+                      <span className="dim">Every check counts.</span>
+                    )}
+                  </div>
+                  <div className="addrow">
+                    <input
+                      aria-label="Check name to ignore"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addCheck()
+                        }
+                      }}
+                      placeholder="Check name, e.g. Vercel"
+                      spellCheck={false}
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                    />
+                    <button
+                      className="settings-button"
+                      disabled={
+                        !!save?.pending ||
+                        !draft.trim() ||
+                        settings.ignoreChecks.some(
+                          (n) => n.toLowerCase() === draft.trim().toLowerCase(),
+                        )
+                      }
+                      onClick={addCheck}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <p className="settings-hint">
+                    Matches part of a check name, ignoring case.
+                  </p>
+                </details>
+              </>,
+              'notifications',
+            )}
+            {section(
+              'Input & keypad',
+              false,
+              <>
+                {row(
+                  'Send with Enter',
+                  'When off, use the send key to submit.',
+                  toggle('Send with Enter', 'submitOnEnter'),
+                )}
+                <button className="crow rowlink" onClick={onKeyPad}>
+                  <div className="lbl">
+                    Customize keypad
+                    <small>
+                      {settings.chips.length} custom shortcuts ·{' '}
+                      {settings.hiddenKeys.length
+                        ? `${settings.hiddenKeys.length} built-in keys hidden`
+                        : 'all built-in keys shown'}
+                    </small>
+                  </div>
+                  <span className="val">›</span>
+                </button>
+              </>,
+            )}
+            {section(
+              'Agent naming',
+              true,
+              <>
+                {row(
+                  'Automatically name agent panes',
+                  'Uses model calls to summarize what each agent is doing.',
+                  toggle(
+                    'Automatically name agent panes',
+                    'namePanes',
+                    true,
+                    'naming',
+                  ),
+                )}
+                <button className="crow rowlink" onClick={onNaming}>
+                  <div className="lbl">
+                    Naming activity<small>{namingSummary(naming)}</small>
+                  </div>
+                  <span className="val">›</span>
+                </button>
+              </>,
+              'naming',
+            )}
+            {section(
+              'App & updates',
+              false,
+              <>
+                {row(
+                  'Remux',
+                  'Loaded on this device',
+                  <span className="val">{tag(__BUILD_VERSION__)}</span>,
+                )}
+                <div className="settings-update">
+                  <p className="settings-hint" role="status">
+                    {check === 'checking'
+                      ? 'Checking the interface served by your Mac…'
+                      : check === 'failed'
+                        ? 'Couldn’t check for an update. Try again.'
+                        : stale
+                          ? `${tag(served!)} is available from your Mac. Reload to use it.`
+                          : served === null
+                            ? 'Check the interface version served by your Mac.'
+                            : 'Your interface is up to date.'}
+                  </p>
+                  <button
+                    className={`settings-button ${stale ? 'primary' : ''}`}
+                    disabled={
+                      check === 'checking' || reloading || !!save?.pending
+                    }
+                    onClick={() => {
+                      if (stale) {
+                        setReloading(true)
+                        void onUpdate().catch(() => setReloading(false))
+                      } else void checkNow()
+                    }}
+                  >
+                    {reloading
+                      ? 'Reloading…'
+                      : stale
+                        ? 'Reload to update'
+                        : check === 'checking'
+                          ? 'Checking…'
+                          : 'Check for update'}
+                  </button>
+                  <p className="settings-hint">
+                    Reloading loads the interface served by your Mac. Running
+                    loops keep working.
+                  </p>
+                </div>
+              </>,
+            )}
+          </div>
+          <p className="settings-note">
+            Device preferences save here. Mac settings apply to Remux across
+            your devices.
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
-/**
- * Checks that do not count as a failure.
- *
- * One noisy check turns a commit's whole rolled-up state red, and the rollup is
- * all a row has room for - so a failing Vercel preview deploy parked two of
- * Kevin's pull requests in "Needs you" with nothing he could do about either.
- * Naming the check is the fix, and it is a preference rather than a per-item
- * decision, so it lives here.
- *
- * The names are still shown, still red, on a pull request's own screen. This
- * only decides what counts as blocked.
- */
-function IgnoreChecks({
-  names,
-  onChange,
-}: {
-  names: string[]
-  onChange: (names: string[]) => void
-}) {
-  const [draft, setDraft] = useState('')
-
-  const add = () => {
-    const v = draft.trim()
-    if (!v) return
-    // Case-folded, because the server matches that way and two entries that
-    // differ only in case would look like a bug.
-    if (!names.some((n) => n.toLowerCase() === v.toLowerCase())) onChange([...names, v])
-    setDraft('')
-  }
-
-  return (
-    <div className="card">
-      <div className="crow col">
-        <div className="lbl">
-          Checks that don't count as red
-          <small>matched anywhere in the name, case-insensitive</small>
-        </div>
-        <div className="chipset">
-          {names.map((n) => (
-            <span className="chip" key={n}>
-              {n}
-              <button
-                className="chip-x"
-                aria-label={`Stop ignoring ${n}`}
-                onClick={() => onChange(names.filter((x) => x !== n))}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-          {!names.length && <span className="dim">Every check counts.</span>}
-        </div>
-        <div className="addrow">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add()}
-            placeholder="Check name, e.g. Vercel"
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-          />
-          <button className="addbtn sm" onClick={add} disabled={!draft.trim()}>
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-/**
- * The naming row's subtitle: enough to decide whether to tap through.
- *
- * It leads with the state rather than the totals, because the state is the
- * part that can be wrong - a chain backing off, or no CLI at all, is worth
- * seeing without opening anything.
- */
 function namingSummary(n: Naming | null): string {
-  if (!n) return 'the last runs, and what they wrote'
+  if (!n) return 'Recent model calls and the pane names they produced'
   const { label } = namingState(n)
   if (!n.calls) return label
-  return `${label} · ${n.calls} ${n.calls === 1 ? 'call' : 'calls'}, ${n.wrote} named`
+  return `${label} · ${n.calls} ${n.calls === 1 ? 'call' : 'calls'} · ${n.wrote} panes named`
 }

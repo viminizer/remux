@@ -529,3 +529,28 @@ tmux new-session -d -s remux-test
 A manually started review loop can use `--review-policy fixed --agent claude`
 to keep Claude for every review and repair, including after a failed run.
 Without an explicit policy, the project review policy still applies.
+
+### Settings
+
+Settings groups Reading, Notifications, Input & keypad, Agent naming and App &
+updates. **This device** preferences stay in this browser; **Remux on your Mac**
+preferences change the service for all devices. Keypad customization and naming
+activity open their existing dedicated screens. Connection details and ignored
+GitHub checks are collapsed until needed.
+
+Mac settings show saving, success or a retryable error inline. Failed saves keep
+the previous value and retain an ignored-check draft; Mac writes are blocked while
+another is pending. Reading controls preview the chosen terminal font (10–20px)
+and limit scrollback to 100–2000 lines.
+
+Retry preserves the intended field change and uses the latest settings for the
+remaining Mac preferences, including settings loaded after the failed attempt.
+Ignored-check retries reapply the original Add or Remove to the latest list,
+preserving other refreshed entries and matching names without case sensitivity.
+The device notification status reports browser permission only; allowed permission
+does not confirm push registration or delivery.
+
+The version shown is the interface loaded on this device. Checking for an update
+refreshes the Mac’s health/version without reloading. When the served version
+differs, **Reload to update** explicitly loads that interface; it does not install
+or upgrade the service on the Mac, and running loops continue.
