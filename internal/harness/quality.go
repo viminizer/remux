@@ -150,8 +150,10 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 			provider = append(provider, u)
 		}
 	}
-	if _, ok := chooseSpawn(provider, peers, "build", "normal", spawnHolds()); !ok {
-		return false, fmt.Errorf("code-quality provider budget gate deferred coordinator")
+	// Kevin's quality-loop reserve is 20%; ordinary worker policy remains separate.
+	if _, ok := chooseSpawnWithCodexFloor(provider, peers, "build", "normal", spawnHolds(), 20); !ok {
+		l.opt(ctx, "@loop_stop", "after")
+		return false, fmt.Errorf("code-quality provider budget gate closed (20%% reserve); stopped without retrying")
 	}
 	// Save before any paid process so a killed coordinator leaves a discoverable
 	// assignment. Workers must update handoff before source changes or spawning.

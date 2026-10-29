@@ -110,6 +110,7 @@ case "$*" in
  *'#{@loop_instr}'*) test -f "$QUALITY_TEST_ROOT/no-instructions" || printf 'c2F2ZWQgcXVhbGl0eSBicmllZg==' ;;
  *'#{@loop_mode}'*) echo replace ;;
  *'#{@loop_stop}'*) test ! -f "$QUALITY_TEST_ROOT/stop" || echo after ;;
+ *'@loop_stop after'*) touch "$QUALITY_TEST_ROOT/stop" ;;
 esac
 exit 0
 `,
@@ -199,6 +200,17 @@ if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 6 {
 		t.Fatalf("unexpected launches %q", b)
+	}
+	os.Remove(filepath.Join(root, "dirty"))
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"codex\",\"account\":{\"id\":\"test\",\"is_active\":true},\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":20}]}]'\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || !strings.Contains(err.Error(), "20% reserve") {
+		t.Fatal("quality reserve did not block before launch", did, err)
+	}
+	if l.get(context.Background(), "@loop_stop") != "after" {
+		t.Fatal("budget-blocked quality loop would retry")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 6 {
+		t.Fatal("budget-blocked coordinator launched")
 	}
 }
 
