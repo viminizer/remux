@@ -1985,3 +1985,23 @@ mirrors that version's selection rules; updating them together prevents a future
 reader change from silently assigning another Claude token's usage to this account.
 Existing harness native-budget commands/gates are untouched. Final focused race
 checks and production build passed after the source/identity refinements.
+
+## 2026-10-29 — Keep the Codex reserve specific to Codex loops
+
+A Claude coordinator stopped a saved fix before its reviews because historical
+handoff instructions treated the20% Codex reserve as a cross-provider rule.
+The dispatcher now explicitly scopes that reserve to Codex-led loops. A Claude
+loop and its phase workers may continue while the required Codex CLI review is
+actually available, even at20% remaining. Real provider limits/holds still block
+work, and no failed or exhausted review counts as approval. Claude admission
+already filters to the selected provider; its native-unavailable message no
+longer labels that failure as the20% Codex reserve.
+
+Focused quality/spawn Go tests and go vet passed. The stand-in coordinator runs
+Claude/sonnet with Codex at20%, retains the independent review gate, and receives
+the explicit provider policy. A native Claude spend-control stop still blocks a
+second launch even with Codex at100%, with a provider-specific error. No paid
+worker or real tmux write is used by these tests. The live Claude/Opus loop was
+resumed from its clean saved PR2679/head66ac83ab; saved instructions and the private
+handoff record Kevin's corrected policy. No application source or other loop was
+changed by that recovery.

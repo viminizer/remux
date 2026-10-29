@@ -150,9 +150,12 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 			provider = append(provider, u)
 		}
 	}
-	// Kevin's quality-loop reserve is 20%; ordinary worker policy remains separate.
+	// The 20% reserve is for Codex coordinators; only the selected provider is considered.
 	if _, ok := chooseSpawnWithCodexFloor(provider, peers, "build", "normal", spawnHolds(), 20); !ok {
 		l.opt(ctx, "@loop_stop", "after")
+		if l.Agent == "claude" {
+			return false, fmt.Errorf("code-quality Claude provider unavailable; stopped without retrying")
+		}
 		return false, fmt.Errorf("code-quality provider budget gate closed (20%% reserve); stopped without retrying")
 	}
 	// Save before any paid process so a killed coordinator leaves a discoverable
@@ -203,6 +206,7 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	prompt := qualityPrompt(l.Repo, dir, cycle, brief, qualityCategories[n%len(qualityCategories)], settings)
 	if l.Agent == "claude" {
 		prompt += fmt.Sprintf("\nSelected loop agent: Claude, model %q (empty means CLI default). This selection supersedes historical Sol-only worker instructions: use Claude for fresh audit, validation, implementation and consistency workers. Keep the required independent Codex CLI review gate and all scope, evidence, budget and merge checks. Never use Astra.\n", model)
+		prompt += "\nProvider-specific budget policy: the 20% Codex reserve applies only when the loop agent is Codex. It does not apply to a Claude loop or its Claude workers. Do not stop a Claude loop because Codex is at or below 20%; its mandatory independent Codex CLI review may still run while Codex is actually available. Honor real provider rate limits and account holds; an exhausted or failed review is never approval. Preserve pending work if the required review cannot actually complete. This overrides older cross-provider percentage guards in saved instructions, handoffs and project defaults.\n"
 	}
 	l.Model = model
 	code, output := l.spawnFiles(ctx, workspace, prompt, func(last string) []string {
