@@ -17,6 +17,7 @@ export type Route =
   | { name: 'settings' }
   | { name: 'keypad' }
   | { name: 'naming' }
+  | { name: 'usage' }
   | { name: 'gh' }
   | { name: 'ghRepo'; repo: string; tab: 'issues' | 'prs' }
   | { name: 'ghItem'; repo: string; number: number; kind: 'issue' | 'pr' }
@@ -39,6 +40,7 @@ function parse(hash: string): Route {
   const h = hash.replace(/^#/, '')
   if (h === '/settings') return { name: 'settings' }
   if (h === '/keypad') return { name: 'keypad' }
+  if (h === '/usage') return { name: 'usage' }
   if (h === '/naming') return { name: 'naming' }
 
   if (h === '/gh') return { name: 'gh' }
@@ -82,6 +84,8 @@ function href(r: Route): string {
       return '#/settings'
     case 'keypad':
       return '#/keypad'
+    case 'usage':
+      return '#/usage'
     case 'naming':
       return '#/naming'
     case 'gh':

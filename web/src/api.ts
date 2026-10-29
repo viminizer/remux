@@ -1,4 +1,4 @@
-import type { Health, Naming, NotifySettings, Tree } from './types'
+import type { Health, Naming, NotifySettings, Tree, ModelUsage } from './types'
 import type {
   GitHubSnapshot,
   Issue,
@@ -141,6 +141,7 @@ export const api = {
   // here to configure - the switch above is the only control - and the
   // settings PUT would otherwise have to round-trip a history it never writes.
   naming: () => call<Naming>('/api/naming'),
+  usage: (refresh = false, signal?: AbortSignal) => call<ModelUsage>(`/api/usage${refresh ? '?refresh=1' : ''}`, { signal, cache: 'no-store' }),
 
   // ── GitHub ──────────────────────────────────────────────────────────
   //
