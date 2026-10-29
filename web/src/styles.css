@@ -1470,3 +1470,27 @@ a.linkbtn{display:inline-block;text-decoration:none}
 .settings-save button{margin-left:8px;min-height:32px}
 .settings-note{margin:24px 0 0;text-align:center;font-size:11px;color:var(--sub0)}
 @media(max-width:700px){.settings-grid{grid-template-columns:1fr}.settings-content{padding-top:4px}.settings-connection{padding:14px;margin-bottom:24px}.settings-screen .crow{padding:14px}.settings-heading{padding:0 2px}}
+
+/* On-demand account usage uses the existing Settings cards and palette. */
+.usage-body { padding-bottom: 32px; max-width: 1060px; width: 100%; margin: 0 auto; }
+.usage-accounts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px; }
+.usage-accounts .sec { margin-bottom: 0; }
+@media(max-width:700px) { .usage-accounts { grid-template-columns: 1fr; } }
+.usage-intro { color: var(--sub0); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
+.usage-refresh { margin-left: auto; padding: 9px 12px; border: 1px solid var(--s1); border-radius: 8px; color: var(--blue); background: var(--s0); font: inherit; cursor: pointer; min-height: 44px; }
+.usage-refresh:disabled { opacity: .55; cursor: default; }
+.usage-refresh:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.usage-account { padding: 18px 18px 15px; border-bottom: 1px solid var(--s0); }
+.usage-provider { display: flex; align-items: baseline; gap: 12px; font-size: 18px; font-weight: 700; }
+.usage-provider span { margin-left: auto; color: var(--sub0); font-size: 12px; font-weight: 500; }
+.usage-email { margin-top: 7px; color: var(--sub0); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.usage-metric { padding: 17px 18px; border-bottom: 1px solid var(--s0); }
+.usage-metric-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13px; }
+.usage-metric-head strong { font-size: 24px; font-family: var(--mono); font-weight: 500; }
+.usage-metric-head small { color: var(--sub0); font: 10px var(--ui); letter-spacing: 1px; }
+.usage-low { color: var(--red); }
+.usage-meter { height: 5px; margin: 12px 0; background: var(--s0); border-radius: 3px; overflow: hidden; }
+.usage-meter span { display: block; height: 100%; border-radius: inherit; }
+.usage-reset, .usage-checked, .usage-note { color: var(--sub0); font-size: 11px; line-height: 1.6; }
+.usage-checked { padding: 12px 18px; }
+.usage-warning { color: var(--yellow); font-size: 12px; line-height: 1.6; padding: 0 18px; }
