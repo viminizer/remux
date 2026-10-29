@@ -1897,3 +1897,17 @@ invalid successful GitHub snapshots. No real settings or tmux were involved.
 Settings switch wrappers are now associated labels, extending the clickable area
 to 44px while retaining the existing pill appearance. A browser check confirmed
 label/control association and that clicking the outer label toggles the switch.
+
+## 2026-10-29 — Quality-loop budget reserve
+
+The quality coordinator reused the ordinary Codex worker's hard-coded30% gate,
+so the loop remained blocked at27% despite Kevin's20% instruction. Quality now
+uses a20% gate while ordinary worker policy remains30%. A budget-blocked quality
+loop saves an after-task stop instead of polling indefinitely. Account identity,
+missing quota data and native-limit holds still fail closed.
+
+Verification: full internal/harness Go tests passed (52.7s), focused quality/spawn
+tests passed, go vet internal/harness and stripped Go build passed. Tests cover
+20% rejection,21%/27% admission, unchanged ordinary30% policy, native holds and
+scheduler stopping without a paid launch at20%. No UI/server restart required
+for the initial loop-only binary deployment; only the blocked loop is restarted.
