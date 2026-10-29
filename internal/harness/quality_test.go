@@ -239,6 +239,33 @@ if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 7 {
 		t.Fatal("unavailable Claude provider launched another worker")
 	}
+	if l.get(context.Background(), "@loop_stop") != "" || !l.qualityUsageRetryAt.After(time.Now()) {
+		t.Fatal("Claude availability failure stopped the loop instead of waiting")
+	}
+	retry := l.qualityUsageRetryAt
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\nexit 99\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || l.qualityUsageRetryAt != retry {
+		t.Fatal("provider was polled during backoff", did, err)
+	}
+	_, pending, _ := qualityCycle(dir)
+	if b, err := os.ReadFile(filepath.Join(pending, "provider-status.json")); err != nil || !strings.Contains(string(b), "waiting") {
+		t.Fatal("missing durable provider-wait reason", err)
+	}
+	// An omitted Claude row is not an exhausted Codex budget and starts no paid work.
+	l.qualityUsageRetryAt = time.Now().Add(-time.Second)
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[]'\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || l.get(context.Background(), "@loop_stop") != "" {
+		t.Fatal("missing usage row stopped Claude", did, err)
+	}
+	l.qualityUsageRetryAt = time.Now().Add(-time.Second)
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":83},{\"label\":\"session\",\"remaining_percent\":13}]}]'\n"), 0700)
+	os.WriteFile(filepath.Join(root, "claude"), []byte(strings.ReplaceAll(claudeScript, "cycle-000002", "cycle-000003")), 0700)
+	if did, err := l.qualityOnce(context.Background()); !did || err != nil || !l.qualityUsageRetryAt.IsZero() {
+		t.Fatal("Claude did not recover after the provider returned", did, err)
+	}
+	if _, err := os.Stat(filepath.Join(pending, "provider-status.json")); !os.IsNotExist(err) {
+		t.Fatal("stale wait status remained after recovery")
+	}
 }
 
 func TestQualityInheritedLockSurvivesRunnerDeath(t *testing.T) {

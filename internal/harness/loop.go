@@ -43,17 +43,18 @@ type Loop struct {
 	gh  GH
 	set Settings
 
-	labels           map[string]bool // the repo's labels, for mirroring its status:* ones
-	lastTriage       time.Time
-	lastCleanup      time.Time
-	lastRecovery     time.Time
-	lastIdleAudit    time.Time
-	idleAuditSummary string
-	sweepSummary     string
-	limit            time.Time // set when the last agent run ended on a usage limit
-	item             int       // issue or PR being worked; zero while triaging
-	effort           string    // review override; builds keep medium
-	runTimeout       time.Duration
+	labels              map[string]bool // the repo's labels, for mirroring its status:* ones
+	lastTriage          time.Time
+	lastCleanup         time.Time
+	lastRecovery        time.Time
+	lastIdleAudit       time.Time
+	qualityUsageRetryAt time.Time
+	idleAuditSummary    string
+	sweepSummary        string
+	limit               time.Time // set when the last agent run ended on a usage limit
+	item                int       // issue or PR being worked; zero while triaging
+	effort              string    // review override; builds keep medium
+	runTimeout          time.Duration
 }
 
 // limited reports whether the last agent run ran out of usage. Callers skip
