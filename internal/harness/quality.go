@@ -150,8 +150,10 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 			provider = append(provider, u)
 		}
 	}
-	if _, ok := chooseSpawn(provider, peers, "build", "normal", spawnHolds()); !ok {
-		return false, fmt.Errorf("code-quality provider budget gate deferred coordinator")
+	// Kevin's quality-loop reserve is 20%; ordinary worker policy remains separate.
+	if _, ok := chooseSpawnWithCodexFloor(provider, peers, "build", "normal", spawnHolds(), 20); !ok {
+		l.opt(ctx, "@loop_stop", "after")
+		return false, fmt.Errorf("code-quality provider budget gate closed (20%% reserve); stopped without retrying")
 	}
 	// Save before any paid process so a killed coordinator leaves a discoverable
 	// assignment. Workers must update handoff before source changes or spawning.
@@ -194,9 +196,21 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	if err := prepareQualityRun(cycle); err != nil {
 		return false, err
 	}
-	l.Model = "gpt-6.1-sol"
-	code, output := l.spawnFiles(ctx, workspace, qualityPrompt(l.Repo, dir, cycle, brief, qualityCategories[n%len(qualityCategories)], settings), func(last string) []string {
-		return append(l.command(workspace, last), "--model", "gpt-6.1-sol")
+	model := l.Model
+	if l.Agent == "codex" {
+		model = "gpt-6.1-sol"
+	}
+	prompt := qualityPrompt(l.Repo, dir, cycle, brief, qualityCategories[n%len(qualityCategories)], settings)
+	if l.Agent == "claude" {
+		prompt += fmt.Sprintf("\nSelected loop agent: Claude, model %q (empty means CLI default). This selection supersedes historical Sol-only worker instructions: use Claude for fresh audit, validation, implementation and consistency workers. Keep the required independent Codex CLI review gate and all scope, evidence, budget and merge checks. Never use Astra.\n", model)
+	}
+	l.Model = model
+	code, output := l.spawnFiles(ctx, workspace, prompt, func(last string) []string {
+		args := l.command(workspace, last)
+		if l.Agent == "codex" {
+			args = append(args, "--model", model)
+		}
+		return args
 	}, []*os.File{lock})
 	if err := os.WriteFile(filepath.Join(cycle, "last-run.md"), []byte(output), 0o600); err != nil {
 		return true, err

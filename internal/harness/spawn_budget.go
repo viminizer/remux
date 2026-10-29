@@ -40,6 +40,10 @@ type spawnChoice struct {
 // Codex stops new workers at 30% weekly remaining. Claude builders have no
 // quota gate; Claude reviewers retain their shared-headroom checks.
 func chooseSpawn(usage []providerUsage, loops []tmux.Loop, role, class string, held map[string]bool) (spawnChoice, bool) {
+	return chooseSpawnWithCodexFloor(usage, loops, role, class, held, 30)
+}
+
+func chooseSpawnWithCodexFloor(usage []providerUsage, loops []tmux.Loop, role, class string, held map[string]bool, codexFloor float64) (spawnChoice, bool) {
 	floor, reserve, effort := 25.0, 10.0, "medium"
 	if class == "deep" {
 		floor, reserve, effort = 40, 20, "high"
@@ -107,7 +111,7 @@ func chooseSpawn(usage []providerUsage, loops []tmux.Loop, role, class string, h
 		}
 		eligible, allowance := valid && remaining >= floor, reserve
 		if agent == "codex" {
-			eligible, allowance = valid && weekly && remaining > 30, 0
+			eligible, allowance = valid && weekly && remaining > codexFloor, 0
 		}
 		if unrestrictedClaude {
 			eligible, allowance = true, 0

@@ -1951,3 +1951,36 @@ mirrors that version's selection rules; updating them together prevents a future
 reader change from silently assigning another Claude token's usage to this account.
 Existing harness native-budget commands/gates are untouched. Final focused race
 checks and production build passed after the source/identity refinements.
+## 2026-10-29 — Quality-loop budget reserve
+
+The quality coordinator reused the ordinary Codex worker's hard-coded30% gate,
+so the loop remained blocked at27% despite Kevin's20% instruction. Quality now
+uses a20% gate while ordinary worker policy remains30%. A budget-blocked quality
+loop saves an after-task stop instead of polling indefinitely. Account identity,
+missing quota data and native-limit holds still fail closed.
+
+Verification: full internal/harness Go tests passed (52.7s), focused quality/spawn
+tests passed, go vet internal/harness and stripped Go build passed. Tests cover
+20% rejection,21%/27% admission, unchanged ordinary30% policy, native holds and
+scheduler stopping without a paid launch at20%. No UI/server restart required
+for the initial loop-only binary deployment; only the blocked loop is restarted.
+
+## 2026-10-29 — Choose the quality-loop provider
+
+The Start loop quality scope now exposes the shared Loop agent selector and
+Claude model selector. Requests preserve the selected provider/model; the API and
+coordinator accept Claude rather than rejecting it or appending the Sol model.
+The existing deterministic quality lane name and evidence directory are retained
+across provider switches, and a working coordinator cannot be replaced. Selected
+Claude coordinates Claude phase workers; the independent Codex CLI review stays
+required and is disclosed in the screen.
+
+Verification: full internal/harness and internal/api tests passed, go vet passed,
+36 web tests passed and TypeScript/Vite production build passed. Stand-in tests
+exercise Claude/sonnet coordinator completion and review instructions; API tests
+exercise idle provider replacement and refusal during active work. Manual local
+browser selected Claude/Sonnet and captured the submitted agents/models/scope
+without sending the request or changing the running loop. Shared controls were
+also checked at390px. No paid Claude task or mutation to the live loop was used.
+Laptop invariant passed with23 existing panes unchanged. Local read-only API
+preview omits watchers; preview frontend/API/browser are stopped after checking.

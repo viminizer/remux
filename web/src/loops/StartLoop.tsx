@@ -196,13 +196,13 @@ export function StartLoop({
   const request: LoopStart = {
     repo: effectiveTarget,
     agents: quality
-      ? ['codex']
+      ? [claude === 1 && codex === 0 ? 'claude' : 'codex']
       : [
           ...Array<'claude'>(claude).fill('claude'),
           ...Array<'codex'>(codex).fill('codex'),
         ],
     models: quality
-      ? ['']
+      ? [claude === 1 && codex === 0 ? (models[0] ?? 'opus') : '']
       : [
           ...Array.from({ length: claude }, (_, i) => models[i] ?? 'opus'),
           ...Array<string>(codex).fill(''),
@@ -363,7 +363,7 @@ export function StartLoop({
                   </small>
                 </span>
                 {id === 'code-quality' && (
-                  <span className="scope-tag">FIXED TEAM</span>
+                  <span className="scope-tag">1 AGENT</span>
                 )}
               </label>
             ))}
@@ -401,11 +401,19 @@ export function StartLoop({
           )}
           {quality ? (
             <div className="quality-team">
-              <strong>1 Sol coordinator · serial audits</strong>
+              <div className="field">
+                <label htmlFor="quality-agent">Loop agent</label>
+                <Select id="quality-agent" value={claude === 1 && codex === 0 ? 'claude' : 'codex'} onChange={(value) => provider(value as 'codex' | 'claude')} disabled={busy}>
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude</option>
+                </Select>
+              </div>
+              {claude === 1 && codex === 0 && <ModelSelect label="Claude model" value={models[0] ?? 'opus'} onChange={(value) => change({ models: [value] })} />}
+              <strong>1 coordinator · serial audits</strong>
               <p>Audit → Fix → Review gate 1 → Review gate 2</p>
               <small>
-                Fresh internal workers and two reviews. No extra Remux reviewer
-                loops.
+                Fresh internal workers and two reviews, including Codex review.
+                No extra Remux reviewer loops.
               </small>
             </div>
           ) : (

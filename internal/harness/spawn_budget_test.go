@@ -81,6 +81,25 @@ func TestSpawnCodexActualWeeklyFloorAndRoutesDeepWork(t *testing.T) {
 	}
 }
 
+func TestQualityCodexReserveDoesNotChangeOrdinaryWorkers(t *testing.T) {
+	for _, remaining := range []float64{19, 20, 21, 27, 30, 31} {
+		usage := usageFixture(t, `[{"provider":"Codex","account":{"id":"current","is_active":true},"metrics":[{"label":"Weekly","remaining_percent":84}]}]`)
+		usage[0].Metrics[0].Remaining = &remaining
+		choice, ok := chooseSpawnWithCodexFloor(usage, nil, "build", "normal", nil, 20)
+		if ok != (remaining > 20) {
+			t.Fatalf("quality reserve at %.0f%%: eligible=%v", remaining, ok)
+		}
+		if _, ordinary := chooseSpawn(usage, nil, "build", "normal", nil); ordinary != (remaining > 30) {
+			t.Fatalf("ordinary worker policy changed at %.0f%%", remaining)
+		}
+		if ok {
+			if _, held := chooseSpawnWithCodexFloor(usage, nil, "build", "normal", map[string]bool{choice.Key: true}, 20); held {
+				t.Fatal("quality reserve bypassed native account hold")
+			}
+		}
+	}
+}
+
 func TestSpawnLimitPersistsWithoutShorteningReset(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	l := &Loop{BudgetKey: strings.Repeat("a", 64), limit: time.Now().Add(time.Hour)}
