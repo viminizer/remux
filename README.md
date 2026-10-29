@@ -554,3 +554,30 @@ The version shown is the interface loaded on this device. Checking for an update
 refreshes the Mac’s health/version without reloading. When the served version
 differs, **Reload to update** explicitly loads that interface; it does not install
 or upgrade the service on the Mac, and running loops continue.
+
+### Model usage
+
+Settings → Model usage shows remaining native Claude and Codex limits for two
+explicitly configured accounts. The service reads `~/.config/remux/model-usage.json`:
+
+```json
+{"claude":"your-claude-email@example.com","codex":"your-codex-email@example.com"}
+```
+
+This separate, local file is read-only to Remux. It contains account emails only;
+credentials stay in the existing CLI stores. An absent or invalid file shows a
+configuration error instead of selecting another account. Account emails match
+case-insensitively. Claude's selected native credential must identify the configured email through
+Anthropic's OAuth profile endpoint and remain selected across collection. Unknown
+or switched credentials are unavailable; cached CLI profile metadata is not trusted.
+
+Opening the screen collects `bunx tokscale@4.20.1 usage --json` on demand, sharing
+concurrent requests and caching results for one minute. Refresh asks for a fresh
+reading. The reader is pinned because Claude credential verification mirrors its
+selection rules; update the reader and binding together. Existing harness spawn
+checks remain unchanged. Collection has a 40-second deadline and a one-second pipe cleanup bound.
+There is no usage poller or model call. Failed refreshes retain the previous
+verified reading for the same configured accounts, marked stale. Only reported
+limit windows appear, and reset times use the phone's timezone. The authenticated
+`GET /api/usage` endpoint exposes only these two accounts, never raw CLI output or
+provider account IDs. Missing CLI sign-ins and provider failures remain independent.

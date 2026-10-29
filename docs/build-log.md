@@ -1911,3 +1911,57 @@ tests passed, go vet internal/harness and stripped Go build passed. Tests cover
 20% rejection,21%/27% admission, unchanged ordinary30% policy, native holds and
 scheduler stopping without a paid launch at20%. No UI/server restart required
 for the initial loop-only binary deployment; only the blocked loop is restarted.
+
+## 2026-10-29 — on-demand Model usage
+
+Added a separate Settings → Model usage screen (`#/usage`) with the existing
+palette/cards, remaining percentages, reset timestamps in the device timezone,
+last successful reading time and manual Refresh. No interval, spend history,
+Copilot or extra accounts were added. Configured account emails live only in the
+local `model-usage.json` file, avoiding main-config updates by older loop binaries.
+The API filters native JSON to configured Claude/Codex emails, validates metrics,
+keeps failures per provider, binds cached snapshots to configured accounts and
+the verified Claude credential, and marks retained snapshots stale on failed refresh.
+Collection uses its own synchronization, not the workspace mutex, and has bounded
+process/pipe waits. Claude credential selection mirrors the native file/Keychain
+precedence; a read-only OAuth profile lookup verifies its email, and credential
+fingerprints must match before and after native collection. No token or fingerprint
+is exposed or persisted by Remux. No harness spawn gates were changed.
+
+Observed checks: `npm ci --prefix web`, `npm test --prefix web` (34 passing),
+`npm run build --prefix web`, `go test ./internal/api -run '^TestUsage' -count=1`,
+`go vet ./...` and `go build ./...` passed. Added parser/privacy/partial failure
+coverage and a fake CLI concurrency/cache/stale snapshot check. npm reported two
+high advisories in the existing dependency tree; dependencies were not changed.
+No tmux commands, real workspace writes, CLI account switches or paid model calls
+were used during implementation. Phone screenshots and installed-service
+verification are recorded separately after browser review and release.
+
+Follow-up checks also passed: focused usage tests under `-race`, including native
+credential precedence, fake OAuth profile transport, duplicate Codex identity
+selection, singleflight/cache/stale behavior and bounded reader cancellation.
+The screen uses the shared typed API helper. File reads have a one-second caller
+bound and four shared reader slots, so stalled kernel reads cannot hold the
+usage cache forever or accumulate unbounded goroutines. Ambiguous duplicate
+Codex email rows are unavailable unless exactly one matching row is active.
+
+Parent verification: actual credential-bound Claude profile matched the requested
+account, and a read-only preview API returned exactly the configured Claude/Codex
+rows with current native metrics and no credential/account-ID or other-provider
+fields. The local account config was created outside the repository with mode
+0600. No account login or CLI active-account selection was changed.
+
+Screenshots at 320px/390px and 1440px showed one-column phone cards and two-column
+desktop cards without horizontal overflow. Settings navigation and Back worked;
+reset/checked timestamps rendered in the device timezone. A simulated HTTP refresh
+failure retained both previous readings with stale labels; a real Refresh recovered.
+A timed idle check observed zero background usage requests. No browser errors.
+The preview helper was stopped/removed, and the full preview laptop invariant
+PASSED with all 23 panes unchanged. Local screenshots are under
+`/Users/mac/.agent/diagrams/remux-model-usage/`.
+
+The screen's native reader is pinned to tokscale 4.20.1 because credential binding
+mirrors that version's selection rules; updating them together prevents a future
+reader change from silently assigning another Claude token's usage to this account.
+Existing harness native-budget commands/gates are untouched. Final focused race
+checks and production build passed after the source/identity refinements.

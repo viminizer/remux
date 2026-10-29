@@ -40,6 +40,7 @@ type Server struct {
 	// titler.Pass.Report. Optional, and nil in every test that does not care.
 	Naming func() titler.Naming
 
+	usage     usageService
 	startedAt time.Time
 	// ws is the shared pass over every pane - one tree read and one set of
 	// captures for the whole process, however many phones are connected.
@@ -83,6 +84,7 @@ func NewServer(cfg *config.Config, tm *tmux.Client, web http.Handler) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /api/usage", s.handleUsage)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/tree", s.handleTree)
 	mux.HandleFunc("GET /api/panes/{id}/capture", s.handleCapture)

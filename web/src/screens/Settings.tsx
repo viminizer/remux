@@ -23,6 +23,7 @@ export function SettingsScreen({
   onBack,
   onKeyPad,
   onNaming,
+  onUsage,
   onCheck,
   onUpdate,
 }: {
@@ -35,6 +36,7 @@ export function SettingsScreen({
   onEnableNotifications: () => void
   onBack: () => void
   onKeyPad: () => void
+  onUsage: () => void
   onNaming: () => void
   onCheck: () => Promise<void>
   onUpdate: () => Promise<void>
@@ -469,6 +471,7 @@ export function SettingsScreen({
               </>,
               'naming',
             )}
+            {section('Model usage', true, <button className="crow rowlink" onClick={onUsage}><div className="lbl">Account limits<small>Claude and Codex · remaining usage and resets</small></div><span className="val">›</span></button>)}
             {section(
               'App & updates',
               false,
