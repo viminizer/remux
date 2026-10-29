@@ -215,7 +215,7 @@ if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 	}
 	os.Remove(filepath.Join(root, "stop"))
 	l.Agent, l.Model = "claude", "sonnet"
-	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":90},{\"label\":\"session\",\"remaining_percent\":90}]}]'\n"), 0700)
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":90},{\"label\":\"session\",\"remaining_percent\":90}]},{\"provider\":\"codex\",\"account\":{\"id\":\"test\",\"is_active\":true},\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":20}]}]'\n"), 0700)
 	claudeScript := strings.ReplaceAll(strings.ReplaceAll(scripts["codex"], "$QUALITY_TEST_ROOT", root), "cycle-000001", "cycle-000002")
 	os.WriteFile(filepath.Join(root, "claude"), []byte(claudeScript), 0700)
 	if did, err := l.qualityOnce(context.Background()); !did || err != nil {
@@ -228,6 +228,43 @@ if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 	prompts, _ := os.ReadFile(filepath.Join(root, "prompts"))
 	if !strings.Contains(string(prompts), "Selected loop agent: Claude") || !strings.Contains(string(prompts), "independent Codex CLI review gate") {
 		t.Fatal("selected provider or independent review instruction missing")
+	}
+	if !strings.Contains(string(prompts), "Do not stop a Claude loop because Codex is at or below 20%") {
+		t.Fatal("Claude coordinator inherited the Codex loop's reserve")
+	}
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"spend_control\":{\"reached\":true}},{\"provider\":\"codex\",\"account\":{\"id\":\"test\",\"is_active\":true},\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":100}]}]'\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || !strings.Contains(err.Error(), "Claude provider unavailable") || strings.Contains(err.Error(), "20%") {
+		t.Fatal("Claude native limit was bypassed or mislabeled", did, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 7 {
+		t.Fatal("unavailable Claude provider launched another worker")
+	}
+	if l.get(context.Background(), "@loop_stop") != "" || !l.qualityUsageRetryAt.After(time.Now()) {
+		t.Fatal("Claude availability failure stopped the loop instead of waiting")
+	}
+	retry := l.qualityUsageRetryAt
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\nexit 99\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || l.qualityUsageRetryAt != retry {
+		t.Fatal("provider was polled during backoff", did, err)
+	}
+	_, pending, _ := qualityCycle(dir)
+	if b, err := os.ReadFile(filepath.Join(pending, "provider-status.json")); err != nil || !strings.Contains(string(b), "waiting") {
+		t.Fatal("missing durable provider-wait reason", err)
+	}
+	// An omitted Claude row is not an exhausted Codex budget and starts no paid work.
+	l.qualityUsageRetryAt = time.Now().Add(-time.Second)
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[]'\n"), 0700)
+	if did, err := l.qualityOnce(context.Background()); did || err == nil || l.get(context.Background(), "@loop_stop") != "" {
+		t.Fatal("missing usage row stopped Claude", did, err)
+	}
+	l.qualityUsageRetryAt = time.Now().Add(-time.Second)
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":83},{\"label\":\"session\",\"remaining_percent\":13}]}]'\n"), 0700)
+	os.WriteFile(filepath.Join(root, "claude"), []byte(strings.ReplaceAll(claudeScript, "cycle-000002", "cycle-000003")), 0700)
+	if did, err := l.qualityOnce(context.Background()); !did || err != nil || !l.qualityUsageRetryAt.IsZero() {
+		t.Fatal("Claude did not recover after the provider returned", did, err)
+	}
+	if _, err := os.Stat(filepath.Join(pending, "provider-status.json")); !os.IsNotExist(err) {
+		t.Fatal("stale wait status remained after recovery")
 	}
 }
 

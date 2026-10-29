@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 var qualityCategories = []string{"UI screens", "backend read flows", "backend write workflows", "shared components"}
@@ -125,12 +126,18 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	if ctx.Err() != nil || l.get(ctx, "@loop_stop") != "" {
 		return false, ctx.Err()
 	}
+	if time.Now().Before(l.qualityUsageRetryAt) {
+		return false, fmt.Errorf("Claude usage unavailable; waiting to retry at %s", l.qualityUsageRetryAt.Format(time.RFC3339))
+	}
 	n, cycle, err := qualityCycle(dir)
 	if err != nil {
 		return false, err
 	}
 	usage, err := readSpawnUsage(ctx)
 	if err != nil {
+		if l.Agent == "claude" {
+			return false, l.waitForQualityUsage(cycle, err.Error())
+		}
 		return false, err
 	}
 	loops, err := l.Tmux.Loops(ctx)
@@ -150,10 +157,19 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 			provider = append(provider, u)
 		}
 	}
-	// Kevin's quality-loop reserve is 20%; ordinary worker policy remains separate.
+	// The 20% reserve is for Codex coordinators; only the selected provider is considered.
 	if _, ok := chooseSpawnWithCodexFloor(provider, peers, "build", "normal", spawnHolds(), 20); !ok {
+		if l.Agent == "claude" {
+			return false, l.waitForQualityUsage(cycle, "Claude provider unavailable")
+		}
 		l.opt(ctx, "@loop_stop", "after")
 		return false, fmt.Errorf("code-quality provider budget gate closed (20%% reserve); stopped without retrying")
+	}
+	if !l.qualityUsageRetryAt.IsZero() {
+		if err := os.Remove(filepath.Join(cycle, "provider-status.json")); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		l.qualityUsageRetryAt = time.Time{}
 	}
 	// Save before any paid process so a killed coordinator leaves a discoverable
 	// assignment. Workers must update handoff before source changes or spawning.
@@ -203,6 +219,7 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	prompt := qualityPrompt(l.Repo, dir, cycle, brief, qualityCategories[n%len(qualityCategories)], settings)
 	if l.Agent == "claude" {
 		prompt += fmt.Sprintf("\nSelected loop agent: Claude, model %q (empty means CLI default). This selection supersedes historical Sol-only worker instructions: use Claude for fresh audit, validation, implementation and consistency workers. Keep the required independent Codex CLI review gate and all scope, evidence, budget and merge checks. Never use Astra.\n", model)
+		prompt += "\nProvider-specific budget policy: the 20% Codex reserve applies only when the loop agent is Codex. It does not apply to a Claude loop or its Claude workers. Do not stop a Claude loop because Codex is at or below 20%; its mandatory independent Codex CLI review may still run while Codex is actually available. Honor real provider rate limits and account holds; an exhausted or failed review is never approval. Preserve pending work if the required review cannot actually complete. This overrides older cross-provider percentage guards in saved instructions, handoffs and project defaults.\n"
 	}
 	l.Model = model
 	code, output := l.spawnFiles(ctx, workspace, prompt, func(last string) []string {
@@ -226,6 +243,17 @@ func (l *Loop) qualityOnce(ctx context.Context) (bool, error) {
 	}
 	_, _, err = qualityCycle(dir)
 	return true, err
+}
+
+func (l *Loop) waitForQualityUsage(cycle, reason string) error {
+	l.qualityUsageRetryAt = time.Now().Add(5 * time.Minute)
+	status, _ := json.MarshalIndent(map[string]any{
+		"provider": l.Agent, "state": "waiting", "reason": reason, "retry_at": l.qualityUsageRetryAt,
+	}, "", "  ")
+	if err := os.WriteFile(filepath.Join(cycle, "provider-status.json"), append(status, '\n'), 0600); err != nil {
+		return fmt.Errorf("record provider wait: %w", err)
+	}
+	return fmt.Errorf("%s; waiting to retry at %s", reason, l.qualityUsageRetryAt.Format(time.RFC3339))
 }
 
 func qualityPrompt(repo, evidence, cycle, brief, category string, settings Settings) string {

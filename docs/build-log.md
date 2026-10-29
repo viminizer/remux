@@ -1985,3 +1985,44 @@ mirrors that version's selection rules; updating them together prevents a future
 reader change from silently assigning another Claude token's usage to this account.
 Existing harness native-budget commands/gates are untouched. Final focused race
 checks and production build passed after the source/identity refinements.
+
+## 2026-10-29 — Keep the Codex reserve specific to Codex loops
+
+A Claude coordinator stopped a saved fix before its reviews because historical
+handoff instructions treated the20% Codex reserve as a cross-provider rule.
+The dispatcher now explicitly scopes that reserve to Codex-led loops. A Claude
+loop and its phase workers may continue while the required Codex CLI review is
+actually available, even at20% remaining. Real provider limits/holds still block
+work, and no failed or exhausted review counts as approval. Claude admission
+already filters to the selected provider; its native-unavailable message no
+longer labels that failure as the20% Codex reserve.
+
+Focused quality/spawn Go tests and go vet passed. The stand-in coordinator runs
+Claude/sonnet with Codex at20%, retains the independent review gate, and receives
+the explicit provider policy. A native Claude spend-control stop still blocks a
+second launch even with Codex at100%, with a provider-specific error. No paid
+worker or real tmux write is used by these tests. The live Claude/Opus loop was
+resumed from its clean saved PR2679/head66ac83ab; saved instructions and the private
+handoff record Kevin's corrected policy. No application source or other loop was
+changed by that recovery.
+
+## 2026-10-29 — Retry unavailable Claude usage without exiting
+
+After a completed cycle, the next quality cycle could stop before starting a
+worker when the native usage response omitted Claude (for example after a
+rate-limited usage lookup). Availability was previously handled by the same
+stop-after branch as Codex's percentage reserve. The historical cycle103 had no
+startup report, so its exact failed lookup is not recoverable; no phone stop was
+recorded and cycle102 had completed normally.
+
+Claude availability failures and usage-reader errors now leave the loop waiting,
+with no paid launch, and retry the provider lookup after five minutes. The loop
+does not poll the provider during that interval. A private provider-status.json
+keeps the reason and retry time; successful recovery clears it. Codex's20% stop
+and real provider launch limits remain unchanged.
+
+Focused quality/spawn Go tests and go vet passed. Stand-ins cover unavailable
+Claude, an omitted provider row, no stop flag or paid launch, retry backoff,
+durable wait status and recovery at13% Claude session remaining. No real tmux
+writes or paid model calls are made by these tests. The prior completed task
+(PR2699) remains merged/clean; recovery resumes the next saved cycle.
