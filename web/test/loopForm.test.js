@@ -42,6 +42,14 @@ test('quality-only initialization has one coordinator and no ancillary roles', (
   assert.equal(f.supervise, false)
   assert.equal(f.cleanup, false)
 })
+test('Claude quality coordinator restores its provider and model in the same lane', () => {
+  const running = { ...quality, name: 'loop-quality-codex-repo', agent: 'claude', model: 'sonnet' }
+  const f = formFor('/repo', [running], null)
+  assert.equal(f.claude, 1)
+  assert.equal(f.codex, 0)
+  assert.deepEqual(f.models, ['sonnet'])
+  assert.equal(f.scope, 'code-quality')
+})
 
 const base = {
   repo: '/repo',
@@ -56,6 +64,13 @@ const base = {
 }
 const named = { ...ordinary, name: 'loop-codex-repo', state: 'working' }
 const { previewImpact } = await import('../.test-build/loopForm.js')
+test('quality provider switch replaces the same idle lane rather than starting another', () => {
+  const rows = previewImpact({ ...base, scope: 'code-quality', agents: ['claude'] }, [
+    { ...quality, name: 'loop-quality-codex-repo', state: 'idle' },
+  ])
+  assert.equal(rows.filter(row => row.kind === 'replace').length, 1)
+  assert.equal(rows.filter(row => row.kind === 'start' || row.kind === 'stop').length, 0)
+})
 test('ordinary reconciliation preserves quality and previews lowering real counts', () => {
   const second = { ...named, name: 'loop-codex2-repo', state: 'idle' }
   const rows = previewImpact(base, [named, second, quality])

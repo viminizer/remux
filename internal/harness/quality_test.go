@@ -80,7 +80,7 @@ func TestQualityPromptPreservesWorkflow(t *testing.T) {
 }
 
 func TestQualityRejectsQueueRolesBeforeTmux(t *testing.T) {
-	for _, l := range []*Loop{{Scope: "code-quality", Role: "review", Agent: "codex"}, {Scope: "code-quality", Role: "build", Agent: "claude"}, {Scope: "code-quality", Role: "build", Agent: "codex", Task: 1}} {
+	for _, l := range []*Loop{{Scope: "code-quality", Role: "review", Agent: "codex"}, {Scope: "code-quality", Role: "build", Agent: "unsupported"}, {Scope: "code-quality", Role: "build", Agent: "codex", Task: 1}} {
 		if err := l.Run(context.Background()); err == nil {
 			t.Fatal("unsupported quality loop ran")
 		}
@@ -211,6 +211,23 @@ if test -f "$QUALITY_TEST_ROOT/fail-valid"; then exit 1; fi
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, "runs")); strings.Count(string(b), "run\n") != 6 {
 		t.Fatal("budget-blocked coordinator launched")
+
+	}
+	os.Remove(filepath.Join(root, "stop"))
+	l.Agent, l.Model = "claude", "sonnet"
+	os.WriteFile(filepath.Join(root, "bunx"), []byte("#!/bin/sh\necho '[{\"provider\":\"claude\",\"metrics\":[{\"label\":\"weekly\",\"remaining_percent\":90},{\"label\":\"session\",\"remaining_percent\":90}]}]'\n"), 0700)
+	claudeScript := strings.ReplaceAll(strings.ReplaceAll(scripts["codex"], "$QUALITY_TEST_ROOT", root), "cycle-000001", "cycle-000002")
+	os.WriteFile(filepath.Join(root, "claude"), []byte(claudeScript), 0700)
+	if did, err := l.qualityOnce(context.Background()); !did || err != nil {
+		t.Fatal("Claude coordinator did not resume the shared quality evidence", did, err)
+	}
+	args, _ := os.ReadFile(filepath.Join(root, "argv"))
+	if !strings.Contains(string(args), "--model sonnet") || l.Model != "sonnet" {
+		t.Fatalf("Claude model was overwritten: %s", args)
+	}
+	prompts, _ := os.ReadFile(filepath.Join(root, "prompts"))
+	if !strings.Contains(string(prompts), "Selected loop agent: Claude") || !strings.Contains(string(prompts), "independent Codex CLI review gate") {
+		t.Fatal("selected provider or independent review instruction missing")
 	}
 }
 

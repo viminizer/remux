@@ -208,6 +208,21 @@ func TestLoopLifecycle(t *testing.T) {
 	if v, _ := tm.LoopOption(ctx, name, "@loop_scope"); v == "code-quality" {
 		t.Error("quality took over ordinary worker")
 	}
+	tm.SetLoopOption(ctx, qualityName, "@loop_state", "working")
+	claudeQuality := map[string]any{"repo": repo, "agents": []string{"claude"}, "models": []string{"sonnet"}, "scope": "code-quality", "instructions": "bounded audit brief", "instrMode": "replace"}
+	if code, _ := do(t, ts, "POST", "/api/loops", claudeQuality); code != http.StatusConflict {
+		t.Error("working quality coordinator was replaced")
+	}
+	tm.SetLoopOption(ctx, qualityName, "@loop_state", "idle")
+	if code, body := do(t, ts, "POST", "/api/loops", claudeQuality); code != http.StatusOK {
+		t.Fatalf("Claude quality start: %d %s", code, body)
+	}
+	if agent, _ := tm.LoopOption(ctx, qualityName, "@loop_agent"); agent != "claude" {
+		t.Errorf("quality agent = %q", agent)
+	}
+	if model, _ := tm.LoopOption(ctx, qualityName, "@loop_model"); model != "sonnet" {
+		t.Errorf("quality model = %q", model)
+	}
 	if code, _ := do(t, ts, "PATCH", "/api/loops/"+name, map[string]any{"scope": "code-quality"}); code != http.StatusBadRequest {
 		t.Error("ordinary loop switched into quality")
 	}
@@ -466,7 +481,7 @@ func TestStartLoadsEachRolesInstructionsFromTheRepo(t *testing.T) {
 
 func TestQualityStartRejectsMixedPlansBeforeTmux(t *testing.T) {
 	for _, body := range []string{
-		`{"repo":"/repo","scope":"code-quality","agents":["claude"]}`,
+		`{"repo":"/repo","scope":"code-quality","agents":["claude","codex"]}`,
 		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"reviews":1}`,
 		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"supervise":true}`,
 		`{"repo":"/repo","scope":"code-quality","agents":["codex"],"cleanup":true}`,
