@@ -355,3 +355,8 @@ export interface NamingSpend {
   /** "list" - what the calls would bill at, which a subscription may cover. */
   basis: string
 }
+
+/** Sanitized native account usage; credentials and provider IDs never leave the Mac. */
+export interface UsageMetric { label: string; remaining_percent: number; resets_at: string }
+export interface UsageAccount { provider: string; email: string; plan?: string; metrics?: UsageMetric[]; checked_at?: string; error?: string; stale?: boolean }
+export interface ModelUsage { accounts: UsageAccount[]; error?: string }

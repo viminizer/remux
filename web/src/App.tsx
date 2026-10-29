@@ -17,6 +17,7 @@ import { Composer } from './pane/Composer'
 import { NewSheet } from './sheets/NewSheet'
 import { RenameSheet } from './sheets/RenameSheet'
 import { PaneActionsSheet } from './sheets/PaneActionsSheet'
+import { UsageScreen } from './screens/Usage'
 import { SettingsScreen } from './screens/Settings'
 import { GitHubScreen } from './github/GitHubScreen'
 import { RepoScreen } from './github/RepoScreen'
@@ -830,6 +831,7 @@ export default function App() {
             onBack={() => go({ name: 'pane', pane: lastPane.current })}
             onKeyPad={() => go({ name: 'keypad' })}
             onNaming={() => go({ name: 'naming' })}
+            onUsage={() => go({ name: 'usage' })}
             onCheck={checkNow}
             onUpdate={pullNewBuild}
           />
@@ -839,6 +841,8 @@ export default function App() {
             patch={patch}
             onBack={() => go({ name: 'settings' })}
           />
+        ) : route.name === 'usage' ? (
+          <UsageScreen onBack={() => go({ name: 'settings' })} />
         ) : route.name === 'naming' ? (
           <NamingScreen onBack={() => go({ name: 'settings' })} />
         ) : !panes.length ? (
