@@ -73,8 +73,8 @@ var RunTimeout = 90 * time.Minute
 // end: the loop shows it as blocked and tries again, because the usual causes
 // (GitHub unreachable, gh logged out) fix themselves or get fixed at the laptop.
 func (l *Loop) Run(ctx context.Context) error {
-	if l.Scope == "code-quality" && (l.Role != "build" || l.Task != 0 || l.Agent != "codex") {
-		return fmt.Errorf("code-quality requires a dedicated Codex builder without a queue task")
+	if l.Scope == "code-quality" && (l.Role != "build" || l.Task != 0 || (l.Agent != "codex" && l.Agent != "claude")) {
+		return fmt.Errorf("code-quality requires a dedicated Codex or Claude builder without a queue task")
 	}
 	for opt, v := range map[string]string{
 		"@loop_role": l.Role, "@loop_agent": l.Agent, "@loop_model": l.Model, "@loop_repo": l.Repo,

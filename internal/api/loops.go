@@ -200,8 +200,8 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "scope is lowercase letters, digits and dashes")
 		return
 	}
-	if body.Scope == "code-quality" && (len(body.Agents) != 1 || body.Agents[0] != "codex" || body.Review || body.Reviews != 0 || body.Supervise || body.Cleanup) {
-		writeErr(w, http.StatusBadRequest, "code-quality requires one Codex builder and no review, supervisor or cleanup loops")
+	if body.Scope == "code-quality" && (len(body.Agents) != 1 || (body.Agents[0] != "codex" && body.Agents[0] != "claude") || body.Review || body.Reviews != 0 || body.Supervise || body.Cleanup) {
+		writeErr(w, http.StatusBadRequest, "code-quality requires one Codex or Claude builder and no review, supervisor or cleanup loops")
 		return
 	}
 	if body.InstrMode != "replace" {
@@ -316,6 +316,7 @@ func (s *Server) handleStartLoops(w http.ResponseWriter, r *http.Request) {
 	for i := range plans {
 		p := &plans[i]
 		if body.Scope == "code-quality" {
+			// Keep the existing lane name across provider switches: never start two coordinators.
 			p.name = loopName("quality-codex", body.Repo)
 		}
 		if body.Scope == "code-quality" && strings.TrimSpace(p.instr) == "" {

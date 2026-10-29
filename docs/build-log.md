@@ -1911,3 +1911,23 @@ tests passed, go vet internal/harness and stripped Go build passed. Tests cover
 20% rejection,21%/27% admission, unchanged ordinary30% policy, native holds and
 scheduler stopping without a paid launch at20%. No UI/server restart required
 for the initial loop-only binary deployment; only the blocked loop is restarted.
+
+## 2026-10-29 — Choose the quality-loop provider
+
+The Start loop quality scope now exposes the shared Loop agent selector and
+Claude model selector. Requests preserve the selected provider/model; the API and
+coordinator accept Claude rather than rejecting it or appending the Sol model.
+The existing deterministic quality lane name and evidence directory are retained
+across provider switches, and a working coordinator cannot be replaced. Selected
+Claude coordinates Claude phase workers; the independent Codex CLI review stays
+required and is disclosed in the screen.
+
+Verification: full internal/harness and internal/api tests passed, go vet passed,
+36 web tests passed and TypeScript/Vite production build passed. Stand-in tests
+exercise Claude/sonnet coordinator completion and review instructions; API tests
+exercise idle provider replacement and refusal during active work. Manual local
+browser selected Claude/Sonnet and captured the submitted agents/models/scope
+without sending the request or changing the running loop. Shared controls were
+also checked at390px. No paid Claude task or mutation to the live loop was used.
+Laptop invariant passed with23 existing panes unchanged. Local read-only API
+preview omits watchers; preview frontend/API/browser are stopped after checking.
