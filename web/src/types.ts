@@ -97,6 +97,10 @@ export interface NotifySettings {
    * "Needs you" with nothing he could do about it.
    */
   ignoreChecks?: string[]
+  /** Supervisor limits: running per repo, in total, and the shared worker pool. */
+  svPerRepo?: number
+  svTotal?: number
+  svWorkers?: number
 }
 
 /**

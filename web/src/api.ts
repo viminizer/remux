@@ -6,6 +6,7 @@ import type {
   PickerRepo,
   PR,
 } from './github/types'
+import type { SvDetail, SvList, SvTask } from './sv/types'
 import type { HarnessItem, LoopStart, LoopsPayload, Preset, LoopProject, HarnessRepo } from './loops/types'
 
 /**
@@ -222,6 +223,19 @@ export const api = {
   /** Opens (or reuses) the supervisor Kevin talks to, and returns its pane. */
   supervisor: (agent: 'claude' | 'codex') =>
     call<{ pane: string }>(`/api/loops/supervisor?agent=${agent}`, { method: 'POST' }),
+
+  // ── supervisor ──────────────────────────────────────────────────────
+  svList: () => call<SvList>('/api/sv'),
+  svTask: (id: string) => call<SvDetail>(`/api/sv/${encodeURIComponent(id)}`),
+  svCreate: (v: { repo: string; brief: string; agent: 'claude' | 'codex' }) =>
+    call<SvTask>('/api/sv', { method: 'POST', body: JSON.stringify(v) }),
+  svChat: (id: string, text: string) =>
+    call(`/api/sv/${encodeURIComponent(id)}/chat`, { method: 'POST', body: JSON.stringify({ text }) }),
+  /** plan: ask for the plan · approve · back: send the plan back · stop */
+  svAct: (id: string, act: 'plan' | 'approve' | 'stop') =>
+    call(`/api/sv/${encodeURIComponent(id)}/${act}`, { method: 'POST' }),
+  svBack: (id: string, text: string) =>
+    call(`/api/sv/${encodeURIComponent(id)}/back`, { method: 'POST', body: JSON.stringify({ text }) }),
 
   // Reads GitHub for every harness repo, so it is fetched when the Inbox
   // opens, never polled.

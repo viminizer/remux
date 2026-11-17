@@ -705,7 +705,7 @@ func (l *Loop) command(wt, last string) []string {
 		return []string{"codex", "exec", "--dangerously-bypass-approvals-and-sandbox", `-cmodel_reasoning_effort="` + effort + `"`, "-C", wt, "-o", last, "-"}
 	}
 	args := []string{"claude", "-p", "--dangerously-skip-permissions", "--effort", effort, "--setting-sources", "project,local"}
-	if deny := userDeny(); deny != "" {
+	if deny := UserDeny(); deny != "" {
 		args = append(args, "--settings", deny)
 	}
 	if l.Model != "" {
@@ -717,9 +717,9 @@ func (l *Loop) command(wt, last string) []string {
 	return args
 }
 
-// userDeny is the deny rules from ~/.claude/settings.json as a --settings
+// UserDeny is the deny rules from ~/.claude/settings.json as a --settings
 // value, or empty when there are none.
-func userDeny() string {
+func UserDeny() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
@@ -830,7 +830,7 @@ func (l *Loop) spawnFiles(ctx context.Context, wt, stdin string, argv func(last 
 	// Only a failed run is checked, and only its end: an agent writing about
 	// rate limits in the code it works on must not read as being out of usage.
 	if code != 0 {
-		if until, ok := usageLimit(tail(all.String(), 40), time.Now()); ok {
+		if until, ok := UsageLimit(tail(all.String(), 40), time.Now()); ok {
 			l.limit = until
 		}
 	}

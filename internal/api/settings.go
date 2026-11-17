@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/viminizer/remux/internal/config"
+	"github.com/viminizer/remux/internal/sv"
 	"github.com/viminizer/remux/internal/titler"
 )
 
@@ -32,7 +33,16 @@ type notifySettings struct {
 	// here, because it is a preference and not a per-item decision - and
 	// because the gh client in this process is what applies it.
 	IgnoreChecks []string `json:"ignoreChecks"`
+	// The supervisor's limits. Its driver and tools are separate processes
+	// that read the config file, so they live here with the other Mac
+	// settings. Zero means the default (1, 3, 8).
+	SVPerRepo int `json:"svPerRepo"`
+	SVTotal   int `json:"svTotal"`
+	SVWorkers int `json:"svWorkers"`
 }
+
+// clampLimit keeps a limit in 1..max; zero (an older phone) keeps the default.
+func clampLimit(v, hi int) int { return min(max(v, 0), hi) }
 
 // normalizeChecks trims, drops blanks, folds duplicates that differ only in
 // case, and sorts. A list of check names is a set, and letting the same name
@@ -90,6 +100,7 @@ func (s *Server) NamePanes() bool {
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	lim := sv.CurrentLimits()
 	writeJSON(w, http.StatusOK, notifySettings{
 		NotifyWaiting: s.NotifyWaiting(),
 		NotifyDone:    s.NotifyDone(),
@@ -97,6 +108,9 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		NamePanes:     s.NamePanes(),
 		Repos:         s.Watchlist(),
 		IgnoreChecks:  s.IgnoredChecks(),
+		SVPerRepo:     lim.PerRepo,
+		SVTotal:       lim.Total,
+		SVWorkers:     lim.Workers,
 	})
 }
 
@@ -108,6 +122,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.IgnoreChecks = normalizeChecks(body.IgnoreChecks)
+	body.SVPerRepo, body.SVTotal, body.SVWorkers = clampLimit(body.SVPerRepo, 10), clampLimit(body.SVTotal, 10), clampLimit(body.SVWorkers, 20)
 
 	// Serialize persistence and application: a failed save must leave the
 	// watcher and naming pass on the previous configuration.
@@ -118,6 +133,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		c.NotifyCI = body.NotifyCI
 		c.IgnoreChecks = body.IgnoreChecks
 		c.NamePanes = body.NamePanes
+		c.SVPerRepo, c.SVTotal, c.SVWorkers = body.SVPerRepo, body.SVTotal, body.SVWorkers
 	}); err != nil {
 		s.mu.Unlock()
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -128,8 +144,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.Cfg.NotifyCI = body.NotifyCI
 	s.Cfg.IgnoreChecks = body.IgnoreChecks
 	s.Cfg.NamePanes = body.NamePanes
+	s.Cfg.SVPerRepo, s.Cfg.SVTotal, s.Cfg.SVWorkers = body.SVPerRepo, body.SVTotal, body.SVWorkers
 	body.Repos = s.Cfg.Repos
 	s.mu.Unlock()
+	lim := sv.CurrentLimits() // zero came back as the default
+	body.SVPerRepo, body.SVTotal, body.SVWorkers = lim.PerRepo, lim.Total, lim.Workers
 
 	// The ignore list changes what the poller calls red, so the next snapshot
 	// has to be recomputed rather than waiting out the interval.

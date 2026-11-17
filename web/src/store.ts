@@ -21,6 +21,10 @@ export interface Settings {
   ignoreChecks: string[]
   /** Server-side, like the three above: the naming pass reads it there. */
   namePanes: boolean
+  /** Server-side: the supervisor's limits, read by its driver on the Mac. */
+  svPerRepo: number
+  svTotal: number
+  svWorkers: number
   submitOnEnter: boolean
   /** Whether the opt-in bar has been answered. Asked once, never again. */
   askedNotifications: boolean
@@ -126,6 +130,9 @@ const DEFAULTS: Settings = {
   notifyCi: true,
   ignoreChecks: ['Vercel'],
   namePanes: true,
+  svPerRepo: 1,
+  svTotal: 3,
+  svWorkers: 8,
   submitOnEnter: true,
   askedNotifications: false,
   starred: [],

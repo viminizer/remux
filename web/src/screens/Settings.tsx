@@ -1,8 +1,9 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { Fragment, useRef, useState, type ReactNode } from 'react'
 import type { Health, Conn, Naming } from '../types'
 import type { Settings } from '../store'
 import { ago } from '../store'
 import { namingState, useNaming } from './Naming'
+import { Select } from '../components/Select'
 
 const tag = (s: string) => (/^\d/.test(s) ? 'v' + s : s)
 type SaveState = {
@@ -470,6 +471,37 @@ export function SettingsScreen({
                 </button>
               </>,
               'naming',
+            )}
+            {section(
+              'Supervisor',
+              true,
+              <>
+                {(
+                  [
+                    ['svPerRepo', 'Running per repo', 'More tasks for the same repo wait their turn.', 10],
+                    ['svTotal', 'Running in total', 'Supervisors working at the same time, across repos.', 10],
+                    ['svWorkers', 'Worker pool', 'Workers all supervisors share. A spawn waits when it is full.', 20],
+                  ] as const
+                ).map(([key, title, hint, max]) => (
+                  <Fragment key={key}>{row(
+                    title,
+                    hint,
+                    <Select
+                      id={`settings-${key}`}
+                      value={String(settings[key])}
+                      disabled={!!save?.pending}
+                      onChange={(v) => void saveMac('supervisor', { [key]: Number(v) })}
+                    >
+                      {Array.from({ length: max }, (_, i) => (
+                        <option key={i + 1} value={String(i + 1)}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </Select>,
+                  )}</Fragment>
+                ))}
+              </>,
+              'supervisor',
             )}
             {section('Model usage', true, <button className="crow rowlink" onClick={onUsage}><div className="lbl">Account limits<small>Claude and Codex · remaining usage and resets</small></div><span className="val">›</span></button>)}
             {section(

@@ -494,6 +494,54 @@ leftovers** once the report looks right. Agents also get their own scratch
 folder per run (`$REMUX_SCRATCH`), deleted when the run ends, so `/tmp` stops
 filling up.
 
+## Supervisor
+
+A supervisor is an agent that runs one task for you from start to finish. It
+works like a distinguished engineer: it plans, splits the work, hands it to
+worker agents, checks their work and merges it. It never writes code itself.
+It is separate from the loops: no issue queue, one task at a time.
+
+Open **Supervisor** in the drawer, then **New task**: pick the project and the
+supervisor's agent (Claude or Codex), and describe the task.
+
+1. **Discuss.** The supervisor studies the code and answers in the chat, with
+   questions and design options. When it is clear, tap **Make the plan**.
+2. **Approve.** The plan has the goal, the decisions and why, the steps, what
+   runs in parallel, the risks. **Approve** it, or **Send back** with a comment.
+3. **Run.** It works alone. It spawns the specialists it needs (researchers,
+   builders, reviewers, testers), each in its own tmux session
+   (`loop-sv-<task>-w<nn>`). Builders work in their own worktree, a separate
+   reviewer checks every change, and it merges in order.
+4. **Status.** The Status tab shows the plan's steps, what changed and why, and
+   the evidence. It asks you only when the goal would change or a change goes
+   against a decision you made. You get a push for: plan ready, needs you, done.
+5. **Done** means merged, with its branches and worktrees cleaned up, and a
+   retro written.
+
+| Where | What |
+|---|---|
+| `~/.remux/supervisor/tasks/<id>/` | one folder per task: brief, chat, plan, `status.json`, `events.jsonl`, each worker's instructions, stream and report, the retro |
+| `~/.remux/supervisor/models.json` | the model ranking, weakest first. Edit it when new models come out |
+| `~/.remux/supervisor/lessons.md` | lessons for every repo |
+| `.remux/lessons.md`, `.remux/roles/` | in the repo: its lessons and role templates that worked |
+
+**Models.** No supervisor or worker uses a model stronger than the default in
+`~/.claude/settings.json` or `~/.codex/config.toml`. remux checks this before a
+session starts. Astra models are never used. The supervisor runs at high effort,
+workers at medium.
+
+**Limits**, in Settings: 1 running supervisor per repo, 3 in total, and a pool
+of 8 workers they share. A task over the limit waits in the queue.
+
+The supervisor's tools are `remux sv ...` (`list`, `read`, `msg`, `spawn`,
+`wait`, `tell`, `resume`, `status`, `log`). Supervisors can read each other and
+any worker, and message each other; they never instruct another supervisor's
+workers. A Claude worker reads urgent messages after its next tool call, through
+a hook; a Codex worker only on resume.
+
+Raw agent streams of a finished task are deleted after 30 days. Stopping a task
+leaves its worktrees and branches for you to judge.
+
 ## Development
 
 ```bash

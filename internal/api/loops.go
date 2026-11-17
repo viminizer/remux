@@ -68,6 +68,8 @@ func (s *Server) handleLoops(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// The supervisor's sessions have their own screen.
+	loops = slices.DeleteFunc(loops, func(l tmux.Loop) bool { return l.Role == "sv" || l.Role == "sv-worker" })
 	sortLoops(loops)
 	s.mu.Lock()
 	presets, last := s.Cfg.LoopPresets, s.Cfg.LastLoop

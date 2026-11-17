@@ -1494,3 +1494,28 @@ a.linkbtn{display:inline-block;text-decoration:none}
 .usage-reset, .usage-checked, .usage-note { color: var(--sub0); font-size: 11px; line-height: 1.6; }
 .usage-checked { padding: 12px 18px; }
 .usage-warning { color: var(--yellow); font-size: 12px; line-height: 1.6; padding: 0 18px; }
+
+/* ── supervisor ───────────────────────────────────────────── */
+.sv-chat{display:flex;flex-direction:column;gap:10px;padding:4px 2px 12px}
+.sv-msg{
+  max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.5;
+  white-space:pre-wrap;overflow-wrap:anywhere;background:var(--mantle);border:1px solid var(--s0);color:var(--text);
+}
+.sv-msg.kevin{align-self:flex-end;background:rgba(137,180,250,.12);border-color:rgba(137,180,250,.3)}
+.sv-msg.supervisor{align-self:flex-start}
+.sv-msg.dim{color:var(--ov1);font-style:italic}
+.sv-at{display:block;margin-top:4px;font-size:10.5px;color:var(--ov0)}
+.sv-doc{
+  margin:0;padding:12px;border-radius:11px;background:var(--mantle);border:1px solid var(--s0);
+  font-family:var(--ui);font-size:13.5px;line-height:1.55;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.sv-block{margin:0 0 16px}
+.sv-block h3{margin:0 4px 8px;font-size:11.5px;font-weight:600;color:var(--ov1);text-transform:uppercase;letter-spacing:.04em}
+.sv-list{margin:0;padding:0 4px 0 22px;font-size:13.5px;line-height:1.55;color:var(--sub1)}
+.sv-step{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin-bottom:6px;border-radius:11px;background:var(--mantle);border:1px solid var(--s0);font-size:14px;line-height:1.45}
+.sv-step small{display:block;color:var(--ov1);font-size:12px;margin-top:2px}
+.sv-step .n{flex:0 0 22px;height:22px;border-radius:7px;display:grid;place-items:center;background:var(--s0);font-family:var(--mono);font-size:12px;color:var(--sub0)}
+.sv-step.done .n{background:rgba(166,227,161,.18);color:var(--green)}
+.sv-step.running .n{background:rgba(137,180,250,.18);color:var(--blue)}
+.sv-step.blocked .n{background:rgba(250,179,135,.18);color:var(--peach)}
+.foot-bar .field{margin-bottom:8px}

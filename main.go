@@ -49,6 +49,8 @@ func main() {
 			exit(cmdLoop(os.Args[2:]))
 		case "harness":
 			exit(cmdHarness(os.Args[2:]))
+		case "sv":
+			exit(cmdSV(os.Args[2:]))
 		case "help", "-h", "--help":
 			usage()
 			return
@@ -215,6 +217,9 @@ func run(cfg *config.Config, local bool) error {
 		loopPush = srv.Push
 	}
 	go srv.WatchLoops(ctx, loopPush)
+	// The supervisor's pushes, and its drivers restarted after a reboot. A
+	// development server does neither: it would run drivers from its own binary.
+	go srv.WatchSV(ctx, loopPush, !local)
 	// The one always-on pass over the workspace. Pane/repo matching runs here
 	// rather than inside a handler, because it reads the filesystem and a read
 	// under ~/Desktop from a LaunchAgent macOS has not granted access to
@@ -355,6 +360,7 @@ usage:
   remux restart        reload after replacing the binary
   remux status         preflight, reachability and tailnet identity, then exit
   remux harness init   create the agent harness labels and starter files in a repo
+  remux sv ...         supervisor tools; run "remux sv" for the list
 
 flags:
   --local              serve plain HTTP on loopback

@@ -385,12 +385,12 @@ func TestUsageLimit(t *testing.T) {
 		{"Usage limit reached", now.Add(LimitWait)},
 	}
 	for _, c := range cases {
-		got, ok := usageLimit(c.out, now)
+		got, ok := UsageLimit(c.out, now)
 		if !ok || !got.Equal(c.want) {
-			t.Errorf("usageLimit(%q) = %v, %v; want %v", c.out, got, ok, c.want)
+			t.Errorf("UsageLimit(%q) = %v, %v; want %v", c.out, got, ok, c.want)
 		}
 	}
-	if _, ok := usageLimit("go test ./... FAIL: TestRateLimiter", now); ok {
+	if _, ok := UsageLimit("go test ./... FAIL: TestRateLimiter", now); ok {
 		t.Error("an ordinary test failure is not a usage limit")
 	}
 }

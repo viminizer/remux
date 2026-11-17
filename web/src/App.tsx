@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import { Socket } from './ws'
-import { isGitHub, isLoops, useRoute } from './router'
+import { isGitHub, isLoops, isSV, useRoute } from './router'
 import type { Route } from './router'
 import { useSettings, queueSnapshot, flushSnapshot, loadSnapshot } from './store'
 import type { Conn, GhBadge, Health, Pane, Session, SnapMeta } from './types'
@@ -24,6 +24,7 @@ import { RepoScreen } from './github/RepoScreen'
 import { ItemScreen } from './github/ItemScreen'
 import { AddRepoSheet } from './github/AddRepoSheet'
 import { LoopsRoutes, useLoops } from './loops/LoopsRoutes'
+import { SvRoutes, useSV } from './sv/SvRoutes'
 import { SendToPaneSheet } from './github/SendToPaneSheet'
 import { useGitHub } from './github/useGitHub'
 import type { InboxItem } from './github/types'
@@ -114,6 +115,8 @@ export default function App() {
 
   const loopsOpen = isLoops(route)
   const { data: loops, refresh: loopsRefresh } = useLoops(loopsOpen || drawerOpen)
+  const svOpen = isSV(route)
+  const { data: sv, refresh: svRefresh } = useSV(svOpen || drawerOpen)
 
   // ── GitHub ──────────────────────────────────────────────────────────────
 
@@ -241,6 +244,9 @@ export default function App() {
               notifyCi: n.notifyCi,
               ignoreChecks: n.ignoreChecks ?? [],
               namePanes: n.namePanes,
+              svPerRepo: n.svPerRepo ?? 1,
+              svTotal: n.svTotal ?? 3,
+              svWorkers: n.svWorkers ?? 8,
             })
           }
         } catch {
@@ -520,7 +526,7 @@ export default function App() {
   // Notification toggles must reach the server or they do nothing.
   const settingsWrite = useRef(false)
   const patchNotify = async (p: Partial<typeof settings>): Promise<void> => {
-    const mac = ['notifyWaiting', 'notifyDone', 'notifyCi', 'ignoreChecks', 'namePanes'].some(
+    const mac = ['notifyWaiting', 'notifyDone', 'notifyCi', 'ignoreChecks', 'namePanes', 'svPerRepo', 'svTotal', 'svWorkers'].some(
       (key) => key in p,
     )
     if (!mac) {
@@ -537,6 +543,9 @@ export default function App() {
         notifyCi: next.notifyCi,
         ignoreChecks: next.ignoreChecks,
         namePanes: next.namePanes,
+        svPerRepo: next.svPerRepo,
+        svTotal: next.svTotal,
+        svWorkers: next.svWorkers,
       })
       patch({
         ...p,
@@ -545,6 +554,9 @@ export default function App() {
         notifyCi: saved.notifyCi,
         ignoreChecks: saved.ignoreChecks ?? [],
         namePanes: saved.namePanes,
+        svPerRepo: saved.svPerRepo ?? next.svPerRepo,
+        svTotal: saved.svTotal ?? next.svTotal,
+        svWorkers: saved.svWorkers ?? next.svWorkers,
       })
       if ('ignoreChecks' in p) void ghLoad()
     } finally {
@@ -731,6 +743,11 @@ export default function App() {
           setDrawerOpen(false)
           go({ name: 'loops', tab: 'loops' })
         }}
+        sv={sv?.tasks ?? null}
+        onSV={() => {
+          setDrawerOpen(false)
+          go({ name: 'sv' })
+        }}
         gh={ghBadge}
         onGitHub={() => {
           setDrawerOpen(false)
@@ -810,6 +827,14 @@ export default function App() {
               )
               setGhSheet('topane')
             }}
+          />
+        ) : svOpen ? (
+          <SvRoutes
+            route={route}
+            go={go}
+            data={sv}
+            refresh={svRefresh}
+            onClose={() => go({ name: 'pane', pane: lastPane.current })}
           />
         ) : loopsOpen ? (
           <LoopsRoutes

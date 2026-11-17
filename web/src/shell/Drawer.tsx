@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { RefObject } from 'react'
 import type { Conn, GhBadge, Pane } from '../types'
 import type { Loop } from '../loops/types'
+import type { SvTask } from '../sv/types'
+import { needsYou } from '../sv/types'
 import { PaneList } from './PaneList'
 
 const CONN_DOT: Record<Conn, string> = {
@@ -16,6 +18,15 @@ const CONN_TEXT: Record<Conn, string> = {
   live: 'Connected',
   offline: 'Offline',
   denied: 'Not authorized',
+}
+
+/** The line under "Supervisor": what runs and what waits on Kevin. */
+function svSub(tasks: SvTask[] | null): string {
+  if (!tasks) return 'tasks with a plan'
+  const running = tasks.filter((t) => t.phase === 'running').length
+  const waiting = tasks.filter(needsYou).length
+  if (!running && !waiting) return 'nothing running'
+  return [running && `${running} running`, waiting && `${waiting} need you`].filter(Boolean).join(' · ')
 }
 
 /** The line under "Loops": what is working and what is stuck. */
@@ -59,6 +70,8 @@ export function Drawer({
   onGitHub,
   loops,
   onLoops,
+  sv,
+  onSV,
 }: {
   open: boolean
   panelRef: RefObject<HTMLElement>
@@ -78,6 +91,8 @@ export function Drawer({
   onGitHub: () => void
   loops: Loop[] | null
   onLoops: () => void
+  sv: SvTask[] | null
+  onSV: () => void
 }) {
   const [q, setQ] = useState('')
 
@@ -133,6 +148,14 @@ export function Drawer({
             <span className="sub">{loopsSub(loops)}</span>
           </span>
           {!!loops?.some((l) => l.state === 'blocked') && <span className="badge red">!</span>}
+        </button>
+        <button className="pin-row" onClick={onSV}>
+          <span className="glyph">◎</span>
+          <span className="pin-mid">
+            Supervisor
+            <span className="sub">{svSub(sv)}</span>
+          </span>
+          {!!sv?.some(needsYou) && <span className="badge red">{sv.filter(needsYou).length}</span>}
         </button>
       </div>
 

@@ -25,10 +25,18 @@ export type Route =
   | { name: 'loop'; loop: string }
   | { name: 'loopStart' }
   | { name: 'loopQ'; slug: string; number: number }
+  | { name: 'sv' }
+  | { name: 'svNew' }
+  | { name: 'svTask'; id: string }
 
 /** True for the agent loop screens. */
 export function isLoops(r: Route): boolean {
   return r.name === 'loops' || r.name === 'loop' || r.name === 'loopStart' || r.name === 'loopQ'
+}
+
+/** True for the supervisor screens. */
+export function isSV(r: Route): boolean {
+  return r.name === 'sv' || r.name === 'svNew' || r.name === 'svTask'
 }
 
 /** True for the GitHub screen and anything reached from it. */
@@ -44,6 +52,11 @@ function parse(hash: string): Route {
   if (h === '/naming') return { name: 'naming' }
 
   if (h === '/gh') return { name: 'gh' }
+
+  if (h === '/sv') return { name: 'sv' }
+  if (h === '/sv/new') return { name: 'svNew' }
+  const sv = /^\/sv\/(sv-[a-z0-9-]+)$/.exec(h)
+  if (sv) return { name: 'svTask', id: sv[1] }
 
   if (h === '/loops') return { name: 'loops', tab: 'loops' }
   if (h === '/loops/inbox') return { name: 'loops', tab: 'inbox' }
@@ -98,6 +111,12 @@ function href(r: Route): string {
       return '#/loops/new'
     case 'loopQ':
       return `#/loops/q/${encodeURIComponent(r.slug)}/${r.number}`
+    case 'sv':
+      return '#/sv'
+    case 'svNew':
+      return '#/sv/new'
+    case 'svTask':
+      return `#/sv/${r.id}`
     case 'ghRepo':
       return `#/gh/r/${encodeURIComponent(r.repo)}${r.tab === 'prs' ? '?t=prs' : ''}`
     case 'ghItem':

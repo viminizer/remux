@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	s.loopRoutes(mux)
+	s.svRoutes(mux)
 
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)

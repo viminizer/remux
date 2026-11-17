@@ -68,6 +68,13 @@ type Config struct {
 	// tmux keeps a loop's settings only in memory: after a crash or a reboot
 	// they are what Restore starts again.
 	SavedLoops []SavedLoop `json:"savedLoops,omitempty"`
+
+	// The supervisor's limits (see internal/sv): running supervisors per
+	// repo and in total, and the worker pool they share. Zero means the
+	// default: 1, 3 and 8.
+	SVPerRepo int `json:"svPerRepo,omitempty"`
+	SVTotal   int `json:"svTotal,omitempty"`
+	SVWorkers int `json:"svWorkers,omitempty"`
 }
 
 // SavedLoop is one loop as it was started or last edited.

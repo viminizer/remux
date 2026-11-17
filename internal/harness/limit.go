@@ -29,9 +29,9 @@ var partRe = regexp.MustCompile(`(?i)(\d+)\s*(day|hour|min)`)
 // LimitWait is how long to wait when a limit message names no time.
 var LimitWait = 30 * time.Minute
 
-// usageLimit reports whether an agent's output ends on a usage limit, and
+// UsageLimit reports whether an agent's output ends on a usage limit, and
 // when to try again.
-func usageLimit(out string, now time.Time) (time.Time, bool) {
+func UsageLimit(out string, now time.Time) (time.Time, bool) {
 	if !limitRe.MatchString(out) {
 		return time.Time{}, false
 	}
