@@ -23,4 +23,4 @@ The private interactive preview is served on Tailscale port 8445.
 
 The preview state controls remain exclusive to this standalone mockup. They are
 not included in the application. Fresh implementation reviews and release follow
-the implementation verification recorded in `docs/build-log.md`.
+the recorded implementation verification.
